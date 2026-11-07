@@ -1,0 +1,60 @@
+{
+  "summary": "Iteration 1 tested the backend and the frontend. Backend: 26/26 pytest pass after 2 fixes by the tester. Fix 1: the regex in the q search param was unescaped, so a search for '(' returned 500. Fix 2: PUT /api/cart/items with quantity 0 returned 422. The main frontend flows pass in the Expo web preview at 390x844: home, product detail with toast, Beli Sekarang, cart +/-/remove, checkout validation, mock payment, order-success, orders, Kategori sidebar, category sort chips, search with an empty state, guest wishlist from the card heart, the product-detail heart and the wishlist screen, login (wrong-password error, demo login, still logged in after reload, logout) and register (short-password validation, then success). A critical crash existed before the tester's backend fix: tapping '-' at qty 1 in Keranjang sent quantity 0, the backend returned 422, and the Expo 'Uncaught Error [object Object]' overlay appeared. The frontend still has no error handling for this. No deprecated Expo packages detected (no expo-av, expo-barcode-scanner or expo-background-fetch).",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "PUT /api/cart/items/{id}", "issue": "Before the tester's fix: CartItemIn.quantity had ge=1, so quantity 0 returned 422 and the '<=0 -> remove' branch could never run. The frontend's '-' at qty 1 sends 0 and crashed the app. The tester added a CartQtyIn model (ge=0) for PUT.", "priority": "CRITICAL"}
+    ],
+    "minor": [
+      {"endpoint": "GET /api/products?q=", "issue": "Before the tester's fix: the regex was unescaped, so q='(' returned 500. The tester changed it to re.escape(q)."},
+      {"endpoint": "POST /api/cart/items, PUT /api/cart/items/{id}", "issue": "Quantity is not checked against product stock. POST adds quantity without a cap. PUT also adds unknown product_ids to the cart without checking that the product exists."},
+      {"endpoint": "POST /api/wishlist/{id}", "issue": "Does not check that the product exists."},
+      {"endpoint": "POST /api/checkout", "issue": "CheckoutIn fields have no min_length, so the API accepts empty full_name, phone, address and city. Stock is not reduced after an order."},
+      {"endpoint": "get_owner", "issue": "An invalid or expired Bearer token silently falls back to the guest identity and does not return 401."},
+      {"endpoint": "POST /api/auth/login", "issue": "The guest cart and wishlist (X-Guest-Id) are not merged into the user's cart and wishlist on login or register. Items added as a guest disappear after login."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Keranjang qty minus", "issue": "cart-context updateQty, removeItem, addToCart and toggleWishlist have no try/catch, so any API error becomes an unhandled rejection and the red Uncaught Error overlay. Fixed on the backend side for qty=0, but there is still no frontend error handling.", "testID": "cart-minus-{id}", "priority": "HIGH"},
+      {"component": "api.ts req()", "issue": "When FastAPI 422 'detail' is an array, it is thrown as 'Error([object Object])'. Stringify it or map it to a friendly message. Reference: /app/frontend/src/api.ts:69", "testID": "", "priority": "MEDIUM"},
+      {"component": "Product detail with an invalid id", "issue": "/product/does-not-exist shows an endless spinner with no error message and no back button. Loading is set to false, but the render still checks '!product'. Reference: /app/frontend/app/product/[id].tsx:48", "testID": "product-loading", "priority": "MEDIUM"},
+      {"component": "Kategori sidebar", "issue": "The sidebar ScrollView (style width 110) renders about 250px wide on web because RN-web ScrollView has flexGrow 1 by default. The product area gets squeezed into one narrow column. Add flexGrow:0 and flexShrink:0 to the sidebar. Reference: /app/frontend/app/(tabs)/kategori.tsx:104", "testID": "sidebar-cat-*", "priority": "MEDIUM"},
+      {"component": "Seed image", "issue": "The p-ac-01 'AC 1 PK Low Watt Inverter' image (unsplash photo-1631545308456-d56e71c7a0a7) does not load and shows a grey blank box. Reference: /app/backend/server.py:90", "testID": "product-card-p-ac-01", "priority": "LOW"}
+    ],
+    "integration_issues": [
+      {"flow": "Login/Register navigation", "issue": "login.tsx and register.tsx call router.replace('/(tabs)/akun') after being pushed from the Akun tab. This stacks a second (tabs) navigator, which is why there are 2 profile-card elements in the DOM. Use router.back() or dismiss instead.", "affected_testIDs": ["login-submit", "register-submit", "profile-card"]},
+      {"flow": "Guest to login cart", "issue": "The guest cart is lost after login because there is no merge.", "affected_testIDs": ["cart-row-*"]}
+    ],
+    "design_issues": [
+      {"screen": "Product card / Product detail / Keranjang", "issues": ["Touch targets are under 44px: card heart is 28x28, qty-plus and qty-minus are 32x32, back-btn and pd-wishlist-btn are 36x36. hitSlop helps on native only."]},
+      {"screen": "Product detail", "issues": ["Beli Sekarang adds the selected qty again even if the user already tapped Keranjang (2+2=4). Consider going to the cart without adding a duplicate, or setting the quantity."]},
+      {"screen": "All grids", "issues": ["Card widths use the module-level Dimensions.get('window'), so they do not update on rotation, resize or web. Use useWindowDimensions."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_pgs_api.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "Add try/catch and user-facing error toasts in cart-context (addToCart, updateQty, removeItem, toggleWishlist) and on product detail.",
+    "Make api.ts handle an array 'detail' (422) and turn it into a readable message.",
+    "Add a not-found/error state with a back button to product/[id].tsx when the fetch fails.",
+    "Fix the Kategori sidebar width on web (flexGrow:0 and flexShrink:0 on the sidebar ScrollView).",
+    "Replace router.replace('/(tabs)/akun') in login.tsx and register.tsx with router.back() or dismiss to avoid duplicate tab stacks.",
+    "Merge the guest cart and wishlist into the user's on login and register (backend, using the X-Guest-Id header).",
+    "Validate checkout fields (min_length) and cart quantity against stock on the backend.",
+    "Replace the broken p-ac-01 image URL.",
+    "Increase touch targets to 44px or more (heart, qty buttons, header icons)."
+  ],
+  "critical_code_review_comments": [
+    "server.py: PUT handler logic expected quantity <= 0 but the model forbade it (fixed with CartQtyIn).",
+    "server.py: user input was put into the Mongo $regex unescaped (fixed with re.escape).",
+    "get_owner: an invalid token silently becomes a guest. Return 401 for a bad Bearer token.",
+    "Dimensions.get at module scope is used in 6 screens."
+  ],
+  "updated_files": ["/app/backend/server.py (import re, re.escape in the products q filter, new CartQtyIn model for the PUT cart item endpoint)", "/app/backend/tests/test_pgs_api.py (new)"],
+  "success_rate": {"backend": "100% (26/26) after tester fixes; 92% before", "frontend": "~90%. All core flows pass. The qty-minus crash was fixed through the backend. The remaining issues are UX and robustness."},
+  "seed_data_creation": "No seed data created. These tests created data: TEST_ guest carts and orders, users test_*@example.com (API) and test_ui_51957@example.com (UI), plus orders for those users. They were not deleted because there is no delete endpoint.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: export EXPO_PUBLIC_BACKEND_URL from frontend/.env, then pytest /app/backend/tests/test_pgs_api.py (pytest.ini uses xdist; the fixtures are module-scoped per worker). The Expo stack keeps earlier screens in the DOM, so use '>> visible=true' selectors (for example, profile-card appears twice). Bottom tab testIDs: tab-home, tab-kategori, tab-keranjang, tab-akun. The home search opener is 'search-input-open', not 'header-search'.",
+  "rca_of_issue": "Keranjang crash: keranjang.tsx:52 calls updateQty(id, max(0, qty-1)), which sends PUT quantity=0. Backend CartItemIn(quantity ge=1) returned 422 with detail as an array. In api.ts:69, new Error(detail) became '[object Object]'. There is no catch in cart-context.updateQty or in onPress, so the error was unhandled and Expo showed the Uncaught Error overlay. Mitigation: a backend PUT model allowing ge=0 (done). Still needed: frontend catch plus a toast."
+}

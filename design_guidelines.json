@@ -1,0 +1,194 @@
+{
+  "app_name": "Pusat Grosir Sidoarjo",
+  "personality": "1 iOS-Native Clean",
+  "personality_one_liner": "Clean, modern Indonesian e-commerce focusing on physical retail experiences transitioning to a digital product-first interface, highlighted with vibrant orange accents.",
+  "color": {
+    "surface": "#FFFFFF",
+    "onSurface": "#111827",
+    "surfaceSecondary": "#F9FAFB",
+    "onSurfaceSecondary": "#374151",
+    "surfaceTertiary": "#F3F4F6",
+    "onSurfaceTertiary": "#4B5563",
+    "surfaceInverse": "#111827",
+    "onSurfaceInverse": "#FFFFFF",
+    "brand": "#F15A24",
+    "onBrand": "#FFFFFF",
+    "brandPrimary": "#F15A24",
+    "onBrandPrimary": "#FFFFFF",
+    "brandSecondary": "#E04D1B",
+    "onBrandSecondary": "#FFFFFF",
+    "brandTertiary": "#FDECE6",
+    "onBrandTertiary": "#F15A24",
+    "success": "#10B981",
+    "onSuccess": "#FFFFFF",
+    "warning": "#F59E0B",
+    "onWarning": "#FFFFFF",
+    "error": "#EF4444",
+    "onError": "#FFFFFF",
+    "info": "#3B82F6",
+    "onInfo": "#FFFFFF",
+    "border": "#E5E7EB",
+    "borderStrong": "#D1D5DB",
+    "divider": "#F3F4F6",
+    "muted": "#6B7280"
+  },
+  "typography": {
+    "displayFontFamily": "Plus Jakarta Sans",
+    "textFontFamily": "Plus Jakarta Sans",
+    "scale": {
+      "sm": 12,
+      "base": 14,
+      "lg": 16,
+      "xl": 20,
+      "2xl": 24
+    }
+  },
+  "spacing": {
+    "rule": "Generous vertical breathing room for a product-first approach; avoid dense packing.",
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 24,
+    "2xl": 32,
+    "3xl": 48
+  },
+  "radius_tokens": {
+    "sm": 6,
+    "md": 12,
+    "lg": 20,
+    "pill": 999
+  },
+  "shadow_tier": 1,
+  "navigation": "bottom_tabs",
+  "icon_set": "Ionicons",
+  "glassmorphism": {
+    "enabled": true,
+    "do's": [
+      "Apply to sticky headers over scrolling product feeds.",
+      "Apply to the bottom tab bar.",
+      "Apply to floating Action Buttons."
+    ],
+    "dont's": [
+      "Never blur product form fields or body text regions.",
+      "Do not use on list rows or chips."
+    ]
+  },
+  "platform_libraries": {
+    "glass": {
+      "ios": "expo-glass-effect",
+      "android": "expo-blur",
+      "low_end_android_fallback": "solid surfaceSecondary"
+    },
+    "image": "expo-image",
+    "blur": "expo-blur",
+    "bottom_sheet": "@gorhom/bottom-sheet",
+    "animation": "react-native-reanimated",
+    "gesture": "react-native-gesture-handler"
+  },
+  "haptics": {
+    "events": {
+      "primary_button_press": "impactLight",
+      "tab_press": "selection",
+      "add_to_cart": "notificationSuccess",
+      "toggle_switch": "impactLight"
+    }
+  },
+  "screens": [
+    {
+      "name": "Home",
+      "purpose": "Showcase featured banners, primary product categories, and trending products.",
+      "states": {
+        "loading": "Skeleton loaders for banners and product carousels.",
+        "empty": "No products available illustration.",
+        "error": "Failed to load feed with retry button."
+      },
+      "layout": "Full-width hero banner carousel, followed by a horizontal category scroll, and a 2-column grid for product recommendations."
+    },
+    {
+      "name": "Kategori",
+      "purpose": "Allow users to browse all products filtered by specific departments (Furniture, Dapur, Elektronik).",
+      "states": {
+        "loading": "Spinner centered on screen.",
+        "empty": "Illustration of an empty aisle with a clear message.",
+        "error": "Connection error state with a retry button."
+      },
+      "layout": "Left sidebar or top horizontal scroll for parent categories, main area for a 2-column product grid with filter controls."
+    },
+    {
+      "name": "Keranjang",
+      "purpose": "Manage selected items before proceeding to checkout.",
+      "states": {
+        "loading": "Spinner centered.",
+        "empty": "Empty shopping cart illustration with a 'Start Shopping' CTA.",
+        "error": "Failed to sync cart data error message."
+      },
+      "layout": "List of cart items with quantity steppers, followed by a fixed/sticky checkout CTA panel at the bottom including total price."
+    },
+    {
+      "name": "Akun",
+      "purpose": "User profile management, order history, and settings.",
+      "states": {
+        "loading": "Skeleton for user details.",
+        "empty": "Guest mode prompt: 'Log in to view your orders'.",
+        "error": "Error fetching profile."
+      },
+      "layout": "Simple list layout with grouped sections (Profile, Orders, Settings) and a sticky Logout button if authenticated."
+    },
+    {
+      "name": "Product Detail",
+      "purpose": "Present comprehensive product information, images, and add to cart action.",
+      "states": {
+        "loading": "Skeleton for image and text blocks.",
+        "empty": "Product unavailable message.",
+        "error": "Error fetching product details."
+      },
+      "layout": "Large product image gallery at the top, followed by title, price, variants, and description. Highly crucial: Sticky 'Add to Cart' button at the bottom."
+    },
+    {
+      "name": "Checkout",
+      "purpose": "Finalize order and mock payment.",
+      "states": {
+        "loading": "Processing payment spinner.",
+        "empty": "N/A",
+        "error": "Payment failed message with retry."
+      },
+      "layout": "Single column form for shipping details and payment method selection. Sticky 'Pay Now' button at bottom inside KeyboardAvoidingView."
+    }
+  ],
+  "images": {
+    "home_banner_1": {
+      "url": "https://images.unsplash.com/photo-1724582586529-62622e50c0b3?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDQ2NDF8MHwxfHNlYXJjaHwzfHxtb2Rlcm4lMjBmdXJuaXR1cmUlMjBsaXZpbmclMjByb29tfGVufDB8fHx8MTc5NDA2OTA1MHww&ixlib=rb-4.1.0&q=85",
+      "alt": "Modern furniture living room display"
+    },
+    "home_banner_2": {
+      "url": "https://images.unsplash.com/photo-1606824722920-4c652a70f348?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwxfHx3aG9sZXNhbGUlMjBtYXJrZXQlMjBzdG9yZXxlbnwwfHx8fDE3OTQwNjkwNTB8MA&ixlib=rb-4.1.0&q=85",
+      "alt": "Wholesale market store aisle"
+    },
+    "category_furniture": {
+      "url": "https://images.unsplash.com/photo-1583847268964-b28dc8f51f92?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDQ2NDF8MHwxfHNlYXJjaHwxfHxtb2Rlcm4lMjBmdXJuaXR1cmUlMjBsaXZpbmclMjByb29tfGVufDB8fHx8MTc5NDA2OTA1MHww&ixlib=rb-4.1.0&q=85",
+      "alt": "Furniture category preview"
+    },
+    "category_kitchen": {
+      "url": "https://images.unsplash.com/photo-1631008789162-950869f41805?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2Njd8MHwxfHNlYXJjaHwyfHxraXRjaGVud2FyZSUyMGRpbmluZyUyMHNldHxlbnwwfHx8fDE3OTQwNjkwNTB8MA&ixlib=rb-4.1.0&q=85",
+      "alt": "Kitchenware category preview"
+    },
+    "category_electronics": {
+      "url": "https://images.unsplash.com/photo-1740803292822-a742c6a4fef0?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDQ2NDJ8MHwxfHNlYXJjaHwxfHxob21lJTIwZWxlY3Ryb25pY3MlMjBhcHBsaWFuY2V8ZW58MHx8fHwxNzk0MDY5MDYzfDA&ixlib=rb-4.1.0&q=85",
+      "alt": "Home electronics appliances category preview"
+    },
+    "empty_cart": {
+      "url": "https://images.unsplash.com/photo-1575898201154-d65111ab78b9?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1Mjh8MHwxfHNlYXJjaHwyfHxlbXB0eSUyMHNob3BwaW5nJTIwY2FydCUyMGlsbHVzdHJhdGlvbnxlbnwwfHx8fDE3OTQwNjkwNjN8MA&ixlib=rb-4.1.0&q=85",
+      "alt": "Empty gray metal shopping cart"
+    }
+  },
+  "instructions_to_main_agent": [
+    "Adhere strictly to the '1 iOS-Native Clean' personality, prioritizing a highly legible and uncluttered product showcase.",
+    "Implement the vivid orange `#F15A24` as the primary brand color to match the requested ruparupa.com style.",
+    "Use 'Plus Jakarta Sans' globally. Enforce a maximum font weight of 500 across all UI elements (never use 600, 700, Bold, etc.). Rely on size and color for typography hierarchy.",
+    "Limit the bottom tab navigation to exactly 4 tabs: Home, Kategori, Keranjang, Akun.",
+    "Ensure 'Add to Cart', 'Checkout', and 'Pay Now' are implemented as sticky CTAs anchored above the home indicator, overlaying scrolling content securely.",
+    "Apply 'expo-blur' (glassmorphism) behind sticky headers and the bottom tab bar to maintain depth when content scrolls underneath.",
+    "Always provide a gradient-to-dark scrim layer when rendering text directly over any background imagery (e.g., hero banners)."
+  ]
+}
