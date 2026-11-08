@@ -1,0 +1,33 @@
+{
+  "summary": "Tested the 'Cek Kunci Ongkir' feature. Backend: 8/8 pytest tests pass. POST /api/admin/shipping/verify-key returns 401 without a token and 403 for a customer. For admin it makes a real RajaOngkir call and returns key_status {state: valid, message, checked_at}, and checked_at moves forward. GET /api/admin/shipping-settings has exactly the keys configured, key_hint, enabled, default_weight_grams, origins and key_status, with no raw key, api_key_enc or _id. GET /api/shipping/status gives auto=true; after key_status.state was forced to 'invalid' in the DB it gives auto=false, and verify-key brings it back to valid / auto=true. Calling RajaOngkir directly with a fake key returns HTTP 400 {meta.message: 'Invalid Api key, key not found'}, which _classify maps to 'invalid'. Frontend at 375x667 on /admin/shipping: shows 'Tersimpan (••••<hint>)', the card ship-key-check, ship-key-state-valid 'Kunci valid' and 'Dicek <date>'. Tapping ship-key-verify (317x48) updated the check time from 08.35 to 08.37 with no error. With the state forced invalid, the screen shows ship-key-state-invalid 'Kunci tidak valid — ongkir memakai tarif manual'. Checkout for a TEST user then hid the destination search and showed manual rates (JNE 25k / J&T 24k / SiCepat 22k). Tapping 'Cek Kunci Sekarang' on the invalid screen set it back to valid, and checkout again showed co-dest search with the 'tarif standar' hint. Final state: key_status valid, /shipping/status auto=true. api_key_enc and key_hint were never changed, and save/remove were never pressed. No deprecated Expo packages found.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/shipping/rates and GET /api/shipping/destinations", "issue": "Both ignore key_status. While state=invalid, /shipping/status says auto=false, but /shipping/rates with destination_id 69243 still returned live 'auto' quotes (JNE 9000 / J&T 8000 / SiCepat 7500, possibly from the 30-min cache). /shipping/destinations also returned auto:true. In checkout, a buyer whose default saved address has a destination_id (feature from iteration 11) would still get auto rates and the destinations call would set autoShip back to true. This contradicts the admin badge 'ongkir memakai tarif manual'. With a really invalid key, RajaOngkir errors would fall back to manual anyway, so the impact is low."},
+      {"endpoint": "key_status persistence", "issue": "Once _search or _one marks the state invalid or limited (e.g. a daily quota hit or a temporary 401), it never recovers on its own. Only the admin pressing 'Cek Kunci Sekarang' or saving a key resets it, so /shipping/status keeps auto=false (search hidden) even after the quota resets. Consider re-verifying when checked_at is older than N minutes, or setting the state to valid after any successful call."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_pgs_iter12_key_check.py", "/app/backend/tests/ui_iter12_helper.py", "/app/test_reports/pytest/pytest_iter12.xml"],
+  "action_items": [
+    "Optional: make quote() and /shipping/destinations follow key_status.state=='invalid' (fall back to manual, auto:false) so they match /shipping/status and the admin badge.",
+    "Optional: let the 'invalid'/'limited' status recover on its own (re-verify on a TTL or after a successful API call)."
+  ],
+  "critical_code_review_comments": [
+    "_classify treats any error body containing 'limit' as quota exhausted. The request sends a 'limit' param, so an error that echoes that param (e.g. a 422 validation error) could be mislabelled 'limited'. Low risk.",
+    "verify_key catches every exception from httpx as 'unknown', which is fine. A 404 is treated as valid, which is OK because the search uses a fixed query.",
+    "The admin screen is 118 lines with testIDs on all interactive elements and touch targets of 48px or more. All styles use StyleSheet and all text is in Text components."
+  ],
+  "updated_files": ["/app/backend/tests/test_pgs_iter12_key_check.py", "/app/backend/tests/ui_iter12_helper.py"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "Created 2 TEST users (test_iter12_*, test_ui12_*) plus 1 cart and welcome notifications. All were deleted by id. key_status.state was temporarily set to 'invalid' (only that field) and restored to valid with a real verify-key.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Use tests/test_pgs_iter12_key_check.py (-n 0). It forces key_status.state=invalid through pymongo and restores it with verify-key in a finally block and in the fixture teardown. Never touch api_key_enc or key_hint. Carts use owner 'user:<user_id>'. Checkout hides the destination search when /shipping/status auto=false.",
+  "rca_of_issue": ""
+}

@@ -7,6 +7,7 @@ import logging
 import os
 import re
 import time
+from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
 import httpx
@@ -19,6 +20,7 @@ RO_BASE = "https://rajaongkir.komerce.id/api/v1"
 AUTO_COURIERS = ("jne", "jnt", "sicepat")
 _cache: Dict[tuple, tuple] = {}  # (origin, dest, weight, courier) -> (expires, result)
 CACHE_TTL = 1800
+RECHECK_SECONDS = 1800  # how long an invalid/limited key is skipped before re-checking
 
 
 def _eta_id(etd) -> str:
@@ -66,7 +68,57 @@ def register(api, db, require_admin, get_owner, official_ids, couriers_of):
     def _public(s: dict) -> dict:
         enc = s.get("api_key_enc")
         return {"configured": bool(enc), "key_hint": s.get("key_hint", ""), "enabled": s.get("enabled", True),
-                "default_weight_grams": s.get("default_weight_grams", 1000), "origins": s.get("origins", {})}
+                "default_weight_grams": s.get("default_weight_grams", 1000), "origins": s.get("origins", {}),
+                "key_status": s.get("key_status") if enc else None}
+
+    def _classify(status: int, text: str) -> Optional[dict]:
+        """Map a RajaOngkir error to a key status; None = not a key problem."""
+        t = text.lower()
+        if "api key" in t or "apikey" in t or status in (401, 403):
+            return {"state": "invalid", "message": "Kunci ditolak RajaOngkir (tidak valid atau sudah dinonaktifkan)"}
+        if status == 429 or re.search(r"quota|kuota|rate limit|limit exceeded|exceeded|too many", t):
+            return {"state": "limited", "message": "Kunci valid, tetapi kuota/batas harian RajaOngkir habis"}
+        return None
+
+    async def _set_status(st: dict) -> dict:
+        st = {**st, "checked_at": datetime.now(timezone.utc)}
+        await db.settings.update_one({"key": "shipping_api"}, {"$set": {"key_status": st}})
+        return st
+
+    async def _verify(key: str) -> dict:
+        """Cheap real call (1 destination search) to prove the key works."""
+        try:
+            async with httpx.AsyncClient(timeout=10) as c:
+                r = await c.get(f"{RO_BASE}/destination/domestic-destination", params={"search": "sidoarjo", "limit": 1, "offset": 0}, headers={"key": key})
+        except Exception:
+            return await _set_status({"state": "unknown", "message": "Tidak bisa menghubungi RajaOngkir, coba lagi nanti"})
+        if r.status_code < 400 or r.status_code == 404:
+            return await _set_status({"state": "valid", "message": "Kunci valid dan terhubung ke RajaOngkir"})
+        return await _set_status(_classify(r.status_code, r.text) or {"state": "unknown", "message": f"RajaOngkir error {r.status_code}, coba lagi nanti"})
+
+    async def usable_key() -> Optional[str]:
+        """Key for buyer-facing quotes. A key marked invalid/limited is skipped (manual tariff),
+        but re-checked automatically every RECHECK_SECONDS so a reset quota / fixed key recovers alone."""
+        key = await api_key()
+        if not key:
+            return None
+        st = (await settings()).get("key_status") or {}
+        if st.get("state") in ("invalid", "limited"):
+            at = st.get("checked_at")
+            at = at.replace(tzinfo=timezone.utc) if at and at.tzinfo is None else at
+            if at and (datetime.now(timezone.utc) - at).total_seconds() < RECHECK_SECONDS:
+                return None
+            if (await _verify(key))["state"] in ("invalid", "limited"):
+                return None
+        return key
+
+    @api.post("/admin/shipping/verify-key")
+    async def verify_key(_=Depends(require_admin)):
+        key = await api_key()
+        if not key:
+            raise HTTPException(status_code=400, detail="Isi API key ongkir dulu")
+        await _verify(key)
+        return _public(await settings())
 
     @api.get("/admin/shipping-settings")
     async def get_shipping_settings(_=Depends(require_admin)):
@@ -82,6 +134,11 @@ def register(api, db, require_admin, get_owner, official_ids, couriers_of):
             upd["key_hint"] = f"••••{k[-4:]}" if k else ""
         await db.settings.update_one({"key": "shipping_api"}, {"$set": upd}, upsert=True)
         _cache.clear()
+        if body.api_key is not None:
+            if body.api_key.strip():
+                await _verify(body.api_key.strip())  # check the new key right away
+            else:
+                await db.settings.update_one({"key": "shipping_api"}, {"$unset": {"key_status": ""}})
         return _public(await settings())
 
     async def _search(q: str, key: str) -> list:
@@ -91,6 +148,8 @@ def register(api, db, require_admin, get_owner, official_ids, couriers_of):
             return []
         if r.status_code >= 400:
             log.warning("RajaOngkir search %s: %s", r.status_code, r.text[:200])
+            if st := _classify(r.status_code, r.text):
+                await _set_status(st)
             raise HTTPException(status_code=424, detail="Pencarian lokasi gagal, periksa API key ongkir")
         return [{"id": d.get("id"), "label": d.get("label") or ", ".join(
             str(d.get(k)) for k in ("subdistrict_name", "district_name", "city_name", "province_name") if d.get(k))}
@@ -98,11 +157,11 @@ def register(api, db, require_admin, get_owner, official_ids, couriers_of):
 
     @api.get("/shipping/status")
     async def shipping_status():
-        return {"auto": bool(await api_key())}
+        return {"auto": bool(await usable_key())}
 
     @api.get("/shipping/destinations")
     async def destinations(q: str = Query(min_length=3, max_length=80), _owner=Depends(get_owner)):
-        key = await api_key()
+        key = await usable_key()
         if not key:
             return {"auto": False, "data": []}
         return {"auto": True, "data": await _search(q.strip(), key)}
@@ -124,6 +183,8 @@ def register(api, db, require_admin, get_owner, official_ids, couriers_of):
                                   data={"origin": str(origin), "destination": str(dest), "weight": str(weight), "courier": courier, "price": "lowest"})
             if r.status_code >= 400 and r.status_code != 404:
                 log.warning("RajaOngkir cost %s: %s", r.status_code, r.text[:200])
+                if st := _classify(r.status_code, r.text):
+                    await _set_status(st)
                 return "error"  # API problem -> caller falls back to manual tariff
             services = (r.json().get("data") or []) if r.status_code < 400 else []
         except Exception:
@@ -138,7 +199,7 @@ def register(api, db, require_admin, get_owner, official_ids, couriers_of):
         """Courier options for a store. JNE/J&T/SiCepat use the API when key + origin + destination exist."""
         manual = [dict(c, source="manual") for c in couriers_of(store) if c.get("active", True)]
         s = await settings()
-        key = await api_key()
+        key = await usable_key()
         origin = (s.get("origins") or {}).get(store["store_id"], {}).get("id")
         if not (key and origin and destination_id):
             return manual
