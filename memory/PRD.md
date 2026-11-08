@@ -85,3 +85,6 @@ Iteration 2: import all data from pusatgrosirsidoarjo.com; tiered pricing (pembe
 - GET /api/products/count; home & admin search placeholder use real count.
 - Free-shipping subtitle supports {kota} placeholder → city of the chosen branch (old "Area Sidoarjo" text auto-converted).
 - Seller order list: COD pickup orders show auto-cancel chip; red border + red chip when ≤6h left (timezone-safe parse via parseDate).
+
+## Iteration 20
+- "Pesanan siap diambil" notification now includes pickup code and COD cash amount due.

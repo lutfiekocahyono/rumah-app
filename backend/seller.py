@@ -377,8 +377,11 @@ def register(api, db, get_current_user, require_admin, product_out_for_user, not
             projection={"_id": 0}, return_document=ReturnDocument.AFTER)
         where = f" di {s.get('address')}" if s.get("address") else ""
         hours = f" Jam ambil: {s['pickup_hours']}." if s.get("pickup_hours") else ""
+        code = f" Kode ambil: {d['pickup_code']} (tunjukkan ke kasir)." if d.get("pickup_code") else ""
+        due = d["total"] - d.get("balance_used", 0)
+        pay = f" Siapkan pembayaran tunai Rp{due:,}.".replace(",", ".") if d.get("payment_method") == "cod" and due > 0 else ""
         await notify_user(d.get("user_id"), "order", "Pesanan siap diambil",
-                          f"Pesanan {order_id} sudah siap diambil di {s['name']}{where}.{hours}", f"/order/{order_id}")
+                          f"Pesanan {order_id} sudah siap diambil di {s['name']}{where}.{code}{hours}{pay}", f"/order/{order_id}")
         return order_out(res)
 
     @api.put("/seller/orders/{order_id}/status")
