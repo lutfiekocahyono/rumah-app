@@ -916,6 +916,7 @@ async def checkout(body: CheckoutIn, background: BackgroundTasks, owner: str = D
 
 RELEASE_STATUSES = ("cancelled", "expired", "failed")
 COD_PICKUP_HOURS = 48
+COD_REMIND_HOURS = 6  # remind the store admin this long before auto-cancel
 
 
 async def expire_cod_orders() -> int:
@@ -934,9 +935,30 @@ async def expire_cod_orders() -> int:
     return n
 
 
+async def remind_expiring_cod() -> int:
+    """Warn the store admin once when a COD pickup order is close to auto-cancel."""
+    now = datetime.now(timezone.utc)
+    n = 0
+    async for o in db.orders.find({"status": "cod", "expires_at": {"$gt": now, "$lte": now + timedelta(hours=COD_REMIND_HOURS)},
+                                   "expiry_reminded": {"$ne": True}}, {"order_id": 1, "store_id": 1, "expires_at": 1}):
+        res = await db.orders.update_one({"order_id": o["order_id"], "expiry_reminded": {"$ne": True}}, {"$set": {"expiry_reminded": True}})
+        if not res.modified_count:
+            continue
+        store = await db.stores.find_one({"store_id": o["store_id"]}, {"owner_id": 1})
+        if store:
+            exp = o["expires_at"].replace(tzinfo=timezone.utc) if o["expires_at"].tzinfo is None else o["expires_at"]
+            left = max(1, round((exp - now).total_seconds() / 3600))
+            await ACCT["notify_user"](store["owner_id"], "order", "Pesanan COD hampir batal otomatis",
+                                      f"Pesanan {o['order_id']} batal otomatis dalam ±{left} jam. Proses atau perpanjang sekarang.",
+                                      f"/seller/order/{o['order_id']}")
+            n += 1
+    return n
+
+
 async def _expire_loop() -> None:
     while True:
         try:
+            await remind_expiring_cod()
             await expire_cod_orders()
         except Exception:
             logging.getLogger(__name__).exception("expire_cod_orders failed")

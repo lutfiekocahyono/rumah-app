@@ -354,7 +354,7 @@ def register(api, db, get_current_user, require_admin, product_out_for_user, not
             raise HTTPException(status_code=400, detail="Hanya pesanan COD yang belum diproses yang bisa diperpanjang")
         cur = d["expires_at"].replace(tzinfo=timezone.utc) if d["expires_at"].tzinfo is None else d["expires_at"]
         new = max(cur, _now()) + timedelta(hours=body.hours)
-        res = await db.orders.find_one_and_update({"order_id": order_id}, {"$set": {"expires_at": new, "updated_at": _now()},
+        res = await db.orders.find_one_and_update({"order_id": order_id}, {"$set": {"expires_at": new, "updated_at": _now(), "expiry_reminded": False},
             "$push": {"status_history": {"status": "cod", "at": _now(), "note": f"Batas waktu diperpanjang {body.hours} jam oleh {ctx['store']['name']}"}}},
             projection={"_id": 0}, return_document=ReturnDocument.AFTER)
         await notify_user(d.get("user_id"), "order", "Batas waktu pesanan diperpanjang",
