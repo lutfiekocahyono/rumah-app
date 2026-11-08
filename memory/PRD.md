@@ -135,3 +135,7 @@ Iteration 2: import all data from pusatgrosirsidoarjo.com; tiered pricing (pembe
 - Accurate Tahap 2A: tarik harga (katalog bersama), stok per cabang (gudang terpetakan), barang baru (nonaktif) dengan pratinjau + centang per baris, konflik dilewati, tercatat di Riwayat (sumber "Sinkron Accurate"). Accurate tidak diubah.
 - Accurate Tahap 2B: faktur penjualan per pesanan (lunas / COD selesai) setelah konfirmasi; nomor faktur = nomor pesanan; kode pelanggan & kode barang ongkir di pengaturan.
 - Belum diuji dengan akun Accurate asli (memakai mock tests/accurate_mock.py).
+
+## Iteration 37 (Jun 2026)
+- Balasan Cepat Toko: template per cabang (5 bawaan: stok tersedia/habis, harga grosir, jam ambil, ongkir), bisa ditambah/ubah/hapus admin cabang; kata otomatis {produk} {harga} {pembeli} {toko}. Chip tampil di chat sisi toko, ketuk = isi kolom pesan.
+- Pesan sukses kirim faktur Accurate kini tetap tampil sampai ditutup.

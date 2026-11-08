@@ -1,11 +1,12 @@
 """Saldo (wallet), komplain & refund, and in-app buyer <-> store chat."""
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Annotated, Optional
 
 from fastapi import Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StringConstraints
 from pymongo import ASCENDING, DESCENDING, IndexModel, ReturnDocument
+from pymongo.errors import DuplicateKeyError
 
 COMPLAINT_DAYS = 7
 REASONS = {"damaged": "Barang rusak", "wrong_item": "Barang tidak sesuai", "missing": "Barang kurang",
@@ -109,6 +110,21 @@ class ChatStartIn(BaseModel):
 
 class SellerChatStartIn(BaseModel):
     order_id: str
+
+
+class QuickReplyIn(BaseModel):
+    title: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=40)]
+    text: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=1000)]
+
+
+# {produk} {harga} {pembeli} {toko} are filled in by the chat screen from the conversation
+DEFAULT_REPLIES = [
+    ("Stok tersedia", "Halo Kak {pembeli}, stok {produk} masih tersedia di {toko}. Silakan langsung dipesan ya, terima kasih 🙏"),
+    ("Stok habis", "Mohon maaf Kak {pembeli}, stok {produk} sedang kosong di {toko}. Kami kabari lagi begitu barang datang ya."),
+    ("Harga grosir", "Harga {produk}: {harga} Kak. Ada harga grosir: makin banyak jumlah yang dibeli, harga per barang makin murah. Rincian harga per jumlah bisa dilihat di halaman produk."),
+    ("Jam ambil di toko", "Pesanan Ambil di Toko bisa diambil Senin–Sabtu pukul 08.00–16.00 di {toko}, tanpa ongkir. Tunjukkan kode QR pesanan ke kasir ya Kak."),
+    ("Ongkir", "Ongkir dihitung otomatis saat checkout sesuai alamat dan kurir yang dipilih Kak. Bisa juga pilih Ambil di Toko supaya tanpa ongkir."),
+]
 
 
 def register(api, db, get_current_user, require_admin, notify_user, log_activity):
@@ -281,6 +297,47 @@ def register(api, db, get_current_user, require_admin, notify_user, log_activity
         await _notify_other(c, viewer, f"Komplain {cid} diputuskan", msg)
         await log_activity(user["user_id"], "order", f"Memutuskan komplain {cid}: {status}")
         return _out(res, viewer, paid)
+
+    # ============================================================ quick replies (per cabang)
+    async def _replies(store_id: str) -> list:
+        try:  # _id is unique, so only one request ever seeds; deleting all later stays deleted
+            await db.quick_replies_seeded.insert_one({"_id": store_id, "at": _now()})
+            await db.quick_replies.insert_many([{"reply_id": f"qr_{uuid.uuid4().hex[:10]}", "store_id": store_id, "title": t, "text": x,
+                                                 "order": n, "created_at": _now()} for n, (t, x) in enumerate(DEFAULT_REPLIES)])
+        except DuplicateKeyError:
+            pass
+        return await db.quick_replies.find({"store_id": store_id}, {"_id": 0, "store_id": 0}).sort([("order", 1), ("created_at", 1)]).to_list(100)
+
+    @api.get("/seller/quick-replies")
+    async def quick_replies(ctx=Depends(require_seller)):
+        return {"items": await _replies(ctx["store"]["store_id"])}
+
+    @api.post("/seller/quick-replies")
+    async def quick_reply_add(body: QuickReplyIn, ctx=Depends(require_seller)):
+        sid = ctx["store"]["store_id"]
+        items = await _replies(sid)
+        if len(items) >= 50:
+            raise HTTPException(status_code=400, detail="Maksimal 50 balasan cepat")
+        r = {"reply_id": f"qr_{uuid.uuid4().hex[:10]}", "store_id": sid, "title": body.title.strip(), "text": body.text.strip(),
+             "order": max([i.get("order", 0) for i in items], default=-1) + 1, "created_at": _now()}
+        await db.quick_replies.insert_one({**r})
+        return {k: v for k, v in r.items() if k != "store_id"}
+
+    @api.put("/seller/quick-replies/{reply_id}")
+    async def quick_reply_edit(reply_id: str, body: QuickReplyIn, ctx=Depends(require_seller)):
+        r = await db.quick_replies.find_one_and_update({"reply_id": reply_id, "store_id": ctx["store"]["store_id"]},
+                                                       {"$set": {"title": body.title.strip(), "text": body.text.strip()}},
+                                                       projection={"_id": 0, "store_id": 0}, return_document=ReturnDocument.AFTER)
+        if not r:
+            raise HTTPException(status_code=404, detail="Balasan cepat tidak ditemukan")
+        return r
+
+    @api.delete("/seller/quick-replies/{reply_id}")
+    async def quick_reply_delete(reply_id: str, ctx=Depends(require_seller)):
+        res = await db.quick_replies.delete_one({"reply_id": reply_id, "store_id": ctx["store"]["store_id"]})
+        if not res.deleted_count:
+            raise HTTPException(status_code=404, detail="Balasan cepat tidak ditemukan")
+        return {"ok": True}
 
     # ============================================================ chat
     async def _conv_for(conv_id: str, user: dict) -> tuple[dict, str]:

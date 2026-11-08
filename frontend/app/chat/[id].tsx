@@ -9,6 +9,7 @@ import { colors, fontSize, radius, spacing, formatIDR } from "@/src/theme";
 import { api, type ChatMessage, type ChatThread } from "@/src/api";
 import { ScreenHeader } from "@/src/components/screen-header";
 import { fmtDate } from "@/src/utils/date";
+import { QuickReplies, fillTemplate } from "@/src/components/quick-replies";
 
 const POLL_MS = 4000;
 
@@ -60,6 +61,11 @@ export default function ChatThreadScreen() {
 
   const title = thread ? (thread.me === "store" ? thread.conversation.user_name : thread.conversation.store_name) : "Chat";
   const reversed = [...msgs].reverse();
+  const asked = reversed.find((m) => m.product)?.product;  // latest product the buyer asked about
+  const tplVars = {
+    produk: asked?.name ?? "", harga: asked ? formatIDR(asked.price) : "",
+    pembeli: thread?.conversation.user_name.split(/[\s@]/)[0] ?? "", toko: thread?.conversation.store_name ?? "",
+  };
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]} testID="chat-thread-screen">
@@ -99,6 +105,7 @@ export default function ChatThreadScreen() {
           />
         )}
         {err ? <Text style={styles.err} testID="chat-error">{err}</Text> : null}
+        {thread?.me === "store" ? <QuickReplies onPick={(t) => setText(fillTemplate(t, tplVars))} /> : null}
         <View style={[styles.inputBar, { paddingBottom: Math.max(spacing.sm, insets.bottom) }]}>
           <TextInput
             testID="chat-input"

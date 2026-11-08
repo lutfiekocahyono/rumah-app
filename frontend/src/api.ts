@@ -322,6 +322,10 @@ export const api = {
   chatUnread: () => req<{ buyer: number; store: number }>("/chats/unread"),
   chatThread: (id: string, after?: string) => req<ChatThread>(`/chats/${id}${after ? `?after=${encodeURIComponent(after)}` : ""}`),
   sendChat: (id: string, text: string) => req<ChatMessage>(`/chats/${id}/messages`, { method: "POST", body: JSON.stringify({ text }) }),
+  quickReplies: () => req<{ items: QuickReply[] }>("/seller/quick-replies"),
+  addQuickReply: (title: string, text: string) => req<QuickReply>("/seller/quick-replies", { method: "POST", body: JSON.stringify({ title, text }) }),
+  editQuickReply: (id: string, title: string, text: string) => req<QuickReply>(`/seller/quick-replies/${id}`, { method: "PUT", body: JSON.stringify({ title, text }) }),
+  deleteQuickReply: (id: string) => req<{ ok: boolean }>(`/seller/quick-replies/${id}`, { method: "DELETE" }),
 };
 
 export type Wallet = { balance: number; transactions: { tx_id: string; amount: number; kind: "refund" | "payment" | "return"; ref: string; note: string; created_at: string }[] };
@@ -345,6 +349,7 @@ export type Conversation = { conv_id: string; user_id: string; user_name: string
 export type ChatMessage = { msg_id: string; conv_id: string; sender: "user" | "store"; text: string; created_at: string;
   product?: { product_id: string; name: string; image: string; price: number; sku: string } };
 export type ChatThread = { conversation: Conversation; me: "user" | "store"; messages: ChatMessage[] };
+export type QuickReply = { reply_id: string; title: string; text: string; order: number };
 
 async function uploadTo(path: string, file: LocalFile): Promise<{ url: string }> {
   const token = await getToken();

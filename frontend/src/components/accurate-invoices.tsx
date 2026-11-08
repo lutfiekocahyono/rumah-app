@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { View, Text, Pressable, ActivityIndicator, TextInput } from "react-native";
+import Icon from "@react-native-vector-icons/ionicons";
 
 import { colors, formatIDR, spacing } from "@/src/theme";
 import { api, type AccurateInvoice, type AccurateOrderRow } from "@/src/api";
@@ -12,6 +13,9 @@ const STATE: Record<string, { text: string; color: string }> = {
   failed: { text: "Gagal, bisa dikirim ulang", color: colors.error }, sent: { text: "Terkirim", color: colors.success },
 };
 
+const banner = { flexDirection: "row" as const, alignItems: "center" as const, gap: spacing.sm, padding: spacing.md, borderRadius: 12,
+  borderWidth: 1, borderColor: colors.success, backgroundColor: colors.surfaceSecondary };
+
 /** Tahap 2B — kirim pesanan online sebagai faktur penjualan ke Accurate, satu per satu setelah konfirmasi. */
 export function AccurateInvoices({ connected, customerNo, shippingItemNo }: { connected: boolean; customerNo: string; shippingItemNo: string }) {
   const [cust, setCust] = useState(customerNo);
@@ -23,6 +27,7 @@ export function AccurateInvoices({ connected, customerNo, shippingItemNo }: { co
   const [busy, setBusy] = useState("");
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [ask, setAsk] = useState(false);
+  const [sent, setSent] = useState("");  // stays until closed, so the owner can't miss it
 
   useEffect(() => { setCust(customerNo); setSaved(customerNo); setShip(shippingItemNo); }, [customerNo, shippingItemNo]);
 
@@ -38,7 +43,7 @@ export function AccurateInvoices({ connected, customerNo, shippingItemNo }: { co
     setSaved(r.customer_no);
     setMsg({ ok: true, text: "Pengaturan faktur tersimpan" });
   });
-  const open = (id: string) => run(`open-${id}`, async () => { setInv(await api.accurateInvoice(id)); });
+  const open = (id: string) => run(`open-${id}`, async () => { setSent(""); setInv(await api.accurateInvoice(id)); });
   const send = () => {
     if (!inv) return;
     setAsk(false);
@@ -46,7 +51,7 @@ export function AccurateInvoices({ connected, customerNo, shippingItemNo }: { co
       try {
         const r = await api.accurateSendInvoice(inv.order_id);
         setInv(r);
-        setMsg({ ok: true, text: `Faktur ${r.accurate_invoice.number} masuk ke Accurate` });
+        setSent(`Faktur ${r.accurate_invoice.number} senilai ${formatIDR(r.total)} sudah masuk ke Accurate.`);
       } finally {
         api.accurateOrders(tab === "sent", list?.page ?? 1).then(setList).catch(() => {});  // refresh without clearing the message
       }
@@ -100,6 +105,15 @@ export function AccurateInvoices({ connected, customerNo, shippingItemNo }: { co
 
       {inv ? (
         <View style={{ gap: 4, paddingTop: spacing.sm }} testID="accurate-invoice-preview">
+          {sent ? (
+            <View style={banner} testID="accurate-invoice-success">
+              <Icon name="checkmark-circle" size={22} color={colors.success} />
+              <Text style={[styles.label, { flex: 1 }]}>{sent}</Text>
+              <Pressable onPress={() => setSent("")} hitSlop={12} testID="accurate-invoice-success-close">
+                <Icon name="close" size={18} color={colors.muted} />
+              </Pressable>
+            </View>
+          ) : null}
           <Text style={styles.h}>Faktur {inv.number}</Text>
           <Text style={styles.small}>Tanggal {inv.date} · Pelanggan {inv.customer_no || "–"} · {inv.store_name}</Text>
           {inv.lines.map((l, n) => (

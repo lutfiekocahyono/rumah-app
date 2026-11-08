@@ -1,0 +1,38 @@
+{
+  "summary": "Iteration 37: Balasan Cepat Toko (seller quick replies) and the Accurate invoice success banner fix. Backend: 7/8 pytest pass. Defaults are seeded once (5 titles, in the right order, no duplicates on a second GET). POST/PUT/DELETE work and are saved to the DB. Validation returns 422 (empty, title over 40, text over 1000). Max lengths are accepted. Deleting all and then GET returns an empty list (no re-seed). Jember gets 404 on PUT/DELETE of jombang's reply. Buyer gets 403 and anonymous gets 401/403. The one failure: whitespace-only title/text is accepted (200) and saved as empty strings. Frontend (375x667): as jombang@pgs.id in chat cv_b4475852f7ee, the 5 chips show. 'Stok tersedia' fills chat-input with 'Halo Kak Demo, stok Cetakan 7 Lubang Cekung Suggo (Jual Per Dus) masih tersedia di Mitra PGS Jombang...'; 'Harga grosir' fills in Rp915.000. Editing the text and sending works. In the manage sheet, add, edit, delete (Batal and Hapus in the confirm dialog), the back arrow and close all work, and the chip row updates. Buyer demo@pgs.id sees no chips and the app makes no quick-replies request. Accurate banner (with mock): accurate-invoice-success stayed visible for 15+ s after sending and only went away on the X. Fix confirmed. No deprecated Expo packages in the reviewed files.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST/PUT /api/seller/quick-replies", "issue": "Whitespace-only title/text (e.g. '   ') passes Pydantic min_length=1 and is saved as '' after .strip(), giving an empty chip. The UI disables Simpan, but the API accepts it. Fix: strip in a field_validator before the length check, or return 422 when the stripped value is empty."},
+      {"endpoint": "GET /api/seller/quick-replies (_replies seed)", "issue": "The seed-once check (find, then insert) is not atomic. Two GETs at the same time for a fresh store can both seed and give 10 defaults. Fix: unique index on settings.key, or an upsert with $setOnInsert and a check of upserted_id before insert_many."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "fillTemplate (quick-replies.tsx:14)", "issue": "When the chat has no product card, {harga} (and {toko} until the thread loads) stays as the literal '{harga}' in chat-input, e.g. 'Harga produk ini mulai {harga} Kak'. The admin may send a raw placeholder. Use a fallback such as '' or hide price templates when there is no product.", "testID": "chat-input", "priority": "low"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Chat (store side)", "issues": ["The 'Atur' / manage chip sits at the end of the horizontal chip row and is off-screen at 375px with the 5 defaults. Admins may not find it. Consider putting it first or pinning it."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_pgs_iter37_quick_replies.py", "/app/test_reports/pytest/pytest_iter37.xml"],
+  "action_items": [
+    "Reject whitespace-only title/text in QuickReplyIn (strip before validating) -> 422",
+    "Make the quick-replies seed-once atomic (unique index on settings.key, or upsert with $setOnInsert)",
+    "fillTemplate: don't leave the literal {harga} when no product was asked about",
+    "Optional: make the 'Atur' manage chip easier to find"
+  ],
+  "critical_code_review_comments": [
+    "accurate-invoices.tsx: the sent banner is separate state from msg and the list refresh no longer clears it. This is correct. setSent('') on open() resets it for a new preview.",
+    "QuickReplies loads once on mount; it does not refresh if another admin edits at the same time (acceptable).",
+    "Some leftover ORD-* orders with buyer names TEST_G / TEST_Name from earlier iterations show in the Accurate 'Belum dikirim' list. I did not touch them."
+  ],
+  "updated_files": ["/app/backend/tests/test_pgs_iter37_quick_replies.py"],
+  "success_rate": {"backend": "87.5% (7/8)", "frontend": "100%"},
+  "seed_data_creation": "Temporary only, all removed: 1 product-card message plus 1 store reply in the existing conv cv_b4475852f7ee (deleted, and the conversation's last_text/last_at/last_sender restored), the 2 notifications those created (deleted), the TEST_Garansi reply (deleted via the UI), TEST_ replies created via the API (deleted by id), jember seed and seed key (removed), jombang quick_replies and seed key reset as requested (defaults re-seed on next GET), the settings key=accurate doc and order TEST_ORD_67BF0084 (deleted; no other orders had accurate_invoice). The mock on 9911 was killed.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "On web, auth token is in localStorage 'pgs_auth_token'. The manage sheet slides up, so wait about 1.5 s before clicking inside it. The confirm dialog uses testIDs confirm-ok / confirm-cancel. Accurate mock setup: insert settings key=accurate with Fernet(KEY_ENCRYPTION_SECRET)-encrypted fake keys, host http://127.0.0.1:9911, last_test_ok True, warehouse_map {pgs-jombang: 'GUDANG JOMBANG'}, customer_no C.00001. Admin UI is at /admin/accurate."
+}
