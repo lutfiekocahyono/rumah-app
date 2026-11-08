@@ -1,0 +1,42 @@
+{
+  "summary": "Retest of the iteration 32 QR-link 404 bug: it is FIXED. The backend /api/products/by-code (query and path forms) now returns pgs-9849 for the website /distributor/<slug>/ link (with or without trailing slash, with or without scheme, any letter case), the /product/<slug>/ link, the /product/pgs-9849 link, uppercase PGS-9849, the uppercase link and SKU dblp32hc (any case). Unknown codes return 404 in Indonesian. On /scan (product mode, 375px), all 5 typed links/codes open /product/pgs-9849 with no 'tidak ditemukan' message, and the input has autocapitalize=none. In pickup mode (admin@pgs.id), a long website link or 'abc' shows the Indonesian hint 'Kode ambil berupa 6 digit angka...', and the valid code 631317 shows the pickup-result card (read-only, not completed). Accurate: saving fake keys and then testing returns 400 'Kunci API ditolak Accurate'. /admin/accurate shows that error once, both right after the test and after a reload, and the placeholder reads 'ID Database (opsional)'. settings{key:'accurate'} was cleaned up and is null in the DB again. Regression: 44/44 tests in iter31+iter32 passed and 17/17 new iter33 tests passed. Two minor edge cases remain (see minor issues).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/products/by-code", "issue": "A website link with a query string or fragment, e.g. https://pusatgrosirsidoarjo.com/distributor/happy-call-double-pan-32-cm/?utm_source=qr, returns 404 'Produk dengan kode utm_source=qr tidak ditemukan'. RCA: in server.py product_by_code, `parts = re.split(r\"[/?#]\", ...)` keeps the query part as the last segment, so both c and slug become 'utm_source=qr'. Fix: strip the query and fragment first (c.split('?')[0].split('#')[0]) before splitting into path segments. Shared QR links often carry utm parameters."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Scan pickup validation", "issue": "In pickup mode, typing https://x.id/product/pgs-9849 passes the client check, because the regex keeps only the digits ('9849', which fits 4-8 digits). It goes to the backend and shows 'Kode ambil tidak ditemukan di toko ini' instead of the 'pilih mode Barcode Produk' hint. Suggest: if the input contains '/' or letters other than a short prefix, show the hint. Reference: /app/frontend/app/scan.tsx:93", "testID": "scan-code-input", "priority": "low"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/scan", "issues": ["The pickup mode pill label 'Kode Ambil Pesanan' wraps onto 2 lines at 375px, while 'Barcode Produk' fits on 1 line. Consider a shorter label ('Kode Ambil') or a smaller font."]},
+      {"screen": "/admin/accurate", "issues": ["Once configured, the placeholder 'Signature Secret (kosongkan jika tidak diganti)' is cut off at 375px.", "The global 'Cari produk…' search bar shows above the admin screen header on web. Check whether that is intended."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_pgs_iter33_qr_link_fix.py",
+    "/app/backend/tests/test_pgs_iter32_qr_accurate.py",
+    "/app/backend/tests/test_pgs_iter31_scan_export.py",
+    "/app/test_reports/pytest/pytest_iter33.xml",
+    "/app/test_reports/pytest/pytest_iter33_new.xml"
+  ],
+  "action_items": [
+    "Optional: in product_by_code, strip ?query and #fragment before parsing link segments, so links with utm parameters still resolve (server.py ~line 720).",
+    "Optional: in scan.tsx:93 pickup mode, reject input that looks like a URL or product ID before the backend call, so the user sees the 'pilih mode Barcode Produk' hint."
+  ],
+  "critical_code_review_comments": [
+    "product_by_code: the permalink regex match is not indexed (it is a regex on 'permalink'). It is fine for the current catalog size, but consider storing a normalized 'slug' field with an index.",
+    "The frontend regex (scan.tsx:91) is now case-insensitive and lowercases the ID; other links fall through to the API. OK."
+  ],
+  "updated_files": ["/app/backend/tests/test_pgs_iter33_qr_link_fix.py (new)"],
+  "success_rate": {"backend": "100% (61/61)", "frontend": "100% of requested flows (product links 5/5, unknown error, pickup hint, pickup valid lookup, accurate error once + placeholder)"},
+  "seed_data_creation": "No seed data. Temporary fake Accurate keys (TEST_fake_*) were saved and then deleted; settings{key:'accurate'} is null again, as it was before testing. Pickup lookup used the existing order PGS-261108-1A9AC7 (code 631317) read-only; it was not completed.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: export EXPO_PUBLIC_BACKEND_URL=<frontend/.env value>; pytest -n0 tests/test_pgs_iter33_qr_link_fix.py tests/test_pgs_iter32_qr_accurate.py tests/test_pgs_iter31_scan_export.py. Accurate settings endpoints are /api/admin/accurate/settings (GET/PUT/DELETE). The iter32 test deletes settings{key:'accurate'} at start and end.",
+  "rca_of_issue": "The original 404 was fixed by adding a permalink-slug match (the last path segment of the link vs products.permalink, case-insensitive), a case-insensitive product_id match (lowercased), a case-insensitive SKU match, and autoCapitalize='none' on the input. Remaining edge case: query strings in links (see minor backend issue)."
+}

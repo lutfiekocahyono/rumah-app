@@ -449,7 +449,7 @@ def register(api, db, get_current_user, require_admin, product_out_for_user, not
 
     # ---------------- Scan: kode ambil pesanan (kasir) ----------------
     class PickupCodeIn(BaseModel):
-        code: str = Field(min_length=4, max_length=20)
+        code: str = Field(min_length=4, max_length=200)
 
     async def pickup_ctx(user=Depends(get_current_user)) -> dict:
         if user.get("role") == "admin":  # Super Admin may hand over orders of any branch

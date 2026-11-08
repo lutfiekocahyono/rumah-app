@@ -21,6 +21,7 @@ import marketing
 import home_feed
 import product_editor
 import history
+import accurate
 import order_tasks
 from order_tasks import COD_PICKUP_HOURS, RELEASE_STATUSES
 import promo
@@ -704,18 +705,30 @@ async def count_products():
     return {"count": await db.products.count_documents(await _visible(ALL_BRANCHES))}
 
 
+@api.get("/products/by-code")
+async def product_by_code_query(code: str = ""):
+    """Same lookup with the code as query param (safe for scanned links containing slashes)."""
+    return await product_by_code(code)
+
+
 @api.get("/products/by-code/{code:path}")
 async def product_by_code(code: str):
     """Scan: barcode / SKU / product ID (or a scanned product link) -> product_id."""
-    c = code.strip()
-    m = re.search(r"/product/([\w-]+)", c)
-    if m:
-        c = m.group(1)
+    c = re.split(r"[?#]", code.strip(), 1)[0].strip()  # drop tracking tags like ?utm_source=qr
+    slug = None
+    if "/" in c:  # a scanned link: app link /product/<id> or website link /distributor/<slug>/
+        parts = [p for p in re.split(r"[/?#]", c.split("://", 1)[-1])[1:] if p]
+        m = re.search(r"/product/([\w-]+)", c)
+        c = m.group(1) if m else (parts[-1] if parts else c)
+        slug = parts[-1] if parts else None
     if not c:
         raise HTTPException(status_code=404, detail="Kode kosong")
     rx = {"$regex": f"^{re.escape(c)}$", "$options": "i"}
     vis = await _visible(ALL_BRANCHES)
-    for q in ({"product_id": c}, {"barcode": c}, {"sku": rx}, {"variants.sku": rx}):
+    queries = [{"product_id": c.lower()}, {"barcode": c}, {"sku": rx}, {"variants.sku": rx}]
+    if slug:
+        queries.append({"permalink": {"$regex": f"/{re.escape(slug)}/?$", "$options": "i"}})
+    for q in queries:
         d = await db.products.find_one({**vis, **q}, {"_id": 0, "product_id": 1, "name": 1})
         if d:
             return d
@@ -1275,6 +1288,7 @@ branches.register(api, db, get_owner, seller)
 SHIP_QUOTE, SHIP_ORIGIN = shipping.register(api, db, require_admin, get_owner, seller.OFFICIAL_IDS, seller.couriers_of)
 product_editor.register(api, db, get_current_user=get_current_user, log_activity=ACCT["log_activity"], origin_label=SHIP_ORIGIN)
 history.register(api, db, get_current_user)
+accurate.register(api, db, require_admin)
 
 app.include_router(api)
 

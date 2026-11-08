@@ -244,7 +244,15 @@ export const api = {
     req<{ total: number; items: PriceLog[] }>(`/history/price-stock?${qs({ ...p, limit: 30 })}`),
   priceHistoryExportUrl: (p: { store_id?: string | null; product_id?: string | null; q?: string; kind?: string; date_from?: string; date_to?: string }) =>
     `${BASE}/api/history/price-stock/export?${qs(p)}`,
-  productByCode: (code: string) => req<{ product_id: string; name: string }>(`/products/by-code/${encodeURIComponent(code)}`),
+  productByCode: (code: string) => req<{ product_id: string; name: string }>(`/products/by-code?${qs({ code })}`),
+  accurateSettings: () => req<AccurateSettings>("/admin/accurate/settings"),
+  accurateSave: (b: { api_token: string; signature_secret: string; database_id: string }) => req<AccurateSettings>("/admin/accurate/settings", { method: "PUT", body: JSON.stringify(b) }),
+  accurateDelete: () => req<AccurateSettings>("/admin/accurate/settings", { method: "DELETE" }),
+  accurateTest: () => req<AccurateSettings>("/admin/accurate/test", { method: "POST" }),
+  accurateWarehouses: () => req<{ items: { id: number; name: string; description: string; suspended: boolean }[] }>("/admin/accurate/warehouses"),
+  accurateSaveMap: (warehouse_map: Record<string, string>) => req<AccurateSettings>("/admin/accurate/warehouse-map", { method: "PUT", body: JSON.stringify({ warehouse_map }) }),
+  accurateItems: (page: number, warehouse: string) =>
+    req<{ items: AccurateItem[]; page: number; page_count: number; total: number }>(`/admin/accurate/items?${qs({ page, warehouse })}`),
   pickupLookup: (code: string) => req<Order>("/seller/pickup/lookup", { method: "POST", body: JSON.stringify({ code }) }),
   pickupComplete: (code: string) => req<Order>("/seller/pickup/complete", { method: "POST", body: JSON.stringify({ code }) }),
   adminStores: (status?: string) => req<Store[]>(`/admin/stores${status ? `?status=${status}` : ""}`),
@@ -426,6 +434,12 @@ export type ProductForm = {
   tier_prices: Partial<Record<CustomerType, PriceTier[]>>;
 };
 export type SpecKey = "material" | "color" | "size" | "dimensions" | "weight" | "origin_country" | "warranty" | "extra";
+export type AccurateSettings = {
+  configured: boolean; token_hint: string; secret_hint: string; database_id: string; database_name: string; host: string;
+  last_test_at?: string | null; last_test_ok?: boolean | null; last_test_message: string; warehouse_map: Record<string, string>;
+  updated_at?: string | null; phase: number; write_enabled: boolean;
+};
+export type AccurateItem = { id: number; no: string; name: string; price: number | null; unit: string; stock: number | null; type: string; pgs_product_id: string | null };
 export type PriceLog = {
   log_id: string; product_id: string; product_name: string; store_id: string; store_name: string; user_name: string; user_role: string;
   source: string; source_label: string; at: string;

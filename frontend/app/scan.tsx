@@ -87,6 +87,10 @@ export default function Scan() {
   const lookup = async (raw: string) => {
     const c = raw.trim();
     if (!c || lock.current) return;
+    // a scanned product link (QR) opens the product directly, no lookup needed
+    const link = mode === "product" ? c.match(/\/product\/(pgs-\d+)\/?$/i) : null;
+    if (link) { router.push(`/product/${link[1].toLowerCase()}` as any); return; }
+    if (mode === "pickup" && !/^[\d\s-]{4,12}$/.test(c)) { setMsg({ ok: false, text: "Kode ambil berupa 6 digit angka. Untuk produk, pilih mode Barcode Produk." }); return; }
     lock.current = true;
     setBusy(true);
     setMsg(null);
@@ -126,7 +130,7 @@ export default function Scan() {
       <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
         {cashier ? (
           <View style={styles.modes}>
-            {([["product", "Barcode Produk", "barcode-outline"], ["pickup", "Kode Ambil Pesanan", "bag-check-outline"]] as const).map(([m, label, icon]) => (
+            {([["product", "Barcode Produk", "barcode-outline"], ["pickup", "Kode Ambil", "bag-check-outline"]] as const).map(([m, label, icon]) => (
               <Pressable key={m} testID={`scan-mode-${m}`} style={[styles.mode, mode === m && styles.modeOn]} onPress={() => { setMode(m); again(); }}>
                 <Icon name={icon} size={18} color={mode === m ? colors.onBrandPrimary : colors.brandPrimary} />
                 <Text style={[styles.modeText, mode === m && { color: colors.onBrandPrimary }]}>{label}</Text>
@@ -149,7 +153,7 @@ export default function Scan() {
           <View style={styles.manual}>
             <TextInput testID="scan-code-input" value={code} onChangeText={setCode} onSubmitEditing={() => lookup(code)} returnKeyType="search"
               placeholder={mode === "product" ? "Ketik barcode / SKU" : "Ketik kode ambil (6 digit)"} placeholderTextColor={colors.muted}
-              keyboardType={mode === "pickup" ? "number-pad" : "default"} autoCapitalize="characters" style={styles.input} />
+              keyboardType={mode === "pickup" ? "number-pad" : "default"} autoCapitalize="none" autoCorrect={false} style={styles.input} />
             <Pressable testID="scan-code-submit" style={[styles.primary, { paddingHorizontal: spacing.lg }]} onPress={() => lookup(code)} disabled={busy || !code.trim()}>
               {busy ? <ActivityIndicator color={colors.onBrandPrimary} /> : <Text style={styles.primaryText}>Cari</Text>}
             </Pressable>

@@ -1,0 +1,45 @@
+{
+  "summary": "Iter32 tested the QR-link 404 fix, Scan screen roles and manual fallback, and Accurate Online phase 1 (backend + /admin/accurate UI). Backend: 17/17 new tests pass, and the iter31 regression passes 27/27. BUG RETEST PASSED: GET /api/products/by-code?code=<encoded https://pusatgrosirsidoarjo.com/product/pgs-9849> and the path form /by-code/https%3A%2F%2Fx.id%2Fproduct%2Fpgs-9849 both return 200 pgs-9849. SKU DBLP32HC (any case) works, and unknown or blank codes return 404. Accurate: customer gets 403 on every endpoint, unauth gets 401. Initial state is configured=false. PUT stores Fernet-encrypted values (gAAAA…, no plaintext in Mongo) and returns only the ••••last4 hints. A blank PUT keeps the saved keys. A first PUT without both keys returns 400. Test with fake keys returns 400 'Kunci API ditolak Accurate…' and saves last_test_ok=false. Warehouses and items return 400 'Jalankan Uji Koneksi dulu'. warehouse-map drops unknown stores and blank values and trims names. DELETE clears the settings. Frontend (375x667): guest and customer see no mode switch; admin sees both modes. A typed link (Cari button or Enter) opens /product/pgs-9849 with no error, and lowercase SKU works. Unknown code shows an Indonesian error. The permission card with Izinkan Kamera shows on web, and the camera view renders after permission is granted. /admin/accurate opens from the Admin menu. Token and secret inputs are masked (type=password). Save with empty fields shows the required-field error. Save shows hints and clears the inputs. Uji Koneksi shows the error and '● Gagal' status, which persists after reload. Sections 2/3 stay disabled. Delete works through the confirm dialog. Found: (1) every product's stored permalink is /distributor/<slug>/ (6618/6618), so a QR with the real website link (or a /product/<woo-slug> link) is NOT resolved; (2) uppercase product ID or link returns 404, and the scan input uses autoCapitalize=characters; (3) pickup mode shows the raw Pydantic error 'String should have at most 20 characters'. No deprecated expo packages: expo-camera 58 is used, and on web it uses native BarcodeDetector or the barcode-detector (zxing-wasm) polyfill, so iOS Safari is covered.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "GET /api/products/by-code", "issue": "Website product links are not resolved. Every product's permalink is https://pusatgrosirsidoarjo.com/distributor/<slug>/ (6618/6618), and the lookup only matches /product/<product_id>. Scanning a QR that holds the shop's real link returns 404 'Produk dengan kode https://…/distributor/happy-call-double-pan-32-cm/ tidak ditemukan'. A /product/<woo-slug> link goes client-side to /product/happy-call-double-pan-32-cm, which shows 'Produk tidak ditemukan'. If the printed QR labels use the WooCommerce link, the user's 404 bug is still there for real labels.", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "GET /api/products/by-code", "issue": "Product ID and link matching is case-sensitive: 'PGS-9849' and 'HTTPS://…/PRODUCT/PGS-9849' return 404. The scan input has autoCapitalize='characters', so a buyer typing a product ID or link on a phone gets uppercase and a 404. SKU matching is already case-insensitive."},
+      {"endpoint": "POST /api/pickup/lookup (via /scan pickup mode)", "issue": "Input longer than 20 characters (e.g. a product QR scanned in pickup mode) shows the raw Pydantic English message 'String should have at most 20 characters'."},
+      {"endpoint": "accurate.py AccurateClient.call", "issue": "r.json() is parsed before the 401/403 check. A non-JSON 401/403 from Accurate therefore shows 'Respon Accurate tidak valid (HTTP 401)' instead of the friendly 'Kunci API ditolak' message. Fix: check the status code first. Reference: /app/backend/accurate.py:60-65"}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Scan manual input", "issue": "autoCapitalize='characters' uppercases typed product IDs and links, and those then fail. Use autoCapitalize='none' or make the matching case-insensitive. Reference: /app/frontend/app/scan.tsx:155", "testID": "scan-code-input", "priority": "medium"},
+      {"component": "Scan link parsing", "issue": "The client-side regex /\\/product\\/([\\w-]+)/ only handles app-style links and is case-sensitive. /distributor/<slug>/ links fall through to the API, which returns 404. Reference: /app/frontend/app/scan.tsx:91", "testID": "scan-code-submit", "priority": "high"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/admin/accurate", "issues": ["After a failed Uji Koneksi, the same long error shows twice (accurate-msg-error and accurate-status).", "The Database ID placeholder is cut off at 375px ('…jika token punya bebe')."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_pgs_iter32_qr_accurate.py", "/app/test_reports/pytest/pytest_iter32.xml"],
+  "action_items": [
+    "HIGH: Make by-code resolve the website permalinks: match the slug from /distributor/<slug>/ and /product/<slug>/ against products.permalink (e.g. a regex on permalink ending with /<slug>/), and also fall back to product_id. On the client, send any link that is not an exact /product/pgs-xxxx to the API instead of routing it directly. Ideally confirm with the owner what URL the printed QR labels contain.",
+    "Make product_id and /product/ matching case-insensitive in by-code (re.I, plus product_id lowercased), and/or set autoCapitalize='none' on scan-code-input.",
+    "Pickup mode: add maxLength or validation on the client and map the Pydantic 422 error to an Indonesian message (e.g. 'Kode ambil tidak valid'). If the input looks like a product link, suggest switching to Barcode Produk.",
+    "accurate.py: check 401/403 before parsing JSON.",
+    "Optional UX: show the test error only once on /admin/accurate."
+  ],
+  "critical_code_review_comments": [
+    "Accurate phase 1 is read-only as required: AccurateClient blocks save.do/delete.do/bulk-save/transfer, and only list.do and api-token.do are called.",
+    "The secrets are never returned. public() exposes only the hints. Fernet uses KEY_ENCRYPTION_SECRET from env.",
+    "The real Accurate success path (host/session parsing, the 308 host move, the items/warehouses mapping) could not be tested without real keys.",
+    "server.py is 1318 lines (>700). Consider splitting it further."
+  ],
+  "updated_files": ["/app/backend/tests/test_pgs_iter32_qr_accurate.py"],
+  "success_rate": {"backend": "100% (17/17 new tests + 27/27 iter31 regression)", "frontend": "~90% (all requested flows pass; the /distributor/ permalink and uppercase-input gaps were found)"},
+  "seed_data_creation": "None kept. The settings{key:'accurate'} doc left from E1's fake-key testing was deleted at the start, and every test-created doc was deleted at the end (verified: none).",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: export EXPO_PUBLIC_BACKEND_URL from /app/frontend/.env, then pytest -n0 tests/test_pgs_iter32_qr_accurate.py. The fixture deletes settings{key:'accurate'} before and after. UI login: get the token with page.request.post /api/auth/login, wait 2.5s after the first load, then set localStorage 'pgs_auth_token'. The Admin menu item text is 'Integrasi Accurate Online'. The delete confirm button is confirm-ok. pgs-9849 permalink: https://pusatgrosirsidoarjo.com/distributor/happy-call-double-pan-32-cm/. In headless Chrome, Izinkan Kamera grants the fake camera and scan-camera renders.",
+  "rca_of_issue": "QR 404 retest: the iter31 encoded-slash path problem is fixed by the query-param endpoint plus client-side /product/<id> parsing. Remaining risk: real store links in the DB are /distributor/<woo-slug>/, which neither the client regex nor the backend handles. Reproduce: GET /api/products/by-code?code=https://pusatgrosirsidoarjo.com/distributor/happy-call-double-pan-32-cm/ returns 404. Mitigation: look up by permalink slug."
+}
