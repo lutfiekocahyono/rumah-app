@@ -76,6 +76,13 @@ def shipped_at(order: dict) -> Optional[datetime]:
     return _aware(at or order.get("completed_at")) if (at or order.get("completed_at")) else None
 
 
+def paid_amount(order: dict) -> int:
+    """What the buyer actually paid. COD cash counts only once the order is completed (cash received)."""
+    if order.get("payment_method") == "cod" and order.get("status") != "completed":
+        return int(order.get("balance_used", 0))
+    return int(order["total"])
+
+
 # ---------------------------------------------------------------- models
 class ComplaintIn(BaseModel):
     order_id: str
@@ -134,9 +141,10 @@ def register(api, db, get_current_user, require_admin, notify_user, log_activity
             return c, "store"
         raise HTTPException(status_code=404, detail="Komplain tidak ditemukan")
 
-    def _out(c: dict, viewer: str) -> dict:
-        refundable = max(0, c.get("order_total", 0) - c.get("refunded", 0))
-        return {**c, "reason_label": REASONS.get(c["reason"], c["reason"]), "viewer": viewer, "refundable": refundable,
+    def _out(c: dict, viewer: str, paid: Optional[int] = None) -> dict:
+        refundable = max(0, (c.get("order_total", 0) if paid is None else paid) - c.get("refunded", 0))
+        cod_unpaid = paid is not None and paid < c.get("order_total", 0)
+        return {**c, "reason_label": REASONS.get(c["reason"], c["reason"]), "viewer": viewer, "refundable": refundable, "cod_unpaid": cod_unpaid,
                 "can_decide": (viewer == "store" and c["status"] == "open") or (viewer == "admin" and c["status"] in OPEN),
                 "can_escalate": viewer == "buyer" and c["status"] == "rejected" and not c.get("escalated_once"),
                 "can_reply": c["status"] in OPEN}
@@ -199,7 +207,11 @@ def register(api, db, get_current_user, require_admin, notify_user, log_activity
     @api.get("/complaints/{cid}")
     async def get_complaint(cid: str, user=Depends(get_current_user)):
         c, viewer = await _complaint_for(cid, user)
-        return _out(c, viewer)
+        return _out(c, viewer, await _paid(c))
+
+    async def _paid(c: dict) -> int:
+        o = await db.orders.find_one({"order_id": c["order_id"]}, {"_id": 0, "payment_method": 1, "status": 1, "total": 1, "balance_used": 1})
+        return paid_amount(o) if o else 0
 
     async def _notify_other(c: dict, viewer: str, title: str, body: str) -> None:
         link = f"/complaint/{c['complaint_id']}"
@@ -220,7 +232,7 @@ def register(api, db, get_current_user, require_admin, notify_user, log_activity
             {"complaint_id": cid}, {"$push": {"messages": {"by": viewer, "name": name, "text": body.text.strip(), "at": _now()}},
                                     "$set": {"updated_at": _now()}}, projection={"_id": 0}, return_document=ReturnDocument.AFTER)
         await _notify_other(c, viewer, "Balasan komplain", f"{name}: {body.text.strip()[:80]}")
-        return _out(res, viewer)
+        return _out(res, viewer, await _paid(c))
 
     @api.post("/complaints/{cid}/escalate")
     async def escalate(cid: str, body: TextIn, user=Depends(get_current_user)):
@@ -236,15 +248,18 @@ def register(api, db, get_current_user, require_admin, notify_user, log_activity
             raise HTTPException(status_code=400, detail="Komplain tidak bisa diteruskan")
         for a in await db.users.find({"role": "admin"}, {"user_id": 1}).to_list(20):
             await notify_user(a["user_id"], "order", "Komplain diteruskan ke Anda", f"Komplain {cid} ({c['store_name']}) butuh keputusan.", f"/complaint/{cid}")
-        return _out(res, viewer)
+        return _out(res, viewer, await _paid(c))
 
     @api.post("/complaints/{cid}/decide")
     async def decide(cid: str, body: DecideIn, user=Depends(get_current_user)):
         c, viewer = await _complaint_for(cid, user)
         if not _out(c, viewer)["can_decide"]:
             raise HTTPException(status_code=403, detail="Anda tidak bisa memutuskan komplain ini")
-        refundable = max(0, c["order_total"] - c.get("refunded", 0))
+        paid = await _paid(c)
+        refundable = max(0, paid - c.get("refunded", 0))
         amount = body.amount if body.action == "refund" else 0
+        if body.action == "refund" and refundable <= 0:
+            raise HTTPException(status_code=400, detail="Pesanan COD belum dibayar, belum bisa direfund ke saldo")
         if body.action == "refund" and not (0 < amount <= refundable):
             raise HTTPException(status_code=400, detail=f"Nominal refund harus 1 – {refundable}")
         if body.action == "reject" and not body.note.strip():
@@ -264,7 +279,7 @@ def register(api, db, get_current_user, require_admin, notify_user, log_activity
                "reject": f"Komplain ditolak: {body.note.strip()}", "resolve": "Komplain dinyatakan selesai."}[body.action]
         await _notify_other(c, viewer, f"Komplain {cid} diputuskan", msg)
         await log_activity(user["user_id"], "order", f"Memutuskan komplain {cid}: {status}")
-        return _out(res, viewer)
+        return _out(res, viewer, paid)
 
     # ============================================================ chat
     async def _conv_for(conv_id: str, user: dict) -> tuple[dict, str]:

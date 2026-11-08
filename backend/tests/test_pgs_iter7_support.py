@@ -187,6 +187,11 @@ class TestComplaintFlow:
 
     def test_admin_refund_wallet(self):
         cid = S["cid"]
+        # COD shipped but not completed: cash not received yet -> no refund to saldo
+        g = requests.get(f"{API}/complaints/{cid}", headers=S["admin"]).json()
+        assert g["refundable"] == 0 and g["cod_unpaid"] is True
+        assert requests.post(f"{API}/complaints/{cid}/decide", headers=S["admin"], json={"action": "refund", "amount": 5000}).status_code == 400
+        assert requests.put(f"{API}/seller/orders/{S['o1']['order_id']}/status", headers=S["sid"], json={"status": "completed"}).status_code == 200
         refundable = requests.get(f"{API}/complaints/{cid}", headers=S["admin"]).json()["refundable"]
         assert refundable == S["o1"]["total"]
         assert requests.post(f"{API}/complaints/{cid}/decide", headers=S["admin"], json={"action": "refund", "amount": 0}).status_code == 400

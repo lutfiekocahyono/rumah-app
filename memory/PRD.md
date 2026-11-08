@@ -63,3 +63,4 @@ Iteration 2: import all data from pusatgrosirsidoarjo.com; tiered pricing (pembe
 - Chat: conversation per buyer+store (buyer must have ordered there); store opens from seller order detail. Polling 4s, unread counters, inbox notification on first unread. Screens /chat, /chat?side=store, /chat/[id].
 - Backlog: unread badge on menu, photo evidence (user chose text only for now).
 - Iteration 7b: unread chat badges (src/components/unread-badge.tsx) on Akun menu 'Chat Toko' (buyer) & 'Kelola Toko' (store), and seller dashboard Chat tile. DONE
+- Iteration 7c: refund only for paid amount — COD counts as paid only when order completed; unpaid COD refundable = saldo portion only (support.paid_amount). UI hides 'Setujui refund' + shows warning. DONE

@@ -23,6 +23,7 @@ export default function NewComplaint() {
 
   useEffect(() => { if (orderId) api.order(orderId).then(setOrder).catch((e) => setErr(e.message)); }, [orderId]);
 
+  const codUnpaid = order?.payment_method === "cod" && order.status !== "completed";
   const submit = async () => {
     if (!order) return;
     if (desc.trim().length < 10) return setErr("Ceritakan masalahnya minimal 10 huruf");
@@ -59,7 +60,7 @@ export default function NewComplaint() {
             <Chips testID="cn-refund" value={wantRefund} onChange={setWantRefund} options={[{ id: "yes", label: "Ya, refund ke saldo" }, { id: "no", label: "Tidak" }]} />
             {wantRefund === "yes" ? (
               <Field testID="cn-amount" label="Nominal refund (Rp)" value={amount} onChangeText={setAmount} keyboardType="number-pad"
-                placeholder={String(order.total)} hint={`Maksimal ${formatIDR(order.total)}. Jika disetujui, dana masuk ke Saldo untuk belanja berikutnya.`} />
+                placeholder={String(order.total)} hint={`Maksimal ${formatIDR(order.total)}. Jika disetujui, dana masuk ke Saldo untuk belanja berikutnya.${codUnpaid ? " Pesanan COD baru bisa direfund setelah Anda membayar kurir dan pesanan selesai." : ""}`} />
             ) : null}
           </Card>
           <Text style={adminStyles.muted}>Toko akan meninjau komplain Anda. Jika ditolak, Anda bisa meneruskannya ke Admin PGS satu kali.</Text>

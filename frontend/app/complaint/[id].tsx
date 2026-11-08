@@ -104,12 +104,16 @@ export default function ComplaintDetail() {
         {c.can_decide ? (
           <Card>
             <Text style={styles.h}>{c.viewer === "admin" ? "Keputusan Admin PGS" : "Keputusan Toko"}</Text>
-            <Chips testID="cd-action" value={action} onChange={setAction} options={[
-              { id: "refund", label: "Setujui refund" }, { id: "reject", label: "Tolak" }, { id: "resolve", label: "Selesai tanpa refund" },
+            {c.refundable <= 0 ? (
+              <Text style={styles.warn} testID="cd-cod-unpaid">Pesanan COD belum dibayar, jadi belum bisa direfund ke saldo. Refund tersedia setelah pesanan selesai (uang COD diterima).</Text>
+            ) : null}
+            <Chips testID="cd-action" value={c.refundable <= 0 && action === "refund" ? "reject" : action} onChange={setAction} options={[
+              ...(c.refundable > 0 ? [{ id: "refund" as Action, label: "Setujui refund" }] : []),
+              { id: "reject" as Action, label: "Tolak" }, { id: "resolve" as Action, label: "Selesai tanpa refund" },
             ]} />
-            {action === "refund" ? (
+            {action === "refund" && c.refundable > 0 ? (
               <Field testID="cd-amount" label="Nominal refund ke saldo pembeli (Rp)" value={amount} onChangeText={setAmount} keyboardType="number-pad"
-                hint={`Maksimal ${formatIDR(c.refundable)}`} />
+                hint={`Maksimal ${formatIDR(c.refundable)}${c.cod_unpaid ? " (bagian yang dibayar dengan saldo; sisa COD belum dibayar)" : ""}`} />
             ) : null}
             <Field testID="cd-note" label={action === "reject" ? "Alasan penolakan (wajib)" : "Catatan (opsional)"} value={note} onChangeText={setNote} multiline maxLength={500} />
             <PrimaryButton testID="cd-decide" label="Simpan Keputusan" variant={action === "reject" ? "danger" : "solid"} onPress={() => {
@@ -152,6 +156,7 @@ export default function ComplaintDetail() {
 const styles = StyleSheet.create({
   between: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm },
   h: { fontSize: fontSize.base, fontWeight: "600", color: colors.onSurface, flexShrink: 1 },
+  warn: { fontSize: 13, color: colors.warning, fontWeight: "500" },
   link: { fontSize: fontSize.sm, color: colors.brandPrimary, fontWeight: "500" },
   decision: { backgroundColor: colors.surfaceTertiary, borderRadius: radius.sm, padding: spacing.sm, gap: 2 },
   decisionText: { fontSize: fontSize.sm, color: colors.onSurface, fontWeight: "600" },

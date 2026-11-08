@@ -270,7 +270,7 @@ export type Complaint = {
   reason: ComplaintReason; reason_label: string; description: string; refund_amount: number; order_total: number; refunded: number; refundable: number;
   status: ComplaintStatus; decision: { action: string; amount: number; note: string; by: string; at: string } | null;
   messages: { by: "buyer" | "store" | "admin"; name: string; text: string; at: string }[];
-  viewer: "buyer" | "store" | "admin"; can_decide: boolean; can_escalate: boolean; can_reply: boolean; created_at: string; updated_at: string;
+  viewer: "buyer" | "store" | "admin"; cod_unpaid?: boolean; can_decide: boolean; can_escalate: boolean; can_reply: boolean; created_at: string; updated_at: string;
 };
 export type Conversation = { conv_id: string; user_id: string; user_name: string; store_id: string; store_name: string; last_text: string; last_at: string; last_sender?: "user" | "store"; unread_user: number; unread_store: number };
 export type ChatMessage = { msg_id: string; conv_id: string; sender: "user" | "store"; text: string; created_at: string };
