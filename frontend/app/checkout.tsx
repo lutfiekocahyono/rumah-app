@@ -18,10 +18,11 @@ export default function Checkout() {
   const { user } = useAuth();
 
   const [fullName, setFullName] = useState(user?.name ?? "");
+  useEffect(() => { if (user?.name) setFullName((n) => n || user.name); }, [user?.name]);
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
   const [city, setCity] = useState("Sidoarjo");
-  const [method, setMethod] = useState<PaymentMethod>("midtrans");
+  const [method, setMethod] = useState<PaymentMethod>("cod");
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
   const [voucherText, setVoucherText] = useState("");
@@ -74,11 +75,24 @@ export default function Checkout() {
   const searchDest = useCallback(async (q: string) => { const r = await api.destinations(q); setAutoShip(r.auto); return r.data; }, []);
   useEffect(() => { api.shippingStatus().then((r) => setAutoShip(r.auto)).catch(() => {}); }, []);
   useEffect(() => {
+    let stale = false; // ignore late responses after the destination changed again
     api.shippingRates(storeId, dest?.id).then((l) => {
+      if (stale) return;
       setCouriers(l);
-      setCourier((c) => (l.some((x) => x.code === c) ? c : l[0]?.code || ""));
+      const shippable = l.filter((x) => x.code !== "pickup" && x.active !== false);
+      setCourier((c) => {
+        // After a destination is picked, choose the cheapest delivery courier automatically
+        if (dest && shippable.length) return shippable.reduce((a, b) => (b.cost < a.cost ? b : a)).code;
+        return l.some((x) => x.code === c) ? c : l[0]?.code || "";
+      });
     }).catch(() => {});
-  }, [storeId, dest?.id]);
+    return () => { stale = true; };
+  }, [storeId, dest]);
+  const pickDest = (d: Destination | null) => {
+    setDest(d);
+    const parts = d?.label.split(",").map((s) => s.trim()) ?? [];
+    if (parts.length >= 3) setCity(parts[2].toLowerCase().replace(/\b\w/g, (ch) => ch.toUpperCase()));
+  };
   const shipCost = couriers.find((c) => c.code === courier)?.cost ?? 0;
   const total = subtotal - discount + shipCost;
   const [balance, setBalance] = useState(0);
@@ -153,7 +167,7 @@ export default function Checkout() {
           {autoShip ? (
             <View style={{ gap: 4 }}>
               <Text style={styles.paySub}>Kecamatan tujuan (untuk ongkir otomatis JNE / J&T / SiCepat)</Text>
-              <DestinationSearch testID="co-dest" search={searchDest} value={dest} onPick={setDest} />
+              <DestinationSearch testID="co-dest" search={searchDest} value={dest} onPick={pickDest} />
             </View>
           ) : null}
           {autoShip && !dest ? <Text style={styles.paySub}>Pilih kecamatan tujuan dulu; sementara tampil tarif standar.</Text> : null}
@@ -186,9 +200,9 @@ export default function Checkout() {
         {toPay > 0 ? <Text style={[styles.section, { marginTop: spacing.xl }]}>Metode Pembayaran</Text> : null}
         {toPay > 0 ? <View style={styles.card}>
           {([
+            { id: "cod", label: "COD (Bayar di Tempat)", sub: "Bayar tunai saat barang diterima", icon: "cash-outline" },
             { id: "midtrans", label: "Midtrans", sub: "QRIS · Transfer Bank (VA) · GoPay · ShopeePay", icon: "qr-code-outline" },
             { id: "xendit", label: "Xendit", sub: "QRIS · Transfer Bank (VA) · OVO · DANA · ShopeePay", icon: "wallet-outline" },
-            { id: "cod", label: "COD (Bayar di Tempat)", sub: "Bayar tunai saat barang diterima", icon: "cash-outline" },
           ] as const).map((m) => (
             <Pressable
               key={m.id}

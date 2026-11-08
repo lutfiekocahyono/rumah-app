@@ -1,0 +1,28 @@
+{
+  "summary": "Tested the checkout UX changes and the ETA translation. Backend: 12/12 pytest tests pass. They cover the _eta_id unit cases ('2 day'->'2 hari', '3-5 day', '1-2 HARI', '2 days', empty/None) and POST /api/shipping/rates for pgs-official to Gubeng 69243 (JNE REG 9.000 '2 hari', J&T EZ 8.000 '2-3 hari', SiCepat HALU 7.500 '3-5 hari', pickup 'Hari ini'; no 'day' anywhere). They also cover a COD checkout with sicepat (shipping_cost 7500), the store admin cancel and the stock restore. Frontend at 375x667 as demo@pgs.id: COD is listed first and selected by default. Picking Gubeng switched the courier from 'Ambil di toko' to SiCepat HALU 7.500 and filled Kota with 'Surabaya'. The courier could still be changed by hand (to JNE). Picking Lowokwaru picked the cheapest courier again (JNE 9.000 vs SiCepat 9.500 and J&T 10.000) and set Kota to 'Malang'. Going back to Gubeng selected SiCepat again. The courier list shows 'Estimasi 2 hari' etc. Voucher PGS10RB and the saldo toggle (Rp15.000) both worked, with total 195.500 = 213.000-10.000+7.500-15.000. A COD order placed from the UI (PGS-261108-1DE8A2: SiCepat 7.500, total 220.500, destination_label saved) was cancelled by sidoarjo@pgs.id and stock went back from 213 to 214. All test data was cleaned up.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Checkout Nama Lengkap", "issue": "When /checkout is opened directly or reloaded, co-name stays empty because useState(user?.name ?? '') runs before auth finishes loading. Seen with demo@pgs.id (name 'Demo User'). It is fine when the user arrives from the cart with auth already loaded. Reference: /app/frontend/app/checkout.tsx:20", "testID": "co-name", "priority": "low"}
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_pgs_iter9_checkout_eta.py", "/app/test_reports/pytest/pytest_iter9.xml"],
+  "action_items": [
+    "LOW: prefill fullName when user loads, e.g. useEffect(() => { if (user?.name && !fullName) setFullName(user.name) }, [user]) (checkout.tsx:20).",
+    "LOW: add a stale-response guard (cancelled flag) to the shippingRates effect (checkout.tsx:76-86). If the destination changes quickly, an older response can overwrite the couriers and the auto-picked courier."
+  ],
+  "critical_code_review_comments": [
+    "checkout.tsx:76-86: the shippingRates promise has no cleanup or cancel, so responses can arrive out of order.",
+    "checkout.tsx:87-91: Kota comes from label part [2]. This works for RajaOngkir's 'SUBDISTRICT, DISTRICT, CITY, PROVINCE, ZIP' format. It overwrites a Kota the user typed or one from the saved address, which is acceptable.",
+    "shipping.py:26: _eta_id cannot strip a unit with no space before it (e.g. '3day' becomes '3day hari'). This is unlikely from RajaOngkir."
+  ],
+  "updated_files": ["/app/backend/tests/test_pgs_iter9_checkout_eta.py"],
+  "success_rate": {"backend": "100%", "frontend": "100% (requested flows); 1 low-priority prefill bug"},
+  "seed_data_creation": "None kept. Temporary TEST_iter9 users and orders were cancelled (stock restored) and deleted by id. The UI order PGS-261108-1DE8A2 on demo was cancelled and then deleted along with its 2 notifications. The demo cart is empty and the demo wallet is unchanged (15000).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: pytest tests/test_pgs_iter9_checkout_eta.py -n 0 (it cleans up after itself). For UI, set localStorage pgs_auth_token and go to /checkout?store=pgs-official. Footer overlays the courier rows, so scroll elements to the center (el.scrollIntoView({block:'center'})) before clicking, or the click hits pay-now-btn. Gubeng=69243 and Lowokwaru=46757. Never read or print the RajaOngkir key, and never call PUT /api/admin/shipping-settings."
+}

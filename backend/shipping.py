@@ -5,6 +5,7 @@ The owner enters the API key in Admin > Pengaturan Ongkir; it is stored encrypte
 import asyncio
 import logging
 import os
+import re
 import time
 from typing import Dict, List, Optional
 
@@ -18,6 +19,12 @@ RO_BASE = "https://rajaongkir.komerce.id/api/v1"
 AUTO_COURIERS = ("jne", "jnt", "sicepat")
 _cache: Dict[tuple, tuple] = {}  # (origin, dest, weight, courier) -> (expires, result)
 CACHE_TTL = 1800
+
+
+def _eta_id(etd) -> str:
+    """RajaOngkir returns '2 day' / '3-5 day' / '1-2 HARI' — always show '2 hari'."""
+    s = re.sub(r"(?i)\s*\b(days?|hari)\b\.?", "", str(etd or "")).strip()
+    return f"{s} hari" if s else ""
 
 
 def _fernet() -> Fernet:
@@ -123,7 +130,7 @@ def register(api, db, require_admin, get_owner, official_ids, couriers_of):
             log.exception("RajaOngkir cost failed")
             return "error"
         best = min((s for s in services if s.get("cost")), key=lambda s: s["cost"], default=None)
-        res = {"cost": int(best["cost"]), "eta": str(best.get("etd") or ""), "service": str(best.get("service") or "")} if best else None
+        res = {"cost": int(best["cost"]), "eta": _eta_id(best.get("etd")), "service": str(best.get("service") or "")} if best else None
         _cache[ck] = (time.time() + CACHE_TTL, res)
         return res
 
