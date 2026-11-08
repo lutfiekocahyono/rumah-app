@@ -23,6 +23,8 @@ export default function Checkout() {
   const [address, setAddress] = useState("");
   const [city, setCity] = useState("Sidoarjo");
   const [method, setMethod] = useState<PaymentMethod>("cod");
+  const [payAvail, setPayAvail] = useState({ midtrans: false, xendit: false, midtrans_sandbox: true });
+  useEffect(() => { api.paymentMethods().then(setPayAvail).catch(() => {}); }, []);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
   const [voucherText, setVoucherText] = useState("");
@@ -222,9 +224,9 @@ export default function Checkout() {
         {toPay > 0 ? <View style={styles.card}>
           {([
             { id: "cod", label: "COD (Bayar di Tempat)", sub: "Bayar tunai saat barang diterima", icon: "cash-outline" },
-            { id: "midtrans", label: "Midtrans", sub: "QRIS · Transfer Bank (VA) · GoPay · ShopeePay", icon: "qr-code-outline" },
+            { id: "midtrans", label: `Bayar Online (Midtrans)${payAvail.midtrans_sandbox ? " · Sandbox" : ""}`, sub: "QRIS · Transfer Bank (VA) · GoPay · ShopeePay", icon: "qr-code-outline" },
             { id: "xendit", label: "Xendit", sub: "QRIS · Transfer Bank (VA) · OVO · DANA · ShopeePay", icon: "wallet-outline" },
-          ] as const).map((m) => (
+          ] as const).filter((m) => m.id === "cod" || payAvail[m.id]).map((m) => (
             <Pressable
               key={m.id}
               testID={`pay-${m.id}`}

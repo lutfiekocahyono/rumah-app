@@ -1,0 +1,44 @@
+{
+  "summary": "Iteration 13 tested the Midtrans admin payment settings (Sandbox, fake keys only), /api/payments/methods, the checkout guard and the admin and checkout UI. Backend: 17 of 17 pytest pass. Admin-only access works (401 without login, 403 for customers). GET and PUT never return the raw key or server_key_enc. The key is stored encrypted, shown only as the hint ••••xxxx, and the fake key is marked 'invalid' with an Indonesian message. Switching mode re-checks the key, and the message then says 'bukan key Sandbox'. The verify endpoint returns 400 when no key is saved. Removing the key sets configured=false and removes key_status. Checkout with midtrans while not ready returns 400 'Pembayaran online belum aktif, pilih COD' and changes nothing (no order, same stock, cart kept). Frontend: /admin/payments works end to end: menu entry, chips, toggle, password-type key field, save and validation, invalid status card, verify, remove, and the notification URL ends with /api/payments/midtrans/notification. Checkout for demo shows only COD, selected by default. Two payment-callback bugs were found by code review only (not exercised); details in critical_code_review_comments. Cleanup: test key removed (configured=false, enabled=true, production=false, client_key=''), the pgs-9955 item added to the demo cart for the UI check was removed (cart empty again), and the TEST user was deleted. No deprecated Expo packages detected. RajaOngkir settings not touched.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/payments/midtrans/notification", "issue": "Amount check compares gross_amount to order.total, but midtrans_create sends gross_amount = total - balance_used. An order paid partly with saldo and partly with Midtrans will always be rejected with 400 'Amount mismatch' and never marked paid. Reference: server.py:974 vs payments.py:69", "priority": "HIGH"},
+      {"endpoint": "POST /api/payments/xendit/callback", "issue": "Same bug: amount is compared to order.total, but the invoice amount is total - balance_used. Reference: server.py:993 vs payments.py:122", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "payments._midtrans_key", "issue": "When the admin key exists but enabled=false, the key falls back to the .env key (empty), so the notification check and the status check raise 503. Orders still pending from when Midtrans was on cannot settle after the admin turns it off. The admin key should still be used for verify and status; 'enabled' should only control new checkouts. Reference: payments.py:37"},
+      {"endpoint": "payments.midtrans_ready", "issue": "A key whose check result is 'unknown' (Midtrans unreachable) or None is treated as ready, so buyers may see Midtrans with a bad key and get a 502 at checkout. Acceptable but worth noting. Reference: payments.py:28"}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/admin/payments", "issues": [
+        "Touch targets under 44px: mode chips mt-mode-sandbox/prod are 36px tall, the mt-server-key input is 36px, and the mt-enabled Switch is 20px on web",
+        "Success/error messages (mt-ok / mt-error) appear only at the very bottom. After tapping 'Simpan Server Key' or 'Hapus Server Key' near the top, the user does not see them without scrolling",
+        "'Hapus Server Key' deletes right away with no confirmation",
+        "The valid-state title says 'Midtrans aktif di checkout' even when the 'Tampilkan Midtrans di checkout' toggle is off"
+      ]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_pgs_iter13_midtrans_settings.py", "/app/test_reports/pytest/pytest_iter13.xml"],
+  "action_items": [
+    "HIGH: In the midtrans_notification and xendit_callback amount checks, compare against order['total'] - order.get('balance_used', 0), not order['total']",
+    "Use the admin Midtrans key in _midtrans_key for notification verify and status even when enabled=false. Keep 'enabled' only for new checkouts (midtrans_ready)",
+    "Optional UX: show the save/remove message next to the key card, add a confirm step to Hapus Server Key, make chips and inputs at least 44px tall, and make the valid-state title follow the enabled toggle"
+  ],
+  "critical_code_review_comments": [
+    "Partial saldo + online payment amount mismatch in both payment callbacks (see backend critical)",
+    "payments/methods logic checked in code: midtrans = admin key present AND enabled AND state != 'invalid'; otherwise it falls back to .env MIDTRANS_SERVER_KEY, which is empty here. Correct for the requested behaviour",
+    "The secret is handled well: Fernet-encrypted, never returned, the input clears after save, and the raw key never appears in the page"
+  ],
+  "updated_files": ["/app/backend/tests/test_pgs_iter13_midtrans_settings.py"],
+  "success_rate": {"backend": "100% (17/17)", "frontend": "100% of requested flows"},
+  "seed_data_creation": "None kept. A TEST_iter13 user and cart were created and deleted. The demo cart got pgs-9955 for the UI check, which was then removed (it was empty before). Fake Midtrans keys were removed; payment_midtrans is back to configured=false, enabled=true, production=false, client_key=''.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run the backend tests with: pytest tests/test_pgs_iter13_midtrans_settings.py -n 0. The module fixture always removes the key at teardown. Inject the admin/demo JWT into localStorage 'pgs_auth_token' for UI tests. No real Midtrans key exists yet.",
+  "rca_of_issue": ""
+}

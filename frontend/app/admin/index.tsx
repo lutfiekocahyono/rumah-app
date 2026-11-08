@@ -22,6 +22,7 @@ const MENU = [
   { icon: "alert-circle-outline", label: "Komplain & Refund", sub: "Pantau semua toko, putuskan komplain yang diteruskan", to: "/complaint?scope=admin" },
   { icon: "storefront-outline", label: "Verifikasi Toko", sub: "Setujui / tolak toko penjual baru", to: "/admin/stores" },
   { icon: "bar-chart-outline", label: "Laporan Pendapatan", sub: "Pendapatan & tarif kurir per toko", to: "/admin/report" },
+  { icon: "card-outline", label: "Pengaturan Pembayaran", sub: "Kunci Midtrans (Sandbox / Production)", to: "/admin/payments" },
   { icon: "navigate-outline", label: "Pengaturan Ongkir Otomatis", sub: "API key RajaOngkir & lokasi asal tiap toko", to: "/admin/shipping" },
 ];
 

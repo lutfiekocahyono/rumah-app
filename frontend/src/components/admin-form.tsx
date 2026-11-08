@@ -73,7 +73,7 @@ const styles = StyleSheet.create({
   hint: { fontSize: 11, color: colors.muted },
   input: { backgroundColor: colors.surfaceTertiary, borderRadius: radius.sm, paddingHorizontal: spacing.md, paddingVertical: 10, color: colors.onSurface, fontSize: fontSize.base },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
-  chip: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.pill, paddingHorizontal: spacing.md, minHeight: 36, justifyContent: "center" },
+  chip: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.pill, paddingHorizontal: spacing.md, minHeight: 44, justifyContent: "center" },
   chipOn: { backgroundColor: colors.brandPrimary, borderColor: colors.brandPrimary },
   chipText: { fontSize: 13, color: colors.onSurface },
   chipTextOn: { color: colors.onBrandPrimary, fontWeight: "500" },

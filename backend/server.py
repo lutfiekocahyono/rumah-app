@@ -850,6 +850,8 @@ async def checkout(body: CheckoutIn, background: BackgroundTasks, owner: str = D
     pay_method = "saldo" if balance_used and balance_used >= total else body.payment_method
     if pay_method == "saldo" and not balance_used:
         raise HTTPException(status_code=400, detail="Saldo tidak cukup")
+    if (pay_method == "midtrans" and not payments.midtrans_ready()) or (pay_method == "xendit" and not payments.xendit_ready()):
+        raise HTTPException(status_code=400, detail="Pembayaran online belum aktif, pilih COD")
     status0 = "paid" if pay_method == "saldo" else "cod" if pay_method == "cod" else "pending"
     order_doc = {
         "order_id": f"PGS-{datetime.now(timezone.utc).strftime('%y%m%d')}-{uuid.uuid4().hex[:6].upper()}",
@@ -966,10 +968,10 @@ async def midtrans_notification(request: Request):
     p = await request.json()
     if not payments.midtrans_verify(p):
         raise HTTPException(status_code=403, detail="Invalid signature")
-    order = await db.orders.find_one({"order_id": p.get("order_id")}, {"total": 1, "status": 1})
+    order = await db.orders.find_one({"order_id": p.get("order_id")}, {"total": 1, "status": 1, "balance_used": 1})
     if not order:
         return {"ok": True}
-    if int(float(p.get("gross_amount", 0))) != order["total"]:
+    if int(float(p.get("gross_amount", 0))) != order["total"] - order.get("balance_used", 0):
         raise HTTPException(status_code=400, detail="Amount mismatch")
     if order["status"] != "paid":
         new = payments.midtrans_map(p)
@@ -985,10 +987,10 @@ async def xendit_callback(request: Request, x_callback_token: Optional[str] = He
     if not payments.xendit_verify(x_callback_token):
         raise HTTPException(status_code=401, detail="Invalid callback token")
     p = await request.json()
-    order = await db.orders.find_one({"order_id": p.get("external_id")}, {"total": 1, "status": 1})
+    order = await db.orders.find_one({"order_id": p.get("external_id")}, {"total": 1, "status": 1, "balance_used": 1})
     if not order:
         return {"ok": True}
-    if int(p.get("amount", 0)) != order["total"]:
+    if int(p.get("amount", 0)) != order["total"] - order.get("balance_used", 0):
         raise HTTPException(status_code=400, detail="Amount mismatch")
     if order["status"] != "paid":
         new = payments.xendit_map(p.get("status"))
@@ -1454,6 +1456,8 @@ seller.register(api, db, get_current_user, require_admin, _product_out_for_user,
 
 support.register(api, db, get_current_user, require_admin, ACCT["notify_user"], ACCT["log_activity"])
 
+payments.register_settings(api, db, require_admin)
+
 SHIP_QUOTE = shipping.register(api, db, require_admin, get_owner, seller.OFFICIAL_IDS, seller.couriers_of)
 
 app.include_router(api)
@@ -1474,6 +1478,7 @@ logger = logging.getLogger(__name__)
 async def _startup():
     app.state.index_task = asyncio.create_task(ensure_indexes())
     await seed_data()
+    await payments.load_config(db)
     try:
         await run_in_threadpool(storage.init_storage)
     except Exception:

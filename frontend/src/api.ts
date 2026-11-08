@@ -229,6 +229,11 @@ export const api = {
   adminReport: () => req<{ all: Report; stores: (Report & { store_id: string; name: string })[] }>("/admin/report"),
   shippingSettings: () => req<ShippingSettings>("/admin/shipping-settings"),
   verifyShippingKey: () => req<ShippingSettings>("/admin/shipping/verify-key", { method: "POST" }),
+  paymentSettings: () => req<PaymentSettings>("/admin/payment-settings"),
+  savePaymentSettings: (b: { enabled: boolean; production: boolean; server_key: string | null; client_key: string }) =>
+    req<PaymentSettings>("/admin/payment-settings", { method: "PUT", body: JSON.stringify(b) }),
+  verifyMidtrans: () => req<PaymentSettings>("/admin/payment/verify-midtrans", { method: "POST" }),
+  paymentMethods: () => req<{ midtrans: boolean; xendit: boolean; cod: boolean; midtrans_sandbox: boolean }>("/payments/methods"),
   saveShippingSettings: (s: Omit<ShippingSettings, "configured" | "key_hint"> & { api_key?: string | null }) =>
     req<ShippingSettings>("/admin/shipping-settings", { method: "PUT", body: JSON.stringify(s) }),
   adminDestinations: (q: string) => req<Destination[]>(`/admin/shipping/destinations?q=${encodeURIComponent(q)}`),
@@ -337,6 +342,7 @@ export type StoreInput = { name: string; description: string; city: string; phon
 export type SellerProductInput = { name: string; description: string; category: string; price: number; original_price: number; stock: number; images: string[] };
 export type Courier = { code: string; name: string; cost: number; eta: string; active: boolean; source?: "auto" | "manual" };
 export type Destination = { id: number; label: string };
+export type PaymentSettings = { configured: boolean; key_hint: string; client_key: string; enabled: boolean; production: boolean; key_status?: KeyStatus | null; ready: boolean };
 export type KeyStatus = { state: "valid" | "invalid" | "limited" | "unknown"; message: string; checked_at: string };
 export type ShippingSettings = { configured: boolean; key_hint: string; enabled: boolean; default_weight_grams: number; origins: Record<string, Destination>; key_status?: KeyStatus | null };
 export type InventoryItem = { product_id: string; name: string; image: string; price: number; stock: number; own: boolean };
