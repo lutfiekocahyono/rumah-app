@@ -704,6 +704,24 @@ async def count_products():
     return {"count": await db.products.count_documents(await _visible(ALL_BRANCHES))}
 
 
+@api.get("/products/by-code/{code:path}")
+async def product_by_code(code: str):
+    """Scan: barcode / SKU / product ID (or a scanned product link) -> product_id."""
+    c = code.strip()
+    m = re.search(r"/product/([\w-]+)", c)
+    if m:
+        c = m.group(1)
+    if not c:
+        raise HTTPException(status_code=404, detail="Kode kosong")
+    rx = {"$regex": f"^{re.escape(c)}$", "$options": "i"}
+    vis = await _visible(ALL_BRANCHES)
+    for q in ({"product_id": c}, {"barcode": c}, {"sku": rx}, {"variants.sku": rx}):
+        d = await db.products.find_one({**vis, **q}, {"_id": 0, "product_id": 1, "name": 1})
+        if d:
+            return d
+    raise HTTPException(status_code=404, detail=f"Produk dengan kode {c} tidak ditemukan")
+
+
 @api.get("/products/{product_id}", response_model=Product)
 async def get_product(product_id: str, user=Depends(get_optional_user), x_store_id: Optional[str] = Header(default=None)):
     ctx = _ctx(x_store_id)

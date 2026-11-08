@@ -11,6 +11,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.emergent.rumahapp.mqe765",
       "infoPlist": {
+        "NSCameraUsageDescription": "Scan barcode produk dan kode ambil pesanan",
         "LSApplicationQueriesSchemes": [
           "whatsapp"
         ]
@@ -21,7 +22,8 @@
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#FFFFFF"
       },
-      "package": "com.emergent.rumahapp.mqe765"
+      "package": "com.emergent.rumahapp.mqe765",
+      "permissions": ["android.permission.CAMERA"]
     },
     "web": {
       "bundler": "metro",
@@ -53,7 +55,14 @@
       "expo-web-browser",
       "expo-status-bar",
       "@react-native-vector-icons/ionicons",
-      "expo-sharing"
+      "expo-sharing",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Scan barcode produk dan kode ambil pesanan",
+          "recordAudioAndroid": false
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

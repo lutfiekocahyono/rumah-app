@@ -83,6 +83,10 @@ export function BasicInfo({ form, set, errors, cats, ctx, storeId, onStore }: {
         <Input testID="pe-sku" label="SKU produk" value={form.sku} maxLength={40} onChangeText={(t) => set({ sku: t.toUpperCase() })} placeholder="Contoh: KAOS-001" autoCapitalize="characters" />
       </View>
       <View style={ui.row}>
+        <Input testID="pe-barcode" label="Barcode (EAN/UPC)" value={form.barcode} maxLength={40} autoCapitalize="characters"
+          onChangeText={(t) => set({ barcode: t.replace(/\s/g, "") })} placeholder="Contoh: 8991234567890" hint="Dipakai menu Scan untuk langsung membuka produk" />
+      </View>
+      <View style={ui.row}>
         <View style={{ gap: 6, minWidth: 200, flex: 1 }}>
           <Text style={ui.label}>Kondisi produk</Text>
           <View style={ui.row}>

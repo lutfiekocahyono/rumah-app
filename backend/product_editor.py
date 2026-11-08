@@ -57,6 +57,7 @@ class ProductForm(BaseModel):
     subcategory: str = ""
     brand: str = Field(default="", max_length=60)
     sku: str = Field(default="", max_length=40)
+    barcode: str = Field(default="", max_length=40)
     condition: str = Field(default="new", pattern="^(new|used)$")
     showcase: str = Field(default="", max_length=40)
     status: str = Field(default="active", pattern="^(active|inactive)$")
@@ -208,7 +209,7 @@ def to_product(f: ProductForm, store: dict) -> dict:
     return {
         "name": f.name.strip(), "description": f.description.strip(), "category": f.category,
         "categories": [c for c in (f.category, f.subcategory) if c], "subcategory": f.subcategory,
-        "brand": f.brand.strip(), "sku": f.sku.strip(), "condition": f.condition, "showcase": f.showcase.strip(),
+        "brand": f.brand.strip(), "sku": f.sku.strip(), "barcode": f.barcode.strip(), "condition": f.condition, "showcase": f.showcase.strip(),
         "status": f.status, "images": f.images, "image": f.images[0] if f.images else "", "video": f.video,
         "price": price, "original_price": orig, "discount": round((orig - price) * 100 / orig) if orig > price else 0,
         "stock": stock, "in_stock": stock > 0, "min_order": f.min_order, "max_order": f.max_order,
@@ -229,7 +230,7 @@ def to_form(p: dict) -> dict:
     has_v = bool(p.get("variants"))
     return ProductForm(
         name=p.get("name", ""), category=p.get("category", ""), subcategory=p.get("subcategory", ""),
-        brand=p.get("brand", ""), sku=p.get("sku", ""), condition=p.get("condition", "new"), showcase=p.get("showcase", ""),
+        brand=p.get("brand", ""), sku=p.get("sku", ""), barcode=p.get("barcode", ""), condition=p.get("condition", "new"), showcase=p.get("showcase", ""),
         status=p.get("status", "active"), description=p.get("description", "")[:10000],
         images=(p.get("images") or ([p["image"]] if p.get("image") else []))[:MAX_IMAGES], video=p.get("video", ""),
         price=p.get("original_price") or p.get("price", 0),
@@ -374,7 +375,7 @@ def register(api, db, *, get_current_user, log_activity, origin_label):
         await load_parents()
         data = form_of(p)
         data["name"] = f"{data['name']} (Salinan)"[:150]
-        data["sku"] = ""
+        data["sku"], data["barcode"] = "", ""
         for v in data["variants"]:
             v["variant_id"], v["sku"] = "", ""
         doc = {"draft_id": f"dr_{uuid.uuid4().hex[:10]}", "owner": owner_key(ctx), "product_id": None,

@@ -12,6 +12,7 @@ import { queryClient } from "@/src/query-client";
 import { AuthProvider } from "@/src/auth-context";
 import { CartProvider } from "@/src/cart-context";
 import { StoreProvider } from "@/src/store-context";
+import { AppChrome } from "@/src/components/app-chrome";
 import { colors } from "@/src/theme";
 
 LogBox.ignoreAllLogs(true);
@@ -28,6 +29,7 @@ export default function RootLayout() {
                   <StoreProvider>
                   <CartProvider>
                     <StatusBar style="dark" />
+                    <AppChrome>
                     <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.surface } }}>
                       <Stack.Screen name="(tabs)" />
                       <Stack.Screen name="login" options={{ presentation: "modal" }} />
@@ -39,7 +41,9 @@ export default function RootLayout() {
                       <Stack.Screen name="order/[id]" />
                       <Stack.Screen name="wishlist" />
                       <Stack.Screen name="orders" />
+                      <Stack.Screen name="scan" />
                     </Stack>
+                    </AppChrome>
                   </CartProvider>
                   </StoreProvider>
                 </AuthProvider>

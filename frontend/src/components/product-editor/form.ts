@@ -1,7 +1,7 @@
 import { CUSTOMER_TYPE_LABEL, type Category, type CustomerType, type ProductForm, type VariantOption, type VariantRow } from "@/src/api";
 
 export const EMPTY_FORM: ProductForm = {
-  name: "", category: "", subcategory: "", brand: "", sku: "", condition: "new", showcase: "", status: "active",
+  name: "", category: "", subcategory: "", brand: "", sku: "", barcode: "", condition: "new", showcase: "", status: "active",
   description: "", images: [], video: "", price: 0, discount_price: 0, stock: 0, min_order: 1, max_order: 0, low_stock_alert: 0,
   variants_enabled: false, variant_options: [], variants: [],
   specs: {}, weight_grams: 0, length_cm: 0, width_cm: 0, height_cm: 0,

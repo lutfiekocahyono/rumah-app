@@ -447,6 +447,43 @@ def register(api, db, get_current_user, require_admin, product_out_for_user, not
         await notify_user(d.get("user_id"), "order", "Status pesanan diperbarui", f"Pesanan {order_id} {label}.{extra}", f"/order/{order_id}")
         return order_out(res)
 
+    # ---------------- Scan: kode ambil pesanan (kasir) ----------------
+    class PickupCodeIn(BaseModel):
+        code: str = Field(min_length=4, max_length=20)
+
+    async def pickup_ctx(user=Depends(get_current_user)) -> dict:
+        if user.get("role") == "admin":  # Super Admin may hand over orders of any branch
+            return {"user": user, "store": None}
+        return await require_seller(user)
+
+    async def _pickup_order(code: str, ctx: dict) -> tuple:
+        digits = re.sub(r"\D", "", code)
+        q = {"pickup_code": digits, **({"store_id": ctx["store"]["store_id"]} if ctx["store"] else {})}
+        # prefer an order still waiting at the counter over older/finished ones with the same code
+        d = (await db.orders.find_one({**q, "status": {"$in": ["paid", "cod", "processing"]}}, {"_id": 0}, sort=[("created_at", -1)])
+             or await db.orders.find_one(q, {"_id": 0}, sort=[("created_at", -1)])) if digits else None
+        if not d:
+            raise HTTPException(status_code=404, detail="Kode ambil tidak ditemukan di toko ini")
+        store = ctx["store"] or await db.stores.find_one({"store_id": d["store_id"]}, {"_id": 0})
+        return d, {"user": ctx["user"], "store": store}
+
+    @api.post("/seller/pickup/lookup")
+    async def pickup_lookup(body: PickupCodeIn, ctx=Depends(pickup_ctx)):
+        """Cashier scans/types the buyer's pickup code -> the order to hand over."""
+        return order_out((await _pickup_order(body.code, ctx))[0])
+
+    @api.post("/seller/pickup/complete")
+    async def pickup_complete(body: PickupCodeIn, ctx=Depends(pickup_ctx)):
+        """Hand the goods over: the pickup order is completed (COD cash is collected at the counter)."""
+        d, ctx = await _pickup_order(body.code, ctx)
+        if d["status"] == "completed":
+            raise HTTPException(status_code=400, detail="Pesanan ini sudah diambil / selesai")
+        if d["status"] not in ("paid", "cod", "processing"):
+            raise HTTPException(status_code=400, detail="Pesanan ini tidak bisa diserahkan (status: " + d["status"] + ")")
+        if d["status"] in ("paid", "cod"):
+            await seller_order_status(d["order_id"], SellerOrderStatusIn(status="processing"), ctx)
+        return await seller_order_status(d["order_id"], SellerOrderStatusIn(status="completed"), ctx)
+
     # ---------------- revenue report (no commission) ----------------
     async def _report(store_id: Optional[str]) -> dict:
         match: dict = {"store_id": store_id} if store_id else {}

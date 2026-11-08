@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from "react";
 import { View, Text, StyleSheet, Pressable, ScrollView, FlatList, Dimensions, ActivityIndicator } from "react-native";
-import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Icon from "@react-native-vector-icons/ionicons";
 
@@ -14,7 +13,6 @@ const CARD_WIDTH = (screenW - spacing.lg * 2 - CARD_GAP) / 2;
 
 export default function Kategori() {
   const insets = useSafeAreaInsets();
-  const router = useRouter();
   const [cats, setCats] = useState<Category[]>([]);
   const [active, setActive] = useState<string>("");
   const [products, setProducts] = useState<Product[]>([]);
@@ -53,9 +51,6 @@ export default function Kategori() {
     <View style={[styles.root, { paddingTop: insets.top }]} testID="kategori-screen">
       <View style={styles.header}>
         <Text style={styles.title}>Kategori</Text>
-        <Pressable testID="header-search" onPress={() => router.push("/search" as any)} style={styles.iconBtn}>
-          <Icon name="search" size={20} color={colors.onSurface} />
-        </Pressable>
       </View>
 
       <View style={styles.body}>
@@ -117,7 +112,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border,
   },
   title: { fontSize: fontSize.xl, color: colors.onSurface, fontWeight: "500" },
-  iconBtn: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center", backgroundColor: colors.surfaceTertiary },
   body: { flex: 1, flexDirection: "row" },
   sidebar: { width: 110, flexGrow: 0, flexShrink: 0, backgroundColor: colors.surfaceSecondary, borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: colors.border },
   sideItem: {

@@ -240,8 +240,13 @@ export const api = {
     return data as ImportReport;
   },
   editorExportUrl: (storeId: string | null, template = false) => `${BASE}/api/product-editor/export?${qs({ store_id: storeId, template })}`,
-  priceHistory: (p: { store_id?: string | null; product_id?: string | null; q?: string; kind?: string; skip?: number }) =>
+  priceHistory: (p: { store_id?: string | null; product_id?: string | null; q?: string; kind?: string; date_from?: string; date_to?: string; skip?: number }) =>
     req<{ total: number; items: PriceLog[] }>(`/history/price-stock?${qs({ ...p, limit: 30 })}`),
+  priceHistoryExportUrl: (p: { store_id?: string | null; product_id?: string | null; q?: string; kind?: string; date_from?: string; date_to?: string }) =>
+    `${BASE}/api/history/price-stock/export?${qs(p)}`,
+  productByCode: (code: string) => req<{ product_id: string; name: string }>(`/products/by-code/${encodeURIComponent(code)}`),
+  pickupLookup: (code: string) => req<Order>("/seller/pickup/lookup", { method: "POST", body: JSON.stringify({ code }) }),
+  pickupComplete: (code: string) => req<Order>("/seller/pickup/complete", { method: "POST", body: JSON.stringify({ code }) }),
   adminStores: (status?: string) => req<Store[]>(`/admin/stores${status ? `?status=${status}` : ""}`),
   adminSetStoreStatus: (id: string, status: "active" | "rejected" | "suspended", note = "") =>
     req<Store>(`/admin/stores/${id}/status`, { method: "PUT", body: JSON.stringify({ status, note }) }),
@@ -411,7 +416,7 @@ export type Product = {
 export type VariantOption = { name: string; values: string[] };
 export type VariantRow = { variant_id: string; values: string[]; price: number; stock: number; sku: string; image: string; active: boolean };
 export type ProductForm = {
-  name: string; category: string; subcategory: string; brand: string; sku: string; condition: "new" | "used"; showcase: string;
+  name: string; category: string; subcategory: string; brand: string; sku: string; barcode: string; condition: "new" | "used"; showcase: string;
   status: "active" | "inactive"; description: string; images: string[]; video: string; price: number; discount_price: number;
   stock: number; min_order: number; max_order: number; low_stock_alert: number;
   variants_enabled: boolean; variant_options: VariantOption[]; variants: VariantRow[];

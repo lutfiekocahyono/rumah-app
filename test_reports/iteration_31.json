@@ -1,0 +1,49 @@
+{
+  "summary": "Iter31 tested Excel export of the history, global chrome (bottom nav + top search), Scan (product code + pickup code), and the editor barcode field. Backend: 26/27 new tests pass. Passing: history date filters (WIB inclusive, 400 for bad dates and for from>to), export xlsx (sheets Riwayat & Ringkasan, Sebelum/Sesudah/Selisih with Selisih = after-before, counts match the list, admin can see all stores or one store_id, jombang sees only its own store, jombang with store_id=pgs-official gets 403, customer gets 403), by-code lookup by SKU (case-insensitive, trimmed), product_id and barcode, unknown code gives 404, pickup lookup/complete (store admin, Super Admin, other branch 404, customer 403, completed 400). Failing: by-code with a scanned URL gives 404, because the encoded '/' in the path breaks route matching. Regression iter29 + iter16: all pass. Frontend: bottom nav shows on every page except login/register/checkout/forgot-password. Top search shows everywhere except home/search/scan, and tapping it opens /search. Nav works from nested pages, the active tab is highlighted, and the cart badge shows 2. Scan: customer sees no mode switch, store admin/seller see it, the permission card shows on web, manual SKU DBLP32HC opens /product/pgs-9849, and an unknown code shows an error. Pickup: other branch gets an error, PGS Sidoarjo sees the result, due amount and complete button, confirm completes the order, and a re-lookup shows Selesai with no button. History: Periode pills and date inputs filter correctly, Unduh Excel downloads, and the from>to error shows. Editor: pe-barcode strips spaces and saves, and scanning the saved barcode opens the product. No deprecated expo packages found; expo-camera is used.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "GET /api/products/by-code/{code}", "issue": "Scanning a QR that holds a product link fails. scan.tsx sends encodeURIComponent('https://x.id/product/pgs-9849'), so the path contains %2F. Starlette decodes the path before routing, '{code}' cannot match a path with '/', and the request returns a generic 404 {'detail':'Not Found'}. The /product/<id> regex in the handler never runs. Fix: '@api.get(\"/products/by-code/{code:path}\")' (server.py:707), or send the code as a query param (?code=).", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "POST /api/seller/pickup/lookup|complete", "issue": "_pickup_order (seller.py:460) takes the newest order with that 6-digit pickup_code. Super Admin searches all stores, so codes from different stores can collide. Inside one store, an older active order is unreachable if a newer order (even completed) has the same code. Prefer active statuses first, or make pickup_code unique per store among open orders."},
+      {"endpoint": "GET /api/history/price-stock/export", "issue": "A branch admin with zero rows gets filename 'riwayat-harga-stok-semua-toko-...' (history.py:136 falls back when docs is empty). Use the resolved query['store_id'] instead."},
+      {"endpoint": "product barcode", "issue": "No uniqueness check on barcode. Two products with the same barcode silently resolve to whichever is found first."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Scan > PickupResult", "issue": "After handover, and on re-lookup of a completed COD order, the card still shows red 'Tagih tunai: Rp213.000'. The cashier may think cash is still due. When done or status is completed, show 'Sudah dibayar & diambil' instead. Reference: app/scan.tsx:37,49", "testID": "pickup-due", "priority": "MEDIUM"},
+      {"component": "History > Periode laporan", "issue": "At 390px the date inputs overflow the period card: ph-date-to spans x 237..438 while the card ends at 374, so its right border is clipped. The input row needs flexWrap or minWidth 0 on the inputs. Reference: app/product-editor/history.tsx:135-139,176", "testID": "ph-date-to", "priority": "MEDIUM"},
+      {"component": "History list", "issue": "With from>to, ph-error shows but the previous items stay listed. The old 'File Excel riwayat berhasil dibuat' message also stays after the filters change. The ph-export button stays enabled when from>to (the backend returns 400 and an error message appears).", "testID": "ph-error", "priority": "LOW"}
+    ],
+    "integration_issues": [
+      {"flow": "Scan QR containing product URL", "issue": "Fails with 'Not Found' because of the backend route issue above.", "affected_testIDs": ["scan-code-input", "scan-code-submit"]}
+    ],
+    "design_issues": [
+      {"screen": "Product editor (390x844)", "issues": ["The sticky editor footer (about 184px) plus the global bottom nav (about 62px) take about 30% of the screen. The 'Simpan Draft' label wraps onto 2 lines. Consider hiding the global nav on /product-editor/[id] or compacting the footer."]},
+      {"screen": "Kategori", "issues": ["Shows two search entry points: the global top search bar and its own header search icon. The header icon is redundant now."]},
+      {"screen": "Editor pe-barcode", "issues": ["keyboardType number-pad blocks the letters used in code128/code39 barcodes on native. Use the default keyboard or allow alphanumerics."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_pgs_iter31_scan_export.py", "/app/backend/tests/ui_iter31_helper.py", "/app/test_reports/pytest/pytest_iter31.xml"],
+  "action_items": [
+    "HIGH: server.py:707 change the route to '/products/by-code/{code:path}' (or use a query param) so scanned product URLs resolve. test_url in test_pgs_iter31_scan_export.py covers it.",
+    "Scan PickupResult: don't show 'Tagih tunai' in red once the order is completed (done or status=completed).",
+    "History page: fix the date input row overflow on mobile, clear stale items/export message on error, and disable export when from>to.",
+    "Optional: pickup code collision handling (prefer open orders), export filename for empty branch export, barcode uniqueness, pe-barcode keyboard, editor footer vs global nav space."
+  ],
+  "critical_code_review_comments": [
+    "app-chrome.tsx: clean approach. It overrides SafeAreaInsetsContext so screens don't double-pad, and hides the nav when the native keyboard is open. The PLAIN list also hides chrome on /forgot-password (beyond the request, acceptable).",
+    "scan.tsx: after router.push to a product, lock is released after 1.5s. If the camera is still mounted when the user comes back, the same barcode may push again. Consider resetting on focus.",
+    "history export loads up to 50000 docs into memory and builds openpyxl in a threadpool. Fine for monthly reports.",
+    "server.py is 1310 lines (>700). Should be split further."
+  ],
+  "updated_files": ["/app/backend/tests/test_pgs_iter31_scan_export.py (new)", "/app/backend/tests/ui_iter31_helper.py (new)"],
+  "success_rate": {"backend": "96% (26/27 new; iter29+iter16 regression all pass)", "frontend": "~90% (all requested flows work; 2 medium UI bugs + 1 integration failure for URL QR)"},
+  "seed_data_creation": "Temporary only: TEST pickup COD orders (demo@pgs.id at pgs-official, product pgs-9955) were deleted afterwards and pgs-9955 stock/sold restored. TEST_Scan products (acct1) were deleted with their drafts and price_history. The demo cart item added for the badge test was removed.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: export EXPO_PUBLIC_BACKEND_URL from /app/frontend/.env; pytest -n0 tests/test_pgs_iter31_scan_export.py. UI pickup test: python tests/ui_iter31_helper.py create (prints order_id + pickup code), then clean. In Playwright, wait about 2.5s after the first load before setting localStorage 'pgs_auth_token', otherwise the app may ignore it. Editor publish opens a confirm dialog (confirm-ok). Get tokens with page.request.post, because urllib is blocked by 403.",
+  "rca_of_issue": "by-code URL: Starlette's router matches against the decoded path, so '%2F' becomes '/' and the '{code}' segment converter (which excludes '/') fails. Repro: curl $BASE/api/products/by-code/https%3A%2F%2Fx.id%2Fproduct%2Fpgs-9849 returns 404 {'detail':'Not Found'}. Fix: use the ':path' converter."
+}
