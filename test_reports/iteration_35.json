@@ -1,0 +1,31 @@
+{
+  "summary": "Iteration 35. Backend: the new test_pgs_iter35_guide_chat_cod.py (11 tests) and the iter34 regression suite passed 21/21. GET /api/accurate/callback returns 200 HTML. POST /api/chats reuses demo's existing conversation for pgs-jombang and for pgs-official, returns 403 for pgs-jember (demo has no order there), 404 for an unknown store and 401 for guests. Open, completed and cancelled COD pickup orders return the correct status. Frontend: (1) /admin/accurate as admin at 375px shows accurate-guide with 4 numbered steps. The App URL value equals EXPO_PUBLIC_BACKEND_URL and the callback value equals <url>/api/accurate/callback; both clipboard reads matched. The Salin buttons change to 'Tersalin' and go back to 'Salin' after 1.5s. accurate-open-dev opens a new page (redirects to account.accurate.id). The note mentions replacing the addresses after Publish, and the toggle collapses and expands the guide. The Kunci API, Gudang and Pratinjau sections still render. One layout bug: the Callback copy row overflows the card (details below). (2) /product/pgs-9849 at 390px and 375px: pd-chat-btn (x=12, w=56, h=49) is left of add-to-cart-btn (x=76), and buy-now ends at x=378 (390px) or 363 (375px) with no overflow. A guest tap goes to /login. As demo, picking Jombang via /pilih-toko then tapping Chat goes to /chat/cv_b4475852f7ee with the header 'Mitra PGS Jombang'. With pgs-official it goes to /chat/cv_571fa133a928. With pgs-jember it shows the toast 'Chat tersedia setelah Anda memesan di toko ini'. (3) BUG RETEST PASSED: the completed pickup COD order shows 'Lunas — dibayar tunai (COD) saat pengambilan.' and the old text is absent. The open order still shows 'Bayar tunai (COD) saat mengambil pesanan.' with the pickup code. The cancelled order shows 'Pesanan dibatalkan, tidak ada pembayaran.' and no code. No deprecated Expo packages.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "AccurateGuide CopyRow (callback)", "issue": "On web the long callback URL Text (flex:1, numberOfLines=2) does not shrink: the min-content width of '-2560bz45.preview.emergentagent.com/api/accurate/callback' is about 293px. This pushes the Salin button outside the card (button x=300..375, then 393 when it shows 'Tersalin', while the card ends at about 343). The page content can then scroll sideways; scrollIntoView shifted the whole screen about 30px left. The App URL row is fine because it has a break point. Fix: add minWidth: 0 (and flexShrink: 1) to styles.copyValue, or wrap the value in <View style={{flex:1, minWidth:0}}>. Reference: /app/frontend/src/components/accurate-guide.tsx:79-80", "testID": "accurate-copy-callback", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [
+      {"flow": "Product detail Chat for a new buyer", "issue": "POST /api/chats requires the buyer to have an order at that store (support.py:316-317, 403 'Chat tersedia setelah Anda memesan di toko ini'). The new pd-chat-btn on product detail is a pre-purchase entry point, but it always fails with an error toast for buyers who have never ordered from the selected branch (seen with pgs-jember). This is a product decision: either allow pre-purchase chat from product detail, or hide or relabel the button when chat is not allowed.", "affected_testIDs": ["pd-chat-btn", "toast"]}
+    ],
+    "design_issues": [
+      {"screen": "Product detail", "issues": ["With branch pgs-jember selected, the store link under the title still says 'PGS Sidoarjo' (product.store_id), but Chat opens the selected branch. The buyer may not expect which store they are messaging. Consider showing the selected branch name or labelling the chat target."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_pgs_iter35_guide_chat_cod.py", "/app/backend/tests/ui_iter35_helper.py", "/app/test_reports/pytest/pytest_iter35.xml"],
+  "action_items": [
+    "Fix the accurate-guide CopyRow overflow on web: add minWidth: 0 / flexShrink: 1 to copyValue (accurate-guide.tsx:80) so the callback Salin button stays inside the card and the page does not scroll sideways.",
+    "Decide on pd-chat-btn behaviour for buyers with no order at the selected branch. It currently shows the 403 toast every time. Allow product-page chat on the backend or adapt the UI."
+  ],
+  "critical_code_review_comments": [
+    "product/[id].tsx openChat: the target is storeId when product.store_id === 'pgs-official', otherwise product.store_id. This is correct for the shared catalogue. There are currently 0 non-PGS seller products in the DB, so the seller branch could only be checked by code review.",
+    "order/[id].tsx:190-193: the COD note now depends on status (completed / cancelled|expired|failed / open) and is correct."
+  ],
+  "updated_files": ["/app/backend/tests/test_pgs_iter35_guide_chat_cod.py", "/app/backend/tests/ui_iter35_helper.py"],
+  "success_rate": {"backend": "100% (21/21)", "frontend": "95% (all requested checks passed; 1 layout overflow bug on the callback copy row)"},
+  "seed_data_creation": "Created 3 TEST_COD pickup orders (pgs-9955, pgs-official) for the pytest fixture and 3 for the UI. All were deleted by order_id along with their notifications. pgs-9955 stock and sold were restored and demo's cart was restored. No new conversations were created; the existing demo conversations were reused. Note: the DB already holds 48 older orders with shipping.full_name starting 'TEST_' from earlier runs. I did not create or delete them.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: export EXPO_PUBLIC_BACKEND_URL=... && pytest -n0 backend/tests/test_pgs_iter35_guide_chat_cod.py. For UI orders use 'python3 backend/tests/ui_iter35_helper.py create|clean' (open, completed and cancelled COD pickup orders; state is kept in /tmp/iter35_state.json). Demo has conversations with pgs-jombang (cv_b4475852f7ee) and pgs-official (cv_571fa133a928), and no orders at pgs-jember. The web branch choice is in localStorage key 'pgs_store_id'. Do NOT run test_pgs_iter32_qr_accurate.py casually: it deletes the settings doc {key:'accurate'} (currently absent)."
+}

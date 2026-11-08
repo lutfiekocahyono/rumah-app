@@ -16,7 +16,7 @@ from openpyxl.styles import Font, PatternFill
 
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
-SOURCES = {"editor": "Ubah Produk", "bulk": "Edit Massal", "import": "Impor Excel", "stock": "Manajemen Stok", "tiers": "Harga Grosir Manual"}
+SOURCES = {"editor": "Ubah Produk", "bulk": "Edit Massal", "import": "Impor Excel", "stock": "Manajemen Stok", "tiers": "Harga Grosir Manual", "accurate": "Sinkron Accurate"}
 LABELS = {"price": "Harga jual", "original_price": "Harga normal", "stock": "Stok", "tier_prices": "Harga grosir manual"}
 KIND = {"price": "price", "original_price": "price", "tier_prices": "price", "stock": "stock"}
 

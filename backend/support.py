@@ -104,6 +104,7 @@ class DecideIn(BaseModel):
 class ChatStartIn(BaseModel):
     store_id: str
     order_id: Optional[str] = None
+    product_id: Optional[str] = None  # buyer asks about a product before ordering
 
 
 class SellerChatStartIn(BaseModel):
@@ -313,9 +314,18 @@ def register(api, db, get_current_user, require_admin, notify_user, log_activity
             raise HTTPException(status_code=404, detail="Toko tidak ditemukan")
         if store["owner_id"] == user["user_id"]:
             raise HTTPException(status_code=400, detail="Ini toko Anda sendiri")
-        if not await db.orders.find_one({"user_id": user["user_id"], "store_id": body.store_id}, {"_id": 1}):
+        product = body.product_id and await db.products.find_one(
+            {"product_id": body.product_id, "store_id": {"$in": [body.store_id, "pgs-official"]}},
+            {"_id": 0, "product_id": 1, "name": 1, "image": 1, "price": 1, "sku": 1})
+        if not product and not await db.orders.find_one({"user_id": user["user_id"], "store_id": body.store_id}, {"_id": 1}):
             raise HTTPException(status_code=403, detail="Chat tersedia setelah Anda memesan di toko ini")
-        return await _open_conv(user, store)
+        c = await _open_conv(user, store)
+        if product:  # tell the store which product the buyer is looking at (once, unless they switch product)
+            last = await db.chat_messages.find_one({"conv_id": c["conv_id"]}, {"_id": 0, "product": 1}, sort=[("created_at", -1)])
+            if not last or (last.get("product") or {}).get("product_id") != product["product_id"]:
+                await _post(c, "user", f"Halo, saya ingin bertanya tentang produk ini:\n{product['name']}", product)
+                c = await db.conversations.find_one({"conv_id": c["conv_id"]}, {"_id": 0})
+        return c
 
     @api.post("/seller/chats")
     async def seller_start_chat(body: SellerChatStartIn, ctx=Depends(require_seller)):
@@ -364,7 +374,14 @@ def register(api, db, get_current_user, require_admin, notify_user, log_activity
         text = body.text.strip()
         if not text:
             raise HTTPException(status_code=400, detail="Pesan kosong")
+        return await _post(c, me, text)
+
+    async def _post(c: dict, me: str, text: str, product: Optional[dict] = None) -> dict:
+        conv_id = c["conv_id"]
         m = {"msg_id": f"m_{uuid.uuid4().hex[:12]}", "conv_id": conv_id, "sender": me, "text": text, "created_at": _now()}
+        if product:
+            m["product"] = {"product_id": product["product_id"], "name": product["name"], "image": product.get("image", ""),
+                            "price": product.get("price", 0), "sku": product.get("sku", "")}
         await db.chat_messages.insert_one({**m})
         other = "store" if me == "user" else "user"
         await db.conversations.update_one({"conv_id": conv_id}, {"$set": {"last_text": text[:120], "last_at": m["created_at"], "last_sender": me},

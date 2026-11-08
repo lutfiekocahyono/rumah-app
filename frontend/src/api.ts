@@ -253,6 +253,14 @@ export const api = {
   accurateSaveMap: (warehouse_map: Record<string, string>) => req<AccurateSettings>("/admin/accurate/warehouse-map", { method: "PUT", body: JSON.stringify({ warehouse_map }) }),
   accurateItems: (page: number, warehouse: string) =>
     req<{ items: AccurateItem[]; page: number; page_count: number; total: number }>(`/admin/accurate/items?${qs({ page, warehouse })}`),
+  accurateSyncPreview: (b: { prices: boolean; stocks: boolean; new_products: boolean }) => req<AccuratePreview>("/admin/accurate/sync/preview", { method: "POST", body: JSON.stringify(b) }),
+  accurateSyncApply: (id: string, skip: string[], skip_new: string[]) =>
+    req<{ preview_id: string; result: AccurateSyncResult }>(`/admin/accurate/sync/${id}/apply`, { method: "POST", body: JSON.stringify({ skip, skip_new }) }),
+  accurateInvoiceSettings: (customer_no: string, shipping_item_no: string) =>
+    req<{ customer_no: string; shipping_item_no: string }>("/admin/accurate/invoice-settings", { method: "PUT", body: JSON.stringify({ customer_no, shipping_item_no }) }),
+  accurateOrders: (sent: boolean, page = 1) => req<{ total: number; page: number; items: AccurateOrderRow[] }>(`/admin/accurate/orders?${qs({ sent, page })}`),
+  accurateInvoice: (order_id: string) => req<AccurateInvoice>(`/admin/accurate/invoice/${order_id}`),
+  accurateSendInvoice: (order_id: string) => req<AccurateInvoice>(`/admin/accurate/invoice/${order_id}`, { method: "POST", body: JSON.stringify({ confirm: true }) }),
   pickupLookup: (code: string) => req<Order>("/seller/pickup/lookup", { method: "POST", body: JSON.stringify({ code }) }),
   pickupComplete: (code: string) => req<Order>("/seller/pickup/complete", { method: "POST", body: JSON.stringify({ code }) }),
   adminStores: (status?: string) => req<Store[]>(`/admin/stores${status ? `?status=${status}` : ""}`),
@@ -308,7 +316,7 @@ export const api = {
   escalateComplaint: (id: string, text: string) => req<Complaint>(`/complaints/${id}/escalate`, { method: "POST", body: JSON.stringify({ text }) }),
   decideComplaint: (id: string, action: "refund" | "reject" | "resolve", amount = 0, note = "") =>
     req<Complaint>(`/complaints/${id}/decide`, { method: "POST", body: JSON.stringify({ action, amount, note }) }),
-  startChat: (store_id: string) => req<Conversation>("/chats", { method: "POST", body: JSON.stringify({ store_id }) }),
+  startChat: (store_id: string, product_id?: string) => req<Conversation>("/chats", { method: "POST", body: JSON.stringify({ store_id, product_id }) }),
   sellerStartChat: (order_id: string) => req<Conversation>("/seller/chats", { method: "POST", body: JSON.stringify({ order_id }) }),
   chats: (side: "buyer" | "store") => req<Conversation[]>(side === "store" ? "/seller/chats" : "/chats"),
   chatUnread: () => req<{ buyer: number; store: number }>("/chats/unread"),
@@ -334,7 +342,8 @@ export type Complaint = {
   viewer: "buyer" | "store" | "admin"; cod_unpaid?: boolean; can_decide: boolean; can_escalate: boolean; can_reply: boolean; created_at: string; updated_at: string;
 };
 export type Conversation = { conv_id: string; user_id: string; user_name: string; store_id: string; store_name: string; last_text: string; last_at: string; last_sender?: "user" | "store"; unread_user: number; unread_store: number };
-export type ChatMessage = { msg_id: string; conv_id: string; sender: "user" | "store"; text: string; created_at: string };
+export type ChatMessage = { msg_id: string; conv_id: string; sender: "user" | "store"; text: string; created_at: string;
+  product?: { product_id: string; name: string; image: string; price: number; sku: string } };
 export type ChatThread = { conversation: Conversation; me: "user" | "store"; messages: ChatMessage[] };
 
 async function uploadTo(path: string, file: LocalFile): Promise<{ url: string }> {
@@ -437,7 +446,21 @@ export type SpecKey = "material" | "color" | "size" | "dimensions" | "weight" | 
 export type AccurateSettings = {
   configured: boolean; token_hint: string; secret_hint: string; database_id: string; database_name: string; host: string;
   last_test_at?: string | null; last_test_ok?: boolean | null; last_test_message: string; warehouse_map: Record<string, string>;
-  updated_at?: string | null; phase: number; write_enabled: boolean;
+  updated_at?: string | null; phase: number; write_enabled: boolean; customer_no: string; shipping_item_no: string; last_sync_at?: string | null;
+};
+export type AccurateChange = { key: string; product_id: string; name: string; sku: string; field: "price" | "stock"; store_id: string; store_name?: string; warehouse?: string; before: number; after: number };
+export type AccurateSyncResult = { price: number; stock: number; new: number; conflict: number };
+export type AccuratePreview = {
+  preview_id: string; created_at: string; status: string; accurate_total: number; matched: number; truncated: boolean;
+  counts: { price: number; stock: number; new: number; skipped: number }; changes: AccurateChange[];
+  new_items: { no: string; name: string; price: number; unit: string }[]; skipped: { sku: string; name: string; reason: string }[];
+};
+export type AccurateInvoiceState = { status: "none" | "sending" | "sent" | "failed"; number?: string; error?: string; at?: string };
+export type AccurateOrderRow = { order_id: string; store_name: string; total: number; status: string; created_at: string; payment_method: string; buyer: string; item_count: number; accurate_invoice: AccurateInvoiceState };
+export type AccurateInvoice = {
+  order_id: string; number: string; customer_no: string; date: string; store_name: string; buyer: string; discount: number; total: number; order_total: number;
+  lines: { item_no: string; name: string; quantity: number; unit_price: number; warehouse: string; amount: number }[];
+  notes: string[]; problems: string[]; description: string; accurate_invoice: AccurateInvoiceState;
 };
 export type AccurateItem = { id: number; no: string; name: string; price: number | null; unit: string; stock: number | null; type: string; pgs_product_id: string | null };
 export type PriceLog = {

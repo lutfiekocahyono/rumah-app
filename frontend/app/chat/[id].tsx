@@ -1,11 +1,11 @@
 import React, { useCallback, useRef, useState } from "react";
-import { View, Text, StyleSheet, Pressable, FlatList, ActivityIndicator, TextInput, AppState } from "react-native";
-import { useFocusEffect, useLocalSearchParams } from "expo-router";
+import { View, Text, StyleSheet, Pressable, FlatList, ActivityIndicator, TextInput, AppState, Image } from "react-native";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import Icon from "@react-native-vector-icons/ionicons";
 
-import { colors, fontSize, radius, spacing } from "@/src/theme";
+import { colors, fontSize, radius, spacing, formatIDR } from "@/src/theme";
 import { api, type ChatMessage, type ChatThread } from "@/src/api";
 import { ScreenHeader } from "@/src/components/screen-header";
 import { fmtDate } from "@/src/utils/date";
@@ -81,6 +81,16 @@ export default function ChatThreadScreen() {
               const mine = m.sender === thread?.me;
               return (
                 <View style={[styles.bubble, mine ? styles.mine : styles.theirs]} testID={`chat-msg-${m.msg_id}`}>
+                  {m.product ? (
+                    <Pressable testID="chat-product-card" style={styles.card} onPress={() => router.push(`/product/${m.product!.product_id}` as any)}>
+                      {m.product.image ? <Image source={{ uri: m.product.image }} style={styles.cardImg} /> : <View style={[styles.cardImg, { backgroundColor: colors.surfaceTertiary }]} />}
+                      <View style={{ flex: 1, gap: 2 }}>
+                        <Text style={styles.cardName} numberOfLines={3} testID="chat-product-name">{m.product.name}</Text>
+                        <Text style={styles.cardPrice}>{formatIDR(m.product.price)}</Text>
+                        {m.product.sku ? <Text style={styles.time}>SKU {m.product.sku}</Text> : null}
+                      </View>
+                    </Pressable>
+                  ) : null}
                   <Text style={[styles.msg, mine && { color: colors.onBrandPrimary }]}>{m.text}</Text>
                   <Text style={[styles.time, mine && { color: colors.onBrandPrimary, opacity: 0.8 }]}>{fmtDate(m.created_at)}</Text>
                 </View>
@@ -117,6 +127,10 @@ const styles = StyleSheet.create({
   theirs: { alignSelf: "flex-start", backgroundColor: colors.surface, borderBottomLeftRadius: 4, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
   msg: { fontSize: fontSize.base, color: colors.onSurface },
   time: { fontSize: 10, color: colors.muted, alignSelf: "flex-end" },
+  card: { flexDirection: "row", gap: spacing.sm, padding: spacing.sm, borderRadius: radius.sm, backgroundColor: colors.surface, marginBottom: 4, minWidth: 220 },
+  cardImg: { width: 56, height: 56, borderRadius: radius.sm },
+  cardName: { fontSize: 13, fontWeight: "600", color: colors.onSurface },
+  cardPrice: { fontSize: 13, fontWeight: "700", color: colors.brandPrimary },
   err: { color: colors.error, fontSize: fontSize.sm, paddingHorizontal: spacing.lg },
   inputBar: { flexDirection: "row", alignItems: "flex-end", gap: spacing.sm, paddingHorizontal: spacing.md, paddingTop: spacing.sm, backgroundColor: colors.surface, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
   input: { flex: 1, maxHeight: 120, minHeight: 44, backgroundColor: colors.surfaceTertiary, borderRadius: 22, paddingHorizontal: spacing.md, paddingTop: 12, paddingBottom: 12, fontSize: fontSize.base, color: colors.onSurface },

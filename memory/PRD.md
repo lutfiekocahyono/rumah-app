@@ -127,3 +127,11 @@ Iteration 2: import all data from pusatgrosirsidoarjo.com; tiered pricing (pembe
 - Iter 31: Ekspor riwayat Excel per toko & periode; menu bar bawah global (Beranda, Kategori, Scan, Keranjang, Akun) + pencarian atas di semua halaman kecuali login & checkout; Scan barcode produk & kode ambil pesanan; field Barcode di editor.
 - Iter 32: Fix QR link 404; Accurate Online Tahap 1 (kunci API terenkripsi, uji koneksi, gudang, pratinjau barang baca-saja).
 - Iter 34: QR kode ambil di halaman pesanan pembeli (PGSAMBIL-<kode>), dikenali Scan kasir dari mode mana pun.
+- Iter 35: Panduan daftar aplikasi Accurate (salin App URL/Callback), tombol Chat di detail produk (cabang terpilih), teks COD pesanan selesai diperbaiki.
+- Iter 35b: chat dari halaman produk diizinkan sebelum memesan (product_id), overflow salin callback diperbaiki.
+
+## Iteration 36 (Jun 2026)
+- Chat dari detail produk otomatis mengirim kartu produk (nama lengkap, foto, harga, SKU) sekali per produk.
+- Accurate Tahap 2A: tarik harga (katalog bersama), stok per cabang (gudang terpetakan), barang baru (nonaktif) dengan pratinjau + centang per baris, konflik dilewati, tercatat di Riwayat (sumber "Sinkron Accurate"). Accurate tidak diubah.
+- Accurate Tahap 2B: faktur penjualan per pesanan (lunas / COD selesai) setelah konfirmasi; nomor faktur = nomor pesanan; kode pelanggan & kode barang ongkir di pengaturan.
+- Belum diuji dengan akun Accurate asli (memakai mock tests/accurate_mock.py).

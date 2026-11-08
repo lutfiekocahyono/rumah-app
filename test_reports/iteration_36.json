@@ -1,0 +1,39 @@
+{
+  "summary": "Iteration 36: Chat product card from product page + Accurate Tahap 2 (A pull sync preview/apply, B sales invoice push) tested against local mock Accurate host (127.0.0.1:9911). Backend 13/13 pytest pass (chat card once/new-on-switch, sync preview counts price1/stock2/new1, apply with skip, re-apply 400, price_history source accurate, new product inactive & hidden publicly, conflict detection, invoice settings, orders sent/unsent lists, preview lines incl. ONGKIR & warehouse, confirm false 400, confirm true 200 sent, second send 409, SKU/unmapped-branch problems 400, COD-not-completed ineligible, Accurate rejection -> failed & retryable, non-admin 403). Frontend (375x667): chat card shows full product name, tapping card opens product, no duplicate card on re-tap, different product adds a new card; /admin/accurate sections 4 & 5 render, preview -> untick row (count 4->3) -> confirm dialog -> success text 'Tersimpan: 1 harga, 1 stok, 1 barang baru'; invoice settings save, order preview, send via confirm -> 'Sudah di Accurate', moved to 'Sudah dikirim' tab. One minor UI bug: success message after sending invoice is wiped immediately.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/admin/accurate/invoice/{order_id}", "issue": "If Accurate times out after actually saving the invoice, state becomes 'failed'; a retry then gets 'Nomor faktur sudah dipakai' (502) forever and the order can never be marked sent. Consider treating 'number already used' as sent / offering a manual 'mark as sent' reconcile."},
+      {"endpoint": "GET /api/admin/accurate/invoice/{order_id}", "issue": "Invoice ignores order 'refunded' amount (e.g. PGS-261108-9749B2 refunded 5000) - invoice total = order total, refund not reflected. Confirm business expectation."},
+      {"endpoint": "POST /api/chats", "issue": "Duplicate guard only compares with the very LAST message; if buyer/store sent any text after the card, reopening chat from the same product posts the same product card again. Acceptable per comment, but consider checking the last product card instead of the last message."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "AccurateInvoices.send", "issue": "Success message 'Faktur X masuk ke Accurate' never visible: send() calls load() in its finally, and load -> run('list') calls setMsg(null) synchronously, wiping the ok message (verified: accurate-invoice-msg-ok absent after send). Also run('list')'s busy gets reset by the outer run's finally. Fix: reload list without clearing msg (e.g. separate loader that doesn't setMsg(null), or await load before setMsg). Reference: /app/frontend/src/components/accurate-invoices.tsx:29-51", "testID": "accurate-invoice-msg-ok", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/admin/accurate", "issues": ["Pagination buttons ‹ › in invoice list have no testID (accurate-invoices.tsx:93-94)", "Last-sync text in section 4 is not refreshed after Terapkan (parent settings not reloaded) - only after page reload"]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_pgs_iter36_chat_product_accurate_sync.py", "/app/test_reports/pytest/pytest_iter36.xml"],
+  "action_items": [
+    "Fix AccurateInvoices success message being cleared by load() after send (accurate-invoices.tsx:42-51)",
+    "Optional: handle Accurate 'number already used' on resend (reconcile as sent) to avoid permanently stuck 'failed' invoices",
+    "Optional: refresh last_sync_at in AccurateSync after apply; add testIDs to invoice pagination buttons"
+  ],
+  "critical_code_review_comments": [
+    "sync_apply sets products.restocked_at when stock increases - after testing this had to be $unset on pgs-9957; ensure revert scripts include it",
+    "sync_apply: a mid-loop exception leaves preview in status 'applying' forever (no rollback / reset) - preview cannot be re-applied, user must create a new one (acceptable but worth a try/finally)",
+    "invoice_send: a non-HTTPException error after lock (e.g. unexpected KeyError) leaves accurate_invoice.status='sending' forever -> order locked with 409; wrap with generic except to set failed"
+  ],
+  "updated_files": ["/app/backend/tests/test_pgs_iter36_chat_product_accurate_sync.py (new)"],
+  "success_rate": {"backend": "100% (13/13)", "frontend": "95% (all flows pass; 1 minor message bug)"},
+  "seed_data_creation": "Temporary TEST_ORD_* orders inserted directly in DB and deleted by id. Data reverted: pgs-9957 price/original_price 915000, discount 0, stock 0, in_stock false, restocked_at unset; store_stock pgs-jombang/pgs-9957 stock 0; products source 'accurate' deleted; price_history source 'accurate' deleted; no orders with accurate_invoice remain; chat card messages created in demo conversations deleted by msg_id (conversation last_text/unread_store counters of demo convs cv_571fa133a928 & cv_b4475852f7ee still reference the deleted product-card text - cosmetic). Settings doc left as is (last_sync_at updated by apply).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Mock Accurate: python tests/accurate_mock.py 9911 (in-memory invoices; numbers can't repeat). Run pytest with -n 0 (pytest.ini adds xdist) since sync tests mutate pgs-9957. Two pd-chat-btn elements exist in DOM (stacked screens) - use ':visible'.",
+  "rca_of_issue": "Invoice success msg: run() helper always does setMsg(null) at start; send() invokes load() (which uses run) inside its own try/finally after setMsg(ok), so the ok message is cleared in the same tick."
+}

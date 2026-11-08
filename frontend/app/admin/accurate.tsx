@@ -8,6 +8,9 @@ import { api, type AccurateItem, type AccurateSettings } from "@/src/api";
 import { ScreenHeader } from "@/src/components/screen-header";
 import { ConfirmDialog } from "@/src/components/confirm-dialog";
 import { fmtDate } from "@/src/utils/date";
+import { AccurateGuide } from "@/src/components/accurate-guide";
+import { AccurateSync } from "@/src/components/accurate-sync";
+import { AccurateInvoices } from "@/src/components/accurate-invoices";
 
 type Msg = { ok: boolean; text: string } | null;
 
@@ -65,9 +68,11 @@ export default function AccurateSettingsScreen() {
         <View style={styles.banner} testID="accurate-phase">
           <Icon name="shield-checkmark-outline" size={20} color={colors.brandPrimary} />
           <Text style={[styles.small, { flex: 1 }]}>
-            Tahap 1 — baca-saja. Aplikasi hanya membaca barang, harga, gudang & stok dari Accurate. Tidak ada stok, harga, atau faktur yang diubah di Accurate.
+            Aplikasi membaca barang, harga, gudang & stok dari Accurate (selalu dengan pratinjau sebelum disimpan di PGS). Satu-satunya yang ditulis ke Accurate adalah faktur penjualan yang Anda konfirmasi per pesanan.
           </Text>
         </View>
+
+        <AccurateGuide />
 
         <View style={styles.card}>
           <Text style={styles.h}>1. Kunci API</Text>
@@ -157,11 +162,8 @@ export default function AccurateSettingsScreen() {
           <Note msg={dataMsg} testID="accurate-data-msg" />
         </View>
 
-        <View style={styles.card}>
-          <Text style={styles.h}>Tahap berikutnya</Text>
-          <Text style={styles.small}>• Ambil produk, harga & stok per cabang dari Accurate ke PGS (dengan pratinjau perubahan sebelum disimpan).</Text>
-          <Text style={styles.small}>• Kirim pesanan online sebagai faktur penjualan ke Accurate — hanya setelah Anda konfirmasi.</Text>
-        </View>
+        <AccurateSync connected={connected} lastSyncAt={s?.last_sync_at} />
+        <AccurateInvoices connected={connected} customerNo={s?.customer_no ?? ""} shippingItemNo={s?.shipping_item_no ?? ""} />
       </ScrollView>
       <ConfirmDialog visible={askDelete} title="Hapus kunci Accurate?" message="Koneksi ke Accurate akan diputus. Data di Accurate tidak berubah."
         confirmLabel="Hapus" onConfirm={remove} onCancel={() => setAskDelete(false)} />

@@ -1,4 +1,5 @@
 """Accurate Online integration — Tahap 1: pengaturan kunci API, uji koneksi, pratinjau baca-saja.
+Tahap 2 (accurate_sync.py): tarik produk/harga/stok dengan pratinjau, dan faktur penjualan per pesanan setelah konfirmasi.
 
 Kunci API diisi pemilik di halaman Admin (bukan lewat chat) dan disimpan terenkripsi.
 Tahap ini TIDAK PERNAH menulis ke Accurate: setiap endpoint save/delete ditolak oleh klien.
@@ -14,11 +15,13 @@ from typing import Dict, Optional
 import httpx
 from cryptography.fernet import Fernet, InvalidToken
 from fastapi import Depends, HTTPException
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
 ACCOUNT_HOST = "https://account.accurate.id"
 WIB = timezone(timedelta(hours=7))
 KEY = {"key": "accurate"}
+INVOICE_SAVE = "/accurate/api/sales-invoice/save.do"
 
 
 def _fernet() -> Fernet:
@@ -43,15 +46,16 @@ class AccurateClient:
             h["X-Session-ID"] = self.session
         return h
 
-    async def call(self, method: str, path: str, params: Optional[dict] = None) -> dict:
-        if any(w in path for w in ("save.do", "delete.do", "bulk-save", "transfer")):
-            raise HTTPException(status_code=403, detail="Tahap 1 hanya membaca data Accurate (tidak ada perubahan di Accurate)")
+    async def call(self, method: str, path: str, params: Optional[dict] = None, form: Optional[dict] = None) -> dict:
+        """Read-only, except the one write the owner confirms per order: a new sales invoice (`write_invoice`)."""
+        if any(w in path for w in ("save.do", "delete.do", "bulk-save", "transfer")) and not (form is not None and path == INVOICE_SAVE):
+            raise HTTPException(status_code=403, detail="Aplikasi hanya membaca data Accurate, kecuali faktur penjualan yang Anda konfirmasi")
         base = ACCOUNT_HOST if path.startswith("/api/") else self.host
         if not base:
             raise HTTPException(status_code=400, detail="Jalankan Uji Koneksi dulu")
         async with httpx.AsyncClient(timeout=25, follow_redirects=False) as x:
             try:
-                r = await x.request(method, base + path, headers=self.headers(), params=params)
+                r = await x.request(method, base + path, headers=self.headers(), params=params, data=form)
                 if r.status_code == 308 and method == "GET" and r.headers.get("location"):  # database moved host
                     self.host = r.headers["location"].split("/accurate")[0]
                     r = await x.request(method, self.host + path, headers=self.headers(), params=params)
@@ -80,28 +84,37 @@ class WarehouseMapIn(BaseModel):
     warehouse_map: Dict[str, str] = {}  # PGS store_id -> nama gudang Accurate
 
 
+async def load_settings(db) -> dict:
+    return await db.settings.find_one(KEY, {"_id": 0}) or {}
+
+
+async def make_client(db) -> AccurateClient:
+    s = await load_settings(db)
+    if not s.get("api_token"):
+        raise HTTPException(status_code=400, detail="Isi API Token & Signature Secret Accurate dulu")
+    try:
+        f = _fernet()
+        return AccurateClient(f.decrypt(s["api_token"].encode()).decode(), f.decrypt(s["signature_secret"].encode()).decode(),
+                              s.get("host"), s.get("session"))
+    except InvalidToken:
+        raise HTTPException(status_code=400, detail="Kunci tersimpan tidak bisa dibaca, simpan ulang kuncinya")
+
+
 def register(api, db, require_admin):
 
     async def load() -> dict:
-        return await db.settings.find_one(KEY, {"_id": 0}) or {}
+        return await load_settings(db)
 
     async def client() -> AccurateClient:
-        s = await load()
-        if not s.get("api_token"):
-            raise HTTPException(status_code=400, detail="Isi API Token & Signature Secret Accurate dulu")
-        try:
-            f = _fernet()
-            return AccurateClient(f.decrypt(s["api_token"].encode()).decode(), f.decrypt(s["signature_secret"].encode()).decode(),
-                                  s.get("host"), s.get("session"))
-        except InvalidToken:
-            raise HTTPException(status_code=400, detail="Kunci tersimpan tidak bisa dibaca, simpan ulang kuncinya")
+        return await make_client(db)
 
     def public(s: dict) -> dict:
         return {"configured": bool(s.get("api_token")), "token_hint": s.get("token_hint", ""), "secret_hint": s.get("secret_hint", ""),
                 "database_id": s.get("database_id", ""), "database_name": s.get("database_name", ""), "host": s.get("host", ""),
                 "last_test_at": s.get("last_test_at"), "last_test_ok": s.get("last_test_ok"), "last_test_message": s.get("last_test_message", ""),
                 "warehouse_map": s.get("warehouse_map", {}), "updated_at": s.get("updated_at"),
-                "phase": 1, "write_enabled": False}
+                "customer_no": s.get("customer_no", ""), "shipping_item_no": s.get("shipping_item_no", ""),
+                "last_sync_at": s.get("last_sync_at"), "phase": 2, "write_enabled": True}
 
     @api.get("/admin/accurate/settings")
     async def get_settings(_=Depends(require_admin)):
@@ -183,3 +196,9 @@ def register(api, db, require_admin):
         for i in items:
             i["pgs_product_id"] = linked.get(i["no"])  # matched by Accurate item code = PGS SKU
         return {"items": items, "page": sp.get("page", page), "page_count": sp.get("pageCount", 1), "total": sp.get("rowCount", len(items))}
+
+    @api.get("/accurate/callback")
+    async def oauth_callback():
+        """Callback URL registered in the Accurate developer area; the API-Token flow doesn't need it, so just point back to Admin."""
+        return HTMLResponse("<html><body style='font-family:sans-serif;padding:24px'><h3>Aplikasi PGS di Accurate</h3>"
+                            "<p>Pemasangan selesai. Kembali ke aplikasi PGS → Admin → Integrasi Accurate Online, lalu tempel API Token dan Signature Secret.</p></body></html>")

@@ -22,6 +22,7 @@ import home_feed
 import product_editor
 import history
 import accurate
+import accurate_sync
 import order_tasks
 from order_tasks import COD_PICKUP_HOURS, RELEASE_STATUSES
 import promo
@@ -1298,6 +1299,7 @@ SHIP_QUOTE, SHIP_ORIGIN = shipping.register(api, db, require_admin, get_owner, s
 product_editor.register(api, db, get_current_user=get_current_user, log_activity=ACCT["log_activity"], origin_label=SHIP_ORIGIN)
 history.register(api, db, get_current_user)
 accurate.register(api, db, require_admin)
+accurate_sync.register(api, db, require_admin)
 
 app.include_router(api)
 

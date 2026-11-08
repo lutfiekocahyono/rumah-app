@@ -187,7 +187,11 @@ export default function OrderDetail() {
             {order.status === "cod" && order.expires_at ? (
               <Text style={styles.muted} testID="order-expires">Menunggu diproses toko. Batal otomatis bila belum diproses sampai {fmtDate(order.expires_at)}.</Text>
             ) : null}
-            {order.payment_method === "cod" ? <Text style={styles.muted}>Bayar tunai (COD) saat mengambil pesanan.</Text> : null}
+            {order.payment_method === "cod" ? (
+              <Text style={styles.muted} testID="order-cod-note">
+                {order.status === "completed" ? "Lunas — dibayar tunai (COD) saat pengambilan." : ["cancelled", "expired", "failed"].includes(order.status) ? "Pesanan dibatalkan, tidak ada pembayaran." : "Bayar tunai (COD) saat mengambil pesanan."}
+              </Text>
+            ) : null}
           </View>
         ) : null}
 

@@ -32,6 +32,20 @@ export default function ProductDetail() {
   const [qty, setQty] = useState(1);
   const [imgIdx, setImgIdx] = useState(0);
   const [adding, setAdding] = useState(false);
+  const [chatting, setChatting] = useState(false);
+  // chat with the branch the buyer picked (shared catalogue) or the product's own store
+  const openChat = async () => {
+    if (!product) return;
+    if (!user) { router.push("/login" as any); return; }
+    setChatting(true);
+    try {
+      const c = await api.startChat(product.store_id === "pgs-official" ? storeId : product.store_id, product.product_id);
+      router.push(`/chat/${c.conv_id}` as any);
+    } catch (e: any) {
+      setToast(e.message);
+      setTimeout(() => setToast(""), 2500);
+    } finally { setChatting(false); }
+  };
   const [toast, setToast] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
   const [picked, setPicked] = useState<Record<number, string>>({}); // option index -> chosen value
@@ -287,6 +301,10 @@ export default function ProductDetail() {
       </ScrollView>
 
       <View style={[styles.bottom, { paddingBottom: Math.max(spacing.md, insets.bottom + spacing.sm) }]}>
+        <Pressable testID="pd-chat-btn" style={styles.chatBtn} disabled={chatting} onPress={openChat} accessibilityLabel="Chat toko">
+          {chatting ? <ActivityIndicator size="small" color={colors.brandPrimary} /> : <Icon name="chatbubble-ellipses-outline" size={22} color={colors.brandPrimary} />}
+          <Text style={styles.chatText}>Chat</Text>
+        </Pressable>
         <Pressable testID="add-to-cart-btn" style={styles.secondaryBtn} disabled={adding} onPress={() => handleAdd(false)}>
           <Icon name="cart-outline" size={20} color={colors.brandPrimary} />
           <Text style={styles.secondaryText}>Keranjang</Text>
@@ -370,6 +388,8 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border,
     padding: spacing.md, flexDirection: "row", gap: spacing.sm,
   },
+  chatBtn: { width: 56, minHeight: 48, alignItems: "center", justifyContent: "center", gap: 2, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border },
+  chatText: { fontSize: 11, color: colors.brandPrimary, fontWeight: "600" },
   secondaryBtn: {
     flexDirection: "row", gap: 6, alignItems: "center", justifyContent: "center",
     paddingHorizontal: spacing.lg, paddingVertical: 12,
