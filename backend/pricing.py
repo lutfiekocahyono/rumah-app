@@ -6,9 +6,10 @@ CUSTOMER_TYPE_LABELS = {"langsung": "Pembeli Langsung", "pengecer": "Pengecer", 
 
 DEFAULT_PRICING: dict[str, Any] = {
     "key": "pricing",
-    # % discount from the website (eceran) price per customer category
+    # discount per customer category; mode "percent" (from website price) or "rupiah" (per pcs)
     "type_discounts": {"langsung": 0, "pengecer": 0, "reseller": 0},
-    # global quantity tiers: buy >= min_qty -> extra % off
+    "type_discount_modes": {"langsung": "percent", "pengecer": "percent", "reseller": "percent"},
+    # global quantity tiers: buy >= min_qty -> extra discount {mode, value}
     "qty_tiers": [],
 }
 
@@ -24,10 +25,18 @@ def _pct(value: float, pct: float) -> int:
     return int(round(value * (100 - float(pct or 0)) / 100))
 
 
+def _apply(value: float, mode: str, amount: float) -> int:
+    """Reduce a price by a percent or a fixed rupiah amount per pcs (never below 0)."""
+    if mode == "rupiah":
+        return max(0, int(round(value - float(amount or 0))))
+    return _pct(value, amount)
+
+
 def price_tiers(product: dict, ctype: str, pricing: dict) -> list[dict]:
     """Unit price table [{min_qty, price}] for this customer category, ascending."""
     ctype = ctype if ctype in CUSTOMER_TYPES else "langsung"
-    base = _pct(product.get("price", 0), pricing.get("type_discounts", {}).get(ctype, 0))
+    mode = (pricing.get("type_discount_modes") or {}).get(ctype, "percent")
+    base = _apply(product.get("price", 0), mode, pricing.get("type_discounts", {}).get(ctype, 0))
     rows: dict[int, int] = {1: base}
     manual = (product.get("tier_prices") or {}).get(ctype) or []
     if manual:
@@ -39,7 +48,7 @@ def price_tiers(product: dict, ctype: str, pricing: dict) -> list[dict]:
         for t in pricing.get("qty_tiers", []) or []:
             q = int(t.get("min_qty") or 0)
             if q > 1:
-                rows[q] = _pct(base, t.get("discount_percent", 0))
+                rows[q] = _apply(base, t.get("mode", "percent"), t.get("value", t.get("discount_percent", 0)))
     return [{"min_qty": q, "price": rows[q]} for q in sorted(rows)]
 
 

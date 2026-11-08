@@ -146,7 +146,12 @@ export const CUSTOMER_TYPE_LABEL: Record<CustomerType, string> = {
   langsung: "Pembeli Langsung", pengecer: "Pengecer", reseller: "Reseller",
 };
 export type PriceTier = { min_qty: number; price: number };
-export type Pricing = { type_discounts: Record<CustomerType, number>; qty_tiers: { min_qty: number; discount_percent: number }[] };
+export type DiscountMode = "percent" | "rupiah";
+export type Pricing = {
+  type_discounts: Record<CustomerType, number>;
+  type_discount_modes: Record<CustomerType, DiscountMode>;
+  qty_tiers: { min_qty: number; mode: DiscountMode; value: number; discount_percent?: number }[];
+};
 export type ProductTiers = { product_id: string; name: string; price: number; image: string; tier_prices: Record<CustomerType, PriceTier[]> };
 export type StoreInfo = {
   name: string; tagline: string; phone: string; whatsapp: string; website: string;

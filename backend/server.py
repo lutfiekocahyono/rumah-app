@@ -284,11 +284,13 @@ class Order(BaseModel):
 
 class QtyTier(BaseModel):
     min_qty: int = Field(ge=2)
-    discount_percent: float = Field(ge=0, le=100)
+    mode: str = Field(default="percent", pattern="^(percent|rupiah)$")
+    value: float = Field(ge=0)
 
 
 class PricingIn(BaseModel):
     type_discounts: dict[str, float]
+    type_discount_modes: dict[str, str] = {}
     qty_tiers: List[QtyTier] = []
 
 
@@ -807,9 +809,18 @@ async def admin_get_pricing(_=Depends(require_admin)):
 
 @api.put("/admin/pricing")
 async def admin_set_pricing(body: PricingIn, _=Depends(require_admin)):
-    td = {t: max(0.0, min(100.0, float(body.type_discounts.get(t, 0)))) for t in CUSTOMER_TYPES}
+    modes = {t: ("rupiah" if body.type_discount_modes.get(t) == "rupiah" else "percent") for t in CUSTOMER_TYPES}
+    td = {}
+    for t in CUSTOMER_TYPES:
+        v = max(0.0, float(body.type_discounts.get(t, 0)))
+        if modes[t] == "percent" and v > 100:
+            raise HTTPException(status_code=400, detail="Potongan persen maksimal 100%")
+        td[t] = v
+    for t in body.qty_tiers:
+        if t.mode == "percent" and t.value > 100:
+            raise HTTPException(status_code=400, detail="Potongan persen maksimal 100%")
     tiers = sorted({t.min_qty: t for t in body.qty_tiers}.values(), key=lambda t: t.min_qty)
-    doc = {"key": "pricing", "type_discounts": td, "qty_tiers": [t.model_dump() for t in tiers]}
+    doc = {"key": "pricing", "type_discounts": td, "type_discount_modes": modes, "qty_tiers": [t.model_dump() for t in tiers]}
     await db.settings.update_one({"key": "pricing"}, {"$set": doc}, upsert=True)
     return doc
 
