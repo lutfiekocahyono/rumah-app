@@ -11,12 +11,15 @@ from typing import List, Optional
 
 import bcrypt
 import jwt
-from fastapi import APIRouter, BackgroundTasks, Depends, FastAPI, File, Header, HTTPException, Query, Request, Response, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.concurrency import run_in_threadpool
 import httpx
 import notify
 import payments
 import account
+import marketing
+import order_tasks
+from order_tasks import COD_PICKUP_HOURS, RELEASE_STATUSES
 import promo
 import seller
 import shipping
@@ -586,21 +589,36 @@ async def list_categories(parent: Optional[str] = None, all: bool = False):
     return [Category(**d) for d in docs]
 
 
+ALL_BRANCHES = "all"  # listing context: shared catalog + every branch's own products, stock summed
+
+
 def _ctx(x_store_id: Optional[str]) -> str:
     return x_store_id if x_store_id in seller.OFFICIAL_IDS else seller.PGS_STORE_ID
 
 
 async def _visible(ctx: str) -> dict:
     """Hide inactive stores and the *own* products of other official branches (catalog is shared)."""
+    if ctx == ALL_BRANCHES:
+        return {"store_id": {"$nin": await _hidden_stores()}}
     others = [s for s in seller.OFFICIAL_IDS if s not in (seller.PGS_STORE_ID, ctx)]
     return {"store_id": {"$nin": await _hidden_stores() + others}}
 
 
 async def _apply_stock(docs: List[dict], ctx: str) -> List[dict]:
-    """Catalog items show the stock of the buyer's chosen branch."""
+    """Catalog items show the stock of the buyer's chosen branch (or the total of all branches)."""
     if ctx == seller.PGS_STORE_ID:
         return docs
     ids = [d["product_id"] for d in docs if d.get("store_id", seller.PGS_STORE_ID) == seller.PGS_STORE_ID]
+    if ctx == ALL_BRANCHES:
+        hidden = await _hidden_stores()
+        per = [await seller.branch_stocks(db, b, ids) for b in seller.OFFICIAL_IDS if b != seller.PGS_STORE_ID and b not in hidden]
+        for d in docs:
+            if d["product_id"] in ids:
+                own = d.get("stock", 0) if d.get("in_stock", True) else 0
+                d["stock"] = own + sum(p.get(d["product_id"], 0) for p in per)
+                d["in_stock"] = d["stock"] > 0
+                d["store_name"] = "PGS · semua cabang"
+        return docs
     stocks = await seller.branch_stocks(db, ctx, ids)
     for d in docs:
         if d["product_id"] in stocks or d["product_id"] in ids:
@@ -638,7 +656,8 @@ async def list_products(
     user=Depends(get_optional_user),
     x_store_id: Optional[str] = Header(default=None),
 ):
-    ctx = _ctx(x_store_id)
+    # Home, search & categories list every branch at once; a store page (?store=) keeps the chosen branch's view
+    ctx = _ctx(x_store_id) if store else ALL_BRANCHES
     query: dict = await _visible(ctx)
     if category:
         children = [c["category_id"] for c in await db.categories.find({"parent": category}, {"category_id": 1}).to_list(200)]
@@ -646,6 +665,8 @@ async def list_products(
     if q:
         query["name"] = {"$regex": re.escape(q), "$options": "i"}
     if store:
+        if store in await _hidden_stores():
+            return []
         query["store_id"] = store
     sort_map = {
         "popular": [("in_stock", -1), ("sold", -1), ("updated_at", -1), ("product_id", -1)],
@@ -655,6 +676,8 @@ async def list_products(
         "newest": [("in_stock", -1), ("created_at", -1), ("product_id", -1)],
     }
     docs = await _apply_stock(await db.products.find(query, {"_id": 0}).sort(sort_map[sort]).skip(skip).limit(limit).to_list(limit), ctx)
+    if ctx == ALL_BRANCHES and sort in ("popular", "newest"):
+        docs.sort(key=lambda d: not d.get("in_stock", True))  # stable: in-stock (any branch) first within the page
     pricing, flash = await get_pricing(db), await promo.active_flash(db)
     ctype = (user or {}).get("customer_type", "langsung")
     return [_product_out(d, ctype, pricing, flash) for d in docs]
@@ -663,7 +686,7 @@ async def list_products(
 @api.get("/products/{product_id}", response_model=Product)
 async def get_product(product_id: str, user=Depends(get_optional_user), x_store_id: Optional[str] = Header(default=None)):
     ctx = _ctx(x_store_id)
-    doc = await db.products.find_one({"product_id": product_id, **await _visible(ctx)}, {"_id": 0})
+    doc = await db.products.find_one({"product_id": product_id, **await _visible(ALL_BRANCHES)}, {"_id": 0})
     if not doc:
         raise HTTPException(status_code=404, detail="Produk tidak ditemukan")
     await _apply_stock([doc], ctx)
@@ -719,7 +742,7 @@ async def get_cart(owner: str = Depends(get_owner)):
 @api.post("/cart/items", response_model=CartOut)
 async def add_to_cart(body: CartItemIn, owner: str = Depends(get_owner), x_store_id: Optional[str] = Header(default=None)):
     ctx = _ctx(x_store_id)
-    product = await db.products.find_one({"product_id": body.product_id, **await _visible(ctx)})
+    product = await db.products.find_one({"product_id": body.product_id, **await _visible(ALL_BRANCHES)})
     if not product:
         raise HTTPException(status_code=404, detail="Produk tidak ditemukan")
     await _apply_stock([product], ctx)
@@ -912,68 +935,6 @@ async def checkout(body: CheckoutIn, background: BackgroundTasks, owner: str = D
     await ACCT["notify_user"](user_id, "order", "Pesanan dibuat", f"Pesanan {order_doc['order_id']} berhasil dibuat.", f"/order/{order_doc['order_id']}")
     await ACCT["log_activity"](user_id, "order", f"Membuat pesanan {order_doc['order_id']}")
     return _order_out(order_doc)
-
-
-RELEASE_STATUSES = ("cancelled", "expired", "failed")
-COD_PICKUP_HOURS = 48
-COD_REMIND_HOURS = 6  # remind the store admin this long before auto-cancel
-
-
-async def expire_cod_orders() -> int:
-    """Cancel COD pickup orders the store did not process within the deadline; stock/voucher/saldo come back."""
-    now = datetime.now(timezone.utc)
-    n = 0
-    async for o in db.orders.find({"status": "cod", "expires_at": {"$lte": now}}, {"order_id": 1, "user_id": 1}):
-        res = await db.orders.update_one({"order_id": o["order_id"], "status": "cod"}, {"$set": {"status": "cancelled", "updated_at": now},
-                                         "$push": {"status_history": {"status": "cancelled", "at": now, "note": "Batal otomatis: tidak diproses toko dalam batas waktu"}}})
-        if not res.modified_count:
-            continue
-        await _release_voucher(o["order_id"])
-        await ACCT["notify_user"](o.get("user_id"), "order", "Pesanan dibatalkan otomatis",
-                                  f"Pesanan {o['order_id']} batal karena belum diproses toko dalam batas waktu.", f"/order/{o['order_id']}")
-        n += 1
-    return n
-
-
-async def remind_expiring_cod() -> int:
-    """Warn the store admin once when a COD pickup order is close to auto-cancel."""
-    now = datetime.now(timezone.utc)
-    n = 0
-    async for o in db.orders.find({"status": "cod", "expires_at": {"$gt": now, "$lte": now + timedelta(hours=COD_REMIND_HOURS)},
-                                   "expiry_reminded": {"$ne": True}}, {"order_id": 1, "store_id": 1, "expires_at": 1}):
-        res = await db.orders.update_one({"order_id": o["order_id"], "expiry_reminded": {"$ne": True}}, {"$set": {"expiry_reminded": True}})
-        if not res.modified_count:
-            continue
-        store = await db.stores.find_one({"store_id": o["store_id"]}, {"owner_id": 1})
-        if store:
-            exp = o["expires_at"].replace(tzinfo=timezone.utc) if o["expires_at"].tzinfo is None else o["expires_at"]
-            left = max(1, round((exp - now).total_seconds() / 3600))
-            await ACCT["notify_user"](store["owner_id"], "order", "Pesanan COD hampir batal otomatis",
-                                      f"Pesanan {o['order_id']} batal otomatis dalam ±{left} jam. Proses atau perpanjang sekarang.",
-                                      f"/seller/order/{o['order_id']}")
-            n += 1
-    return n
-
-
-async def _expire_loop() -> None:
-    while True:
-        try:
-            await remind_expiring_cod()
-            await expire_cod_orders()
-        except Exception:
-            logging.getLogger(__name__).exception("expire_cod_orders failed")
-        await asyncio.sleep(300)
-
-
-async def _release_voucher(order_id: str) -> None:
-    """Give a voucher use back once when an order is cancelled/expired/failed."""
-    o = await db.orders.find_one_and_update(
-        {"order_id": order_id, "voucher_code": {"$nin": [None, ""]}, "voucher_released": {"$ne": True}},
-        {"$set": {"voucher_released": True}})
-    if o:
-        await db.vouchers.update_one({"code": o["voucher_code"], "used": {"$gt": 0}}, {"$inc": {"used": -1}})
-    await seller.restock_once(db, order_id)
-    await support.return_balance_once(db, order_id)
 
 
 @api.get("/orders", response_model=List[Order])
@@ -1210,139 +1171,6 @@ async def _track(owner: Optional[str], cats: List[str], weight: int = 1, product
     await db.activity.update_one({"owner": owner}, upd, upsert=True)
 
 
-class Banner(BaseModel):
-    banner_id: str
-    title: str
-    subtitle: str = ""
-    image: str
-    link_type: str = "none"
-    link_value: str = ""
-    order: int = 0
-    active: bool = True
-
-
-class BannerIn(BaseModel):
-    title: str = Field(min_length=1, max_length=80)
-    subtitle: str = Field(default="", max_length=120)
-    image: str = Field(min_length=1)
-    link_type: str = Field(default="none", pattern="^(none|category|product|search)$")
-    link_value: str = ""
-    order: int = 0
-    active: bool = True
-
-
-class FlashItemIn(BaseModel):
-    product_id: str
-    flash_price: int = Field(ge=1)
-
-
-class FlashSaleIn(BaseModel):
-    title: str = Field(default="Flash Sale", min_length=1, max_length=40)
-    active: bool = True
-    ends_at: datetime
-    items: List[FlashItemIn] = []
-
-
-class VoucherIn(BaseModel):
-    code: str = Field(pattern="^[A-Za-z0-9]{3,20}$")
-    title: str = Field(min_length=1, max_length=60)
-    description: str = Field(default="", max_length=120)
-    mode: str = Field(default="percent", pattern="^(percent|rupiah)$")
-    value: float = Field(gt=0)
-    max_discount: int = Field(default=0, ge=0)
-    min_purchase: int = Field(default=0, ge=0)
-    quota: int = Field(default=0, ge=0)
-    ends_at: Optional[datetime] = None
-    active: bool = True
-    show_on_home: bool = True
-
-
-class VoucherApplyIn(BaseModel):
-    code: str = Field(min_length=1)
-
-
-class FreeShippingIn(BaseModel):
-    enabled: bool = True
-    title: str = Field(default="Gratis Ongkir", max_length=40)
-    subtitle: str = Field(default="", max_length=120)
-    min_purchase: int = Field(default=0, ge=0)
-
-
-class HomeSettingsIn(BaseModel):
-    free_shipping: FreeShippingIn
-    recommend_mode: str = Field(pattern="^(personal|random)$")
-
-
-def _voucher_out(v: dict, claimed: bool = False) -> dict:
-    out = {k: v.get(k) for k in ("code", "title", "description", "mode", "value", "max_discount",
-                                  "min_purchase", "quota", "used", "active", "show_on_home")}
-    out["ends_at"] = promo.aware(v.get("ends_at"))
-    out["claimed"] = claimed
-    return out
-
-
-def _voucher_live(v: dict) -> bool:
-    ends = promo.aware(v.get("ends_at"))
-    return bool(v.get("active")) and (not ends or ends > promo.now()) and (not v.get("quota") or v.get("used", 0) < v["quota"])
-
-
-@api.get("/banners", response_model=List[Banner])
-async def list_banners():
-    return [Banner(**d) for d in await db.banners.find({"active": True}, {"_id": 0}).sort("order", 1).to_list(20)]
-
-
-@api.get("/home-settings")
-async def home_settings():
-    return await promo.get_home(db)
-
-
-@api.get("/flash-sale")
-async def flash_sale(user=Depends(get_optional_user)):
-    flash = await promo.active_flash(db)
-    if not flash:
-        return {"active": False, "items": []}
-    ids = list(flash["prices"].keys())
-    docs = {d["product_id"]: d for d in await db.products.find({"product_id": {"$in": ids}}, {"_id": 0}).to_list(100)}
-    pricing, ctype = await get_pricing(db), (user or {}).get("customer_type", "langsung")
-    items = [_product_out(docs[i], ctype, pricing, flash) for i in ids if i in docs]
-    return {"active": True, "title": flash["title"], "ends_at": flash["ends_at"], "items": items}
-
-
-@api.get("/vouchers")
-async def list_vouchers(owner: Optional[str] = Depends(get_optional_owner)):
-    docs = await db.vouchers.find({"active": True, "show_on_home": True}, {"_id": 0}).sort("created_at", -1).to_list(50)
-    claim = await db.voucher_claims.find_one({"owner": owner}) if owner else None
-    mine = set((claim or {}).get("codes", []))
-    return [_voucher_out(v, v["code"] in mine) for v in docs if _voucher_live(v)]
-
-
-@api.get("/vouchers/mine")
-async def my_vouchers(owner: str = Depends(get_owner)):
-    claim = await db.voucher_claims.find_one({"owner": owner}) or {}
-    docs = await db.vouchers.find({"code": {"$in": claim.get("codes", [])}}, {"_id": 0}).to_list(50)
-    return [_voucher_out(v, True) for v in docs if _voucher_live(v)]
-
-
-@api.post("/vouchers/{code}/claim")
-async def claim_voucher(code: str, owner: str = Depends(get_owner)):
-    v = await db.vouchers.find_one({"code": code.upper()})
-    if not v or not _voucher_live(v):
-        raise HTTPException(status_code=404, detail="Voucher tidak tersedia")
-    await db.voucher_claims.update_one({"owner": owner}, {"$addToSet": {"codes": v["code"]}}, upsert=True)
-    return _voucher_out(v, True)
-
-
-@api.post("/vouchers/apply")
-async def apply_voucher(body: VoucherApplyIn, owner: str = Depends(get_owner)):
-    cart = await _load_cart_detailed(owner)
-    code = body.code.strip().upper()
-    v = await db.vouchers.find_one({"code": code})
-    discount, err = promo.voucher_check(v, cart.subtotal)
-    if err:
-        raise HTTPException(status_code=400, detail=err)
-    return {"code": code, "title": v["title"], "discount": discount}
-
-
 @api.post("/activity/view/{product_id}")
 async def track_view(product_id: str, owner: Optional[str] = Depends(get_optional_owner)):
     p = await db.products.find_one({"product_id": product_id}, {"category": 1, "categories": 1})
@@ -1358,7 +1186,7 @@ async def recommendations(
     x_store_id: Optional[str] = Header(default=None),
 ):
     mode = (await promo.get_home(db))["recommend_mode"]
-    base = {"in_stock": {"$ne": False}, **await _visible(_ctx(x_store_id))}
+    base = {**await _visible(ALL_BRANCHES)}  # stock is checked after summing all branches
     docs: list = []
     if mode == "random":
         docs = await db.products.aggregate([{"$match": base}, {"$sample": {"size": limit}}, {"$project": {"_id": 0}}]).to_list(limit)
@@ -1373,144 +1201,21 @@ async def recommendations(
             {"$sort": {"_fav": -1, "sold": -1, "created_at": -1, "product_id": -1}},
             {"$skip": skip}, {"$limit": limit}, {"$project": {"_id": 0, "_fav": 0}},
         ]).to_list(limit)
-    await _apply_stock(docs, _ctx(x_store_id))
+    await _apply_stock(docs, ALL_BRANCHES)
+    docs = [d for d in docs if d.get("in_stock", True) and d.get("stock", 0) > 0]
     pricing, flash = await get_pricing(db), await promo.active_flash(db)
     ctype = (user or {}).get("customer_type", "langsung")
     return [_product_out(d, ctype, pricing, flash) for d in docs]
-
-
-# --- uploaded files (banner images) ---
-@api.post("/admin/upload")
-async def admin_upload(file: UploadFile = File(...), admin=Depends(require_admin)):
-    if not (file.content_type or "").startswith("image/"):
-        raise HTTPException(status_code=400, detail="File harus berupa gambar")
-    data = await file.read()
-    if len(data) > 8 * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="Ukuran gambar maksimal 8 MB")
-    ext = (file.filename or "img.jpg").rsplit(".", 1)[-1].lower()[:5] or "jpg"
-    path = f"{storage.APP_NAME}/uploads/{admin['user_id']}/{uuid.uuid4().hex}.{ext}"
-    try:
-        res = await run_in_threadpool(storage.put_object, path, data, file.content_type)
-    except Exception as exc:
-        logger.exception("upload failed")
-        code = getattr(getattr(exc, "response", None), "status_code", 0)
-        raise HTTPException(status_code=502, detail="Kuota penyimpanan habis" if code == 402 else "Upload gagal, coba lagi")
-    await db.uploads.insert_one({"storage_path": res["path"], "owner_id": admin["user_id"], "content_type": file.content_type,
-                                 "original_filename": file.filename, "size": len(data), "is_deleted": False,
-                                 "created_at": datetime.now(timezone.utc)})
-    return {"url": f"/api/files/{res['path']}"}
-
-
-@api.get("/files/{path:path}")
-async def get_file(path: str):
-    rec = await db.uploads.find_one({"storage_path": path, "is_deleted": False})
-    if not rec:  # banner images are public; only files we recorded are served
-        raise HTTPException(status_code=404, detail="File tidak ditemukan")
-    data, ctype = await run_in_threadpool(storage.get_object, path)
-    return Response(content=data, media_type=rec.get("content_type") or ctype,
-                    headers={"Cache-Control": "public, max-age=604800, immutable"})
-
-
-# --- admin: banners ---
-@api.get("/admin/banners", response_model=List[Banner])
-async def admin_banners(_=Depends(require_admin)):
-    return [Banner(**d) for d in await db.banners.find({}, {"_id": 0}).sort("order", 1).to_list(50)]
-
-
-@api.post("/admin/banners", response_model=Banner)
-async def admin_create_banner(body: BannerIn, _=Depends(require_admin)):
-    doc = {**body.model_dump(), "banner_id": f"bn_{uuid.uuid4().hex[:10]}"}
-    await db.banners.insert_one({**doc})
-    return Banner(**doc)
-
-
-@api.put("/admin/banners/{banner_id}", response_model=Banner)
-async def admin_update_banner(banner_id: str, body: BannerIn, _=Depends(require_admin)):
-    d = await db.banners.find_one_and_update({"banner_id": banner_id}, {"$set": body.model_dump()},
-                                             projection={"_id": 0}, return_document=ReturnDocument.AFTER)
-    if not d:
-        raise HTTPException(status_code=404, detail="Banner tidak ditemukan")
-    return Banner(**d)
-
-
-@api.delete("/admin/banners/{banner_id}")
-async def admin_delete_banner(banner_id: str, _=Depends(require_admin)):
-    await db.banners.delete_one({"banner_id": banner_id})
-    return {"ok": True}
-
-
-# --- admin: flash sale ---
-@api.get("/admin/flash-sale")
-async def admin_get_flash(_=Depends(require_admin)):
-    doc = await db.settings.find_one({"key": "flash_sale"}, {"_id": 0}) or {
-        "title": "Flash Sale", "active": False, "ends_at": promo.now() + timedelta(days=1), "items": []}
-    ids = [i["product_id"] for i in doc.get("items", [])]
-    prods = {p["product_id"]: p for p in await db.products.find({"product_id": {"$in": ids}}, {"_id": 0, "product_id": 1, "name": 1, "image": 1, "price": 1}).to_list(100)}
-    items = [{**i, **{k: prods[i["product_id"]][k] for k in ("name", "image", "price")}} for i in doc.get("items", []) if i["product_id"] in prods]
-    return {"title": doc.get("title", "Flash Sale"), "active": bool(doc.get("active")), "ends_at": promo.aware(doc.get("ends_at")), "items": items}
-
-
-@api.put("/admin/flash-sale")
-async def admin_set_flash(body: FlashSaleIn, _=Depends(require_admin)):
-    items = list({i.product_id: i.model_dump() for i in body.items}.values())
-    await db.settings.update_one({"key": "flash_sale"}, {"$set": {
-        "title": body.title, "active": body.active, "ends_at": promo.aware(body.ends_at), "items": items}}, upsert=True)
-    return await admin_get_flash(_)
-
-
-# --- admin: vouchers ---
-@api.get("/admin/vouchers")
-async def admin_vouchers(_=Depends(require_admin)):
-    return [_voucher_out(v) for v in await db.vouchers.find({}, {"_id": 0}).sort("created_at", -1).to_list(200)]
-
-
-def _check_voucher_in(body: VoucherIn) -> dict:
-    if body.mode == "percent" and body.value > 100:
-        raise HTTPException(status_code=400, detail="Potongan persen maksimal 100%")
-    return {**body.model_dump(), "code": body.code.upper(), "ends_at": promo.aware(body.ends_at)}
-
-
-@api.post("/admin/vouchers")
-async def admin_create_voucher(body: VoucherIn, _=Depends(require_admin)):
-    doc = _check_voucher_in(body)
-    if await db.vouchers.find_one({"code": doc["code"]}):
-        raise HTTPException(status_code=400, detail="Kode voucher sudah dipakai")
-    await db.vouchers.insert_one({**doc, "used": 0, "created_at": datetime.now(timezone.utc)})
-    if doc["active"] and doc["show_on_home"]:
-        await ACCT["broadcast_promo"](f"Voucher baru: {doc['code']}", doc["title"], "/")
-    return _voucher_out({**doc, "used": 0})
-
-
-@api.put("/admin/vouchers/{code}")
-async def admin_update_voucher(code: str, body: VoucherIn, _=Depends(require_admin)):
-    doc = _check_voucher_in(body)
-    if doc["code"] != code.upper():
-        raise HTTPException(status_code=400, detail="Kode voucher tidak bisa diubah")
-    d = await db.vouchers.find_one_and_update({"code": code.upper()}, {"$set": doc}, projection={"_id": 0},
-                                              return_document=ReturnDocument.AFTER)
-    if not d:
-        raise HTTPException(status_code=404, detail="Voucher tidak ditemukan")
-    return _voucher_out(d)
-
-
-@api.delete("/admin/vouchers/{code}")
-async def admin_delete_voucher(code: str, _=Depends(require_admin)):
-    await db.vouchers.delete_one({"code": code.upper()})
-    return {"ok": True}
-
-
-# --- admin: home settings (free shipping banner + recommendation mode) ---
-@api.put("/admin/home-settings")
-async def admin_set_home(body: HomeSettingsIn, _=Depends(require_admin)):
-    await db.settings.update_one({"key": "home"}, {"$set": body.model_dump()}, upsert=True)
-    return await promo.get_home(db)
-
 
 async def _product_out_for_user(d: dict, user: dict) -> Product:
     return _product_out(d, user.get("customer_type", "langsung"), await get_pricing(db), await promo.active_flash(db))
 
 
 ACCT = account.register(api, db, get_current_user, _user_out, _make_token)
+_release_voucher, expire_cod_orders, remind_expiring_cod, _expire_loop = order_tasks.register(db, ACCT["notify_user"])
+marketing.register(api, db, require_admin=require_admin, get_owner=get_owner, get_optional_owner=get_optional_owner,
+                   get_optional_user=get_optional_user, product_out=_product_out, load_cart_detailed=_load_cart_detailed,
+                   broadcast_promo=ACCT["broadcast_promo"])
 seller.register(api, db, get_current_user, require_admin, _product_out_for_user, ACCT["notify_user"], ACCT["log_activity"],
                 _release_voucher, _order_out)
 

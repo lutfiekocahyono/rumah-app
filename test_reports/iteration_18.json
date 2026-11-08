@@ -1,0 +1,30 @@
+{
+  "summary": "Iteration 18: regression test of the pure refactor (server.py split into marketing.py and order_tasks.py; checkout.tsx split into src/components/checkout/*). I found NO REGRESSIONS. Backend: the route set is identical (138 routes) and the route-shadowing analysis is the same as at HEAD. Diffing the moved code shows only the renames (_release_voucher->release_order, ACCT[...]->injected callables). New suite tests/test_pgs_iter18_refactor_regression.py: 12/12 pass. It covers public banners, home-settings, flash-sale, vouchers, vouchers/mine, claim and apply; admin banner/voucher CRUD, the flash-sale PUT roundtrip and the home-settings PUT roundtrip (values restored); and pickup+COD checkout with voucher and saldo, which gives a 6-digit pickup_code and expires_at. Cancelling through the seller and through the admin each give back the voucher use, the stock and the saldo, and a second cancel does not give them back twice. iter3/15/16/17 suites: 47/47 pass. Older suites (api, iter2, iter4-14): 56 fail and 1 errors, and 138 pass. I traced the failures to tests that predate later rule changes (COD with a courier is now rejected, the Midtrans key/settings rules, the stale categories count, old payload shapes); none come from the refactor. Frontend at 375x667 as demo@pgs.id: every requested flow passes. 'co-courier-pickup' shows co-pickup-note and hides co-address and co-city, and pay-cod is the only option. Picking JNE shows the address fields, hides pay-cod, shows co-online-required and adds Rp25.000 shipping to the summary (238.000). The voucher flow works: an invalid code gives co-voucher-error, which clears when typing; a valid one shows co-voucher-ok with -Rp1.000 (total 212.000); co-voucher-remove clears the input and brings back the claimed chips. The saldo toggle shows because the balance is 15.000; it brings Total to 198.000 and reverts when switched off. Placing a pickup COD order goes to /order/PGS-261108-C7C400; the DB shows status cod, pickup_code, expires_at at +48h and discount 1000. Console showed no page errors. All testIDs match the old file. No deprecated Expo packages were found.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "legacy suites (test_pgs_api, iter2, iter4-14)", "issue": "56 failed and 1 errored. These are obsolete tests: COD+courier is now rejected (400 'COD hanya untuk Ambil di toko'), the Midtrans key/settings rules changed, the categories count is stale, and payloads changed (qty_tiers value, phone min length). The same failures happen with the pre-refactor logic, because the moved code is identical."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_pgs_iter18_refactor_regression.py", "/app/backend/tests/ui_iter18_helper.py", "/app/test_reports/pytest/pytest_iter18.xml", "/app/test_reports/pytest/iter18_rest.xml"],
+  "action_items": [
+    "Optional: update or retire the obsolete legacy suites (iter8_cod_shipping, iter7_support, iter6_shipping, iter2, test_pgs_api, iter12/13) so that full-suite runs are green; they still use COD with a courier and old payloads."
+  ],
+  "critical_code_review_comments": [
+    "marketing.register / order_tasks.register take explicit dependencies; ordering is correct (ACCT is defined before them and all are registered before app.include_router).",
+    "checkout.tsx: validate() and rememberArea() are extracted with the same conditions and messages; the sequence on submit (checkout -> refresh -> rememberArea -> replace -> openBrowser) is the same as before.",
+    "Unchanged pre-existing behaviour, not a regression: when a delivery courier is chosen and no online payment is available, the button still reads 'Buat Pesanan' (method stays 'cod'); validation then blocks submit."
+  ],
+  "updated_files": ["/app/backend/tests/test_pgs_iter18_refactor_regression.py", "/app/backend/tests/ui_iter18_helper.py"],
+  "success_rate": {"backend": "100% of refactor-relevant tests (59/59: iter18 12 + iter3/15/16/17 47); legacy obsolete suites 138/195", "frontend": "100%"},
+  "seed_data_creation": "Temporary TEST vouchers (TST*, TSTUI79BD) and TEST_ users and banners were created and then deleted. The demo UI order PGS-261108-C7C400 was cancelled by the admin afterwards, which released the voucher and restored stock. The demo wallet stayed at 15000. The demo cart is empty.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Export EXPO_PUBLIC_BACKEND_URL (the tests use it, not EXPO_BACKEND_URL) and run pytest with -o addopts=\"\". In the Expo web checkout the absolute bottom bar can intercept force-clicks on courier rows near the bottom of the screen; call scroll_into_view_if_needed() and do a normal click. ui_iter18_helper.py has state/setup/cleanup commands for the demo cart and the voucher. Payment methods: midtrans=false, xendit=false, so a delivery courier shows co-online-required."
+}

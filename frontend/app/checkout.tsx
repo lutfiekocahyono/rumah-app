@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { View, Text, StyleSheet, Pressable, TextInput, KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator } from "react-native";
+import { View, Text, StyleSheet, Pressable, KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Icon from "@react-native-vector-icons/ionicons";
@@ -7,11 +7,22 @@ import Icon from "@react-native-vector-icons/ionicons";
 import { colors, fontSize, radius, spacing, formatIDR } from "@/src/theme";
 import { useCart } from "@/src/cart-context";
 import { useAuth } from "@/src/auth-context";
-import { api, type Address, type Courier, type Destination, type PaymentMethod, type Voucher } from "@/src/api";
+import { api, type Address, type Courier, type Destination, type PaymentMethod } from "@/src/api";
 import { DestinationSearch } from "@/src/components/destination-search";
 import { BranchSwitcher } from "@/src/components/branch-switcher";
 import { useStore } from "@/src/store-context";
+import { co } from "@/src/components/checkout/styles";
+import { Input, Row } from "@/src/components/checkout/fields";
+import { VoucherSection, type AppliedVoucher } from "@/src/components/checkout/voucher-section";
+import { BalanceSection, PaymentSection, type PayAvail } from "@/src/components/checkout/payment-section";
+import { CourierList } from "@/src/components/checkout/courier-list";
 import * as WebBrowser from "expo-web-browser";
+
+// "GUBENG, GUBENG, SURABAYA, JAWA TIMUR, 60281" -> "Surabaya"
+const cityFromLabel = (label: string) => {
+  const parts = label.split(",").map((s) => s.trim());
+  return parts.length >= 3 ? parts[2].toLowerCase().replace(/\b\w/g, (ch) => ch.toUpperCase()) : null;
+};
 
 export default function Checkout() {
   const insets = useSafeAreaInsets();
@@ -20,24 +31,16 @@ export default function Checkout() {
   const { user } = useAuth();
   const { choose } = useStore();
 
+  // --- buyer / address ---
   const [fullName, setFullName] = useState(user?.name ?? "");
   useEffect(() => { if (user?.name) setFullName((n) => n || user.name); }, [user?.name]);
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
   const [city, setCity] = useState("Sidoarjo");
   const [cityIsBuyers, setCityIsBuyers] = useState(false); // default "Sidoarjo" must not count as the buyer's area
-  const [method, setMethod] = useState<PaymentMethod>("cod");
-  const [payAvail, setPayAvail] = useState({ midtrans: false, xendit: false, midtrans_sandbox: true });
-  useEffect(() => { api.paymentMethods().then(setPayAvail).catch(() => {}); }, []);
-  const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState("");
-  const [voucherText, setVoucherText] = useState("");
-  const [voucher, setVoucher] = useState<{ code: string; title: string; discount: number } | null>(null);
-  const [voucherErr, setVoucherErr] = useState("");
-  const [voucherBusy, setVoucherBusy] = useState(false);
-  const [myVouchers, setMyVouchers] = useState<Voucher[]>([]);
   const [addresses, setAddresses] = useState<Address[]>([]);
   const [addrId, setAddrId] = useState("");
+  const [dest, setDest] = useState<Destination | null>(null);
   const pickAddress = (a: Address) => {
     setAddrId(a.address_id);
     setFullName(a.recipient);
@@ -46,33 +49,28 @@ export default function Checkout() {
     setCity(a.city);
     setCityIsBuyers(true);
     // Saved shipping area -> rates appear immediately, no search needed
-    if (a.destination_id) setDest({ id: a.destination_id, label: a.destination_label ?? "" });
-    else setDest(null);
+    setDest(a.destination_id ? { id: a.destination_id, label: a.destination_label ?? "" } : null);
   };
-
   useEffect(() => {
     if (!user) return;
     api.addresses().then((l) => { setAddresses(l); const d = l.find((a) => a.is_default) ?? l[0]; if (d) pickAddress(d); }).catch(() => {});
   }, [user]);
-
-  useEffect(() => { api.myVouchers().then(setMyVouchers).catch(() => {}); }, []);
-
-  const applyVoucher = async (code: string) => {
-    if (!code.trim()) return;
-    setVoucherBusy(true);
-    setVoucherErr("");
-    try {
-      setVoucher(await api.applyVoucher(code.trim()));
-      setVoucherText(code.trim().toUpperCase());
-    } catch (e: any) {
-      setVoucher(null);
-      setVoucherErr(e.message);
-    } finally {
-      setVoucherBusy(false);
-    }
+  const pickDest = (d: Destination | null) => {
+    setDest(d);
+    const c = d ? cityFromLabel(d.label) : null;
+    if (c) setCity(c);
   };
 
-  const discount = voucher?.discount ?? 0;
+  // --- payment ---
+  const [method, setMethod] = useState<PaymentMethod>("cod");
+  const [payAvail, setPayAvail] = useState<PayAvail>({ midtrans: false, xendit: false, midtrans_sandbox: true });
+  useEffect(() => { api.paymentMethods().then(setPayAvail).catch(() => {}); }, []);
+  const [voucher, setVoucher] = useState<AppliedVoucher | null>(null);
+  const [balance, setBalance] = useState(0);
+  const [useBalance, setUseBalance] = useState(false);
+  useEffect(() => { if (user) api.wallet().then((w) => setBalance(w.balance)).catch(() => {}); }, [user]);
+
+  // --- store items & shipping ---
   const params = useLocalSearchParams<{ store?: string }>();
   const storeId = params.store || cart.items[0]?.store_id || "pgs-official";
   const items = cart.items.filter((i) => i.store_id === storeId);
@@ -80,7 +78,6 @@ export default function Checkout() {
   const itemCount = items.reduce((t, i) => t + i.quantity, 0);
   const [couriers, setCouriers] = useState<Courier[]>([]);
   const [courier, setCourier] = useState("");
-  const [dest, setDest] = useState<Destination | null>(null);
   const [autoShip, setAutoShip] = useState(false);
   const [ratesKey, setRatesKey] = useState(0);
   const [ratesLoading, setRatesLoading] = useState(false);
@@ -104,58 +101,61 @@ export default function Checkout() {
     }).catch(() => {}).finally(() => { if (!stale) setRatesLoading(false); });
     return () => { stale = true; };
   }, [storeId, dest, ratesKey, payAvail.midtrans]);
+
   // COD only for "Ambil di toko"; courier delivery must be paid online
   const isPickup = courier === "pickup";
   useEffect(() => {
     if (!isPickup && method === "cod") { if (payAvail.midtrans) setMethod("midtrans"); else if (payAvail.xendit) setMethod("xendit"); }
     if (isPickup && method !== "cod" && !payAvail.midtrans && !payAvail.xendit) setMethod("cod");
   }, [isPickup, method, payAvail.midtrans, payAvail.xendit]);
-  const pickDest = (d: Destination | null) => {
-    setDest(d);
-    const parts = d?.label.split(",").map((s) => s.trim()) ?? [];
-    if (parts.length >= 3) setCity(parts[2].toLowerCase().replace(/\b\w/g, (ch) => ch.toUpperCase()));
-  };
-  const shipCost = couriers.find((c) => c.code === courier)?.cost ?? 0;
+
+  // --- totals ---
+  const selectedCourier = couriers.find((c) => c.code === courier);
+  const shipCost = selectedCourier?.cost ?? 0;
+  const discount = voucher?.discount ?? 0;
   const total = subtotal - discount + shipCost;
-  const [balance, setBalance] = useState(0);
-  const [useBalance, setUseBalance] = useState(false);
-  useEffect(() => { if (user) api.wallet().then((w) => setBalance(w.balance)).catch(() => {}); }, [user]);
   const balanceUsed = useBalance ? Math.min(balance, total) : 0;
   const toPay = total - balanceUsed;
 
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState("");
+
+  const validate = () => {
+    if (!fullName.trim() || !phone.trim() || (!isPickup && (!address.trim() || !city.trim())))
+      return isPickup ? "Lengkapi nama dan nomor HP pemesan" : "Lengkapi semua data pengiriman";
+    if (itemCount === 0) return "Keranjang kosong";
+    if (!courier) return "Pilih kurir pengiriman";
+    if (!isPickup && toPay > 0 && !payAvail.midtrans && !payAvail.xendit)
+      return "Pengiriman kurir wajib bayar online, yang saat ini belum tersedia. Pilih Ambil di toko (COD).";
+    return "";
+  };
+
+  // Remember the shipping area on the saved address so next checkout quotes instantly
+  const rememberArea = () => {
+    const picked = addresses.find((a) => a.address_id === addrId);
+    if (!picked || !dest || picked.destination_id === dest.id) return;
+    const parts = dest.label.split(",").map((s) => s.trim());
+    const areaPostal = parts.length >= 5 && /^\d{5}$/.test(parts[4]) ? parts[4] : picked.postal_code;
+    api.saveAddress({
+      label: picked.label, recipient: picked.recipient, phone: picked.phone, address: picked.address, is_default: picked.is_default,
+      city: cityFromLabel(dest.label) ?? picked.city, postal_code: areaPostal, destination_id: dest.id, destination_label: dest.label,
+    }, picked.address_id).catch(() => {});
+  };
+
   const submit = async () => {
-    setErr("");
-    if (!fullName.trim() || !phone.trim() || (!isPickup && (!address.trim() || !city.trim()))) {
-      setErr(isPickup ? "Lengkapi nama dan nomor HP pemesan" : "Lengkapi semua data pengiriman");
-      return;
-    }
-    if (itemCount === 0) {
-      setErr("Keranjang kosong");
-      return;
-    }
-    if (!courier) {
-      setErr("Pilih kurir pengiriman");
-      return;
-    }
-    if (!isPickup && toPay > 0 && !payAvail.midtrans && !payAvail.xendit) {
-      setErr("Pengiriman kurir wajib bayar online, yang saat ini belum tersedia. Pilih Ambil di toko (COD).");
-      return;
-    }
+    const v = validate();
+    setErr(v);
+    if (v) return;
     setLoading(true);
     try {
-      const order = await api.checkout({ full_name: fullName, phone, address: isPickup ? "" : address, city: isPickup ? "" : city, payment_method: toPay === 0 && balanceUsed > 0 ? "saldo" : method, use_balance: useBalance, voucher_code: voucher?.code, store_id: storeId, courier, expected_shipping_cost: shipCost, destination_id: isPickup ? null : dest?.id ?? null, destination_label: isPickup ? "" : dest?.label ?? "" });
+      const order = await api.checkout({
+        full_name: fullName, phone, address: isPickup ? "" : address, city: isPickup ? "" : city,
+        payment_method: toPay === 0 && balanceUsed > 0 ? "saldo" : method, use_balance: useBalance, voucher_code: voucher?.code,
+        store_id: storeId, courier, expected_shipping_cost: shipCost,
+        destination_id: isPickup ? null : dest?.id ?? null, destination_label: isPickup ? "" : dest?.label ?? "",
+      });
       await refresh();
-      // Remember the shipping area on the saved address so next checkout quotes instantly
-      const picked = addresses.find((a) => a.address_id === addrId);
-      if (picked && dest && picked.destination_id !== dest.id) {
-        const parts = dest.label.split(",").map((s) => s.trim());
-        const areaCity = parts.length >= 3 ? parts[2].toLowerCase().replace(/\b\w/g, (ch) => ch.toUpperCase()) : picked.city;
-        const areaPostal = parts.length >= 5 && /^\d{5}$/.test(parts[4]) ? parts[4] : picked.postal_code;
-        api.saveAddress({
-          label: picked.label, recipient: picked.recipient, phone: picked.phone, address: picked.address, is_default: picked.is_default,
-          city: areaCity, postal_code: areaPostal, destination_id: dest.id, destination_label: dest.label,
-        }, picked.address_id).catch(() => {});
-      }
+      rememberArea();
       router.replace(`/order/${order.order_id}` as any);
       if (order.payment_url) await WebBrowser.openBrowserAsync(order.payment_url);
     } catch (e: any) {
@@ -164,6 +164,16 @@ export default function Checkout() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const moveBranch = async (to: string) => {
+    setErr("");
+    const r = await api.moveCart(storeId, to).catch((e) => { setErr(e.message); return null; });
+    if (!r) return;
+    await choose(to);
+    await refresh();
+    router.setParams({ store: to });
+    if (r.skipped.length) setErr(`${r.skipped.length} barang tidak tersedia di toko baru dan tetap di keranjang toko lama`);
   };
 
   return (
@@ -177,26 +187,26 @@ export default function Checkout() {
       </View>
 
       <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: 160 }} keyboardShouldPersistTaps="handled">
-        <Text style={styles.section}>{isPickup ? "Data Pemesan" : "Alamat Pengiriman"}</Text>
+        <Text style={co.section}>{isPickup ? "Data Pemesan" : "Alamat Pengiriman"}</Text>
         {user && !isPickup ? (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm, paddingBottom: spacing.sm }}>
             {addresses.map((a) => (
-              <Pressable key={a.address_id} testID={`co-addr-${a.address_id}`} onPress={() => pickAddress(a)} style={[styles.vChip, addrId === a.address_id && { backgroundColor: colors.brandPrimary }]}>
+              <Pressable key={a.address_id} testID={`co-addr-${a.address_id}`} onPress={() => pickAddress(a)} style={[co.vChip, addrId === a.address_id && { backgroundColor: colors.brandPrimary }]}>
                 <Icon name="location-outline" size={14} color={addrId === a.address_id ? colors.onBrandPrimary : colors.brandPrimary} />
-                <Text style={[styles.vChipText, addrId === a.address_id && { color: colors.onBrandPrimary }]}>{a.label} · {a.recipient}</Text>
+                <Text style={[co.vChipText, addrId === a.address_id && { color: colors.onBrandPrimary }]}>{a.label} · {a.recipient}</Text>
               </Pressable>
             ))}
-            <Pressable testID="co-addr-manage" onPress={() => router.push("/account/addresses" as any)} style={styles.vChip}>
+            <Pressable testID="co-addr-manage" onPress={() => router.push("/account/addresses" as any)} style={co.vChip}>
               <Icon name="add" size={14} color={colors.brandPrimary} />
-              <Text style={styles.vChipText}>{addresses.length ? "Kelola alamat" : "Simpan alamat"}</Text>
+              <Text style={co.vChipText}>{addresses.length ? "Kelola alamat" : "Simpan alamat"}</Text>
             </Pressable>
           </ScrollView>
         ) : null}
-        <View style={styles.card}>
+        <View style={co.card}>
           <Input testID="co-name" label="Nama Lengkap" value={fullName} onChangeText={setFullName} />
           <Input testID="co-phone" label="No. HP / WhatsApp" value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
           {isPickup ? (
-            <Text style={styles.paySub} testID="co-pickup-note">Ambil sendiri di toko — alamat pengiriman tidak perlu diisi.</Text>
+            <Text style={co.paySub} testID="co-pickup-note">Ambil sendiri di toko — alamat pengiriman tidak perlu diisi.</Text>
           ) : (
             <>
               <Input testID="co-address" label="Alamat lengkap" value={address} onChangeText={setAddress} multiline />
@@ -205,173 +215,48 @@ export default function Checkout() {
           )}
         </View>
 
-        <Text style={[styles.section, { marginTop: spacing.xl }]}>Toko & Kurir</Text>
-        <View style={styles.card} testID="checkout-couriers">
-          <Text style={styles.paySub}>Dikirim dari: {items[0]?.store_name ?? "-"}</Text>
-          <BranchSwitcher storeId={storeId} items={items} area={dest?.label || (cityIsBuyers ? city : "")} pickup={courier === "pickup"} onMove={async (to) => {
-            setErr("");
-            const r = await api.moveCart(storeId, to).catch((e) => { setErr(e.message); return null; });
-            if (!r) return;
-            await choose(to);
-            await refresh();
-            router.setParams({ store: to });
-            if (r.skipped.length) setErr(`${r.skipped.length} barang tidak tersedia di toko baru dan tetap di keranjang toko lama`);
-          }} />
+        <Text style={[co.section, co.sectionGap]}>Toko & Kurir</Text>
+        <View style={co.card} testID="checkout-couriers">
+          <Text style={co.paySub}>Dikirim dari: {items[0]?.store_name ?? "-"}</Text>
+          <BranchSwitcher storeId={storeId} items={items} area={dest?.label || (cityIsBuyers ? city : "")} pickup={isPickup} onMove={moveBranch} />
           {autoShip && !isPickup ? (
             <View style={{ gap: 4 }}>
-              <Text style={styles.paySub}>Kecamatan tujuan (untuk ongkir otomatis JNE / J&T / SiCepat)</Text>
+              <Text style={co.paySub}>Kecamatan tujuan (untuk ongkir otomatis JNE / J&T / SiCepat)</Text>
               <DestinationSearch testID="co-dest" search={searchDest} value={dest} onPick={pickDest} />
             </View>
           ) : null}
-          {autoShip && !dest && !isPickup ? <Text style={styles.paySub}>Pilih kecamatan tujuan dulu; sementara tampil tarif standar.</Text> : null}
-          {couriers.map((c) => (
-            <Pressable key={c.code} testID={`co-courier-${c.code}`} onPress={() => setCourier(c.code)}
-              style={{ flexDirection: "row", alignItems: "center", gap: spacing.md, minHeight: 48 }}>
-              <Icon name={courier === c.code ? "radio-button-on" : "radio-button-off"} size={20} color={courier === c.code ? colors.brandPrimary : colors.muted} />
-              <View style={{ flex: 1 }}>
-                <Text style={{ color: colors.onSurface, fontSize: fontSize.base }}>{c.name}</Text>
-                {c.eta ? <Text style={styles.paySub}>Estimasi {c.eta}</Text> : null}
-              </View>
-              <Text style={{ color: colors.onSurface, fontWeight: "600" }}>{c.cost ? formatIDR(c.cost) : "Gratis"}</Text>
-            </Pressable>
-          ))}
+          {autoShip && !dest && !isPickup ? <Text style={co.paySub}>Pilih kecamatan tujuan dulu; sementara tampil tarif standar.</Text> : null}
+          <CourierList couriers={couriers} selected={courier} onPick={setCourier} />
         </View>
 
-        {balance > 0 ? (
-          <>
-            <Text style={[styles.section, { marginTop: spacing.xl }]}>Saldo</Text>
-            <Pressable testID="co-use-balance" style={[styles.card, styles.payRow]} onPress={() => setUseBalance((v) => !v)}>
-              <Icon name={useBalance ? "checkbox" : "square-outline"} size={22} color={useBalance ? colors.brandPrimary : colors.muted} />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.payLabel}>Pakai saldo {formatIDR(balance)}</Text>
-                <Text style={styles.paySub}>{useBalance ? (toPay === 0 ? "Pesanan lunas dengan saldo" : `Sisa ${formatIDR(toPay)} dibayar dengan metode di bawah`) : "Dari refund komplain yang disetujui"}</Text>
-              </View>
-            </Pressable>
-          </>
-        ) : null}
+        <BalanceSection balance={balance} useBalance={useBalance} toPay={toPay} onToggle={() => setUseBalance((v) => !v)} />
+        {toPay > 0 ? <PaymentSection isPickup={isPickup} payAvail={payAvail} method={method} onPick={setMethod} /> : null}
+        <VoucherSection voucher={voucher} onChange={setVoucher} />
 
-        {toPay > 0 ? <Text style={[styles.section, { marginTop: spacing.xl }]}>Metode Pembayaran</Text> : null}
-        {toPay > 0 ? <View style={styles.card}>
-          {!isPickup && !payAvail.midtrans && !payAvail.xendit ? (
-            <Text style={[styles.paySub, { color: colors.error }]} testID="co-online-required">
-              Pengiriman kurir wajib bayar online, yang saat ini belum tersedia. Pilih &quot;Ambil di toko&quot; untuk bayar COD.
-            </Text>
-          ) : null}
-          {isPickup ? <Text style={styles.paySub}>COD (bayar tunai) hanya untuk Ambil di toko. Pesanan batal otomatis bila toko belum memprosesnya dalam 2×24 jam.</Text> : null}
-          {([
-            { id: "cod", label: "COD (Bayar di Tempat)", sub: "Bayar tunai saat ambil pesanan di toko", icon: "cash-outline" },
-            { id: "midtrans", label: `Bayar Online (Midtrans)${payAvail.midtrans_sandbox ? " · Sandbox" : ""}`, sub: "QRIS · Transfer Bank (VA) · GoPay · ShopeePay", icon: "qr-code-outline" },
-            { id: "xendit", label: "Xendit", sub: "QRIS · Transfer Bank (VA) · OVO · DANA · ShopeePay", icon: "wallet-outline" },
-          ] as const).filter((m) => (m.id === "cod" ? isPickup : payAvail[m.id])).map((m) => (
-            <Pressable
-              key={m.id}
-              testID={`pay-${m.id}`}
-              style={styles.payRow}
-              onPress={() => setMethod(m.id)}
-            >
-              <Icon name={m.icon as any} size={20} color={colors.onSurface} />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.payLabel}>{m.label}</Text>
-                <Text style={styles.paySub}>{m.sub}</Text>
-              </View>
-              <View style={[styles.radio, method === m.id && styles.radioActive]}>
-                {method === m.id ? <View style={styles.radioDot} /> : null}
-              </View>
-            </Pressable>
-          ))}
-        </View> : null}
-
-        <Text style={[styles.section, { marginTop: spacing.xl }]}>Voucher Diskon</Text>
-        <View style={styles.card} testID="checkout-voucher">
-          <View style={styles.voucherRow}>
-            <TextInput
-              testID="co-voucher-input"
-              value={voucherText}
-              onChangeText={(t) => { setVoucherText(t.toUpperCase()); if (voucher) setVoucher(null); setVoucherErr(""); }}
-              placeholder="Masukkan kode voucher"
-              placeholderTextColor={colors.muted}
-              autoCapitalize="characters"
-              style={[styles.input, { flex: 1 }]}
-            />
-            {voucher ? (
-              <Pressable testID="co-voucher-remove" style={styles.voucherBtnOutline} onPress={() => { setVoucher(null); setVoucherText(""); }}>
-                <Text style={styles.voucherBtnOutlineText}>Hapus</Text>
-              </Pressable>
-            ) : (
-              <Pressable testID="co-voucher-apply" style={styles.voucherBtn} onPress={() => applyVoucher(voucherText)} disabled={voucherBusy}>
-                {voucherBusy ? <ActivityIndicator color={colors.onBrandPrimary} /> : <Text style={styles.payBtnText}>Pakai</Text>}
-              </Pressable>
-            )}
-          </View>
-          {voucher ? <Text style={styles.voucherOk} testID="co-voucher-ok">{voucher.title} · hemat {formatIDR(voucher.discount)}</Text> : null}
-          {voucherErr ? <Text style={styles.err} testID="co-voucher-error">{voucherErr}</Text> : null}
-          {myVouchers.length && !voucher ? (
-            <View style={styles.myVouchers}>
-              <Text style={styles.paySub}>Voucher yang sudah kamu klaim:</Text>
-              <View style={styles.chipRow}>
-                {myVouchers.map((v) => (
-                  <Pressable key={v.code} testID={`co-my-voucher-${v.code}`} style={styles.vChip} onPress={() => applyVoucher(v.code)}>
-                    <Icon name="ticket-outline" size={14} color={colors.brandPrimary} />
-                    <Text style={styles.vChipText}>{v.code}</Text>
-                  </Pressable>
-                ))}
-              </View>
-            </View>
-          ) : null}
-        </View>
-
-        <Text style={[styles.section, { marginTop: spacing.xl }]}>Ringkasan</Text>
-        <View style={styles.card}>
+        <Text style={[co.section, co.sectionGap]}>Ringkasan</Text>
+        <View style={co.card}>
           <Row label={`Subtotal (${itemCount} item)`} value={formatIDR(subtotal)} />
-          <Row label={`Ongkos kirim${couriers.find((c) => c.code === courier) ? ` (${couriers.find((c) => c.code === courier)!.name})` : ""}`} value={formatIDR(shipCost)} />
+          <Row label={`Ongkos kirim${selectedCourier ? ` (${selectedCourier.name})` : ""}`} value={formatIDR(shipCost)} />
           {discount > 0 ? <Row label={`Voucher ${voucher?.code}`} value={`-${formatIDR(discount)}`} /> : null}
           <View style={styles.sep} />
           {balanceUsed > 0 ? <Row label="Pakai saldo" value={`-${formatIDR(balanceUsed)}`} /> : null}
           <Row label="Total Pembayaran" value={formatIDR(toPay)} big />
         </View>
-
       </ScrollView>
 
       <View style={[styles.bottom, { paddingBottom: Math.max(spacing.md, insets.bottom + spacing.sm) }]}>
         {err ? <Text style={styles.errBar} testID="checkout-error-bar">{err}</Text> : null}
         <View style={styles.bottomRow}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.smallLabel}>Total bayar</Text>
-          <Text style={styles.totalValue}>{formatIDR(toPay)}</Text>
-        </View>
-        <Pressable testID="pay-now-btn" style={[styles.payBtn, ratesLoading && { opacity: 0.6 }]} onPress={submit} disabled={loading || ratesLoading}>
-          {loading ? <ActivityIndicator color={colors.onBrandPrimary} /> : <Text style={styles.payBtnText}>{method === "cod" || toPay === 0 ? "Buat Pesanan" : "Bayar Sekarang"}</Text>}
-        </Pressable>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.smallLabel}>Total bayar</Text>
+            <Text style={styles.totalValue}>{formatIDR(toPay)}</Text>
+          </View>
+          <Pressable testID="pay-now-btn" style={[styles.payBtn, ratesLoading && { opacity: 0.6 }]} onPress={submit} disabled={loading || ratesLoading}>
+            {loading ? <ActivityIndicator color={colors.onBrandPrimary} /> : <Text style={co.payBtnText}>{method === "cod" || toPay === 0 ? "Buat Pesanan" : "Bayar Sekarang"}</Text>}
+          </Pressable>
         </View>
       </View>
     </KeyboardAvoidingView>
-  );
-}
-
-function Input(props: { label: string; value: string; onChangeText: (v: string) => void; keyboardType?: any; multiline?: boolean; testID?: string }) {
-  return (
-    <View style={{ marginBottom: spacing.sm }}>
-      <Text style={styles.label}>{props.label}</Text>
-      <TextInput
-        testID={props.testID}
-        value={props.value}
-        onChangeText={props.onChangeText}
-        placeholder={props.label}
-        placeholderTextColor={colors.muted}
-        keyboardType={props.keyboardType}
-        multiline={props.multiline}
-        style={[styles.input, props.multiline && { minHeight: 60, textAlignVertical: "top" }]}
-      />
-    </View>
-  );
-}
-
-function Row({ label, value, big }: { label: string; value: string; big?: boolean }) {
-  return (
-    <View style={styles.row}>
-      <Text style={[styles.rowLabel, big && { color: colors.onSurface, fontWeight: "500", fontSize: fontSize.base }]}>{label}</Text>
-      <Text style={[styles.rowValue, big && { color: colors.brandPrimary, fontSize: fontSize.lg, fontWeight: "500" }]}>{value}</Text>
-    </View>
   );
 }
 
@@ -379,41 +264,11 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.surfaceSecondary },
   header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: spacing.lg, paddingBottom: spacing.md, backgroundColor: colors.surface, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
   title: { fontSize: fontSize.lg, fontWeight: "500", color: colors.onSurface },
-
-  section: { fontSize: fontSize.sm, color: colors.muted, marginBottom: spacing.sm },
-  card: { backgroundColor: colors.surface, borderRadius: radius.md, padding: spacing.md, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
-
-  label: { fontSize: fontSize.sm, color: colors.onSurfaceSecondary, marginBottom: 4 },
-  input: { backgroundColor: colors.surfaceTertiary, borderRadius: radius.sm, paddingHorizontal: spacing.md, paddingVertical: 10, color: colors.onSurface, fontSize: fontSize.base },
-
-  payRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.sm },
-  payLabel: { color: colors.onSurface, fontSize: fontSize.sm, fontWeight: "500" },
-  paySub: { color: colors.muted, fontSize: 11, marginTop: 2 },
-  radio: { width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: colors.border, alignItems: "center", justifyContent: "center" },
-  radioActive: { borderColor: colors.brandPrimary },
-  radioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.brandPrimary },
-
-  row: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 4 },
-  rowLabel: { color: colors.muted, fontSize: fontSize.sm },
-  rowValue: { color: colors.onSurface, fontSize: fontSize.sm },
   sep: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border, marginVertical: spacing.sm },
-
-  err: { color: colors.error, fontSize: fontSize.sm, marginTop: spacing.md },
-  voucherRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  voucherBtn: { backgroundColor: colors.brandPrimary, borderRadius: radius.pill, paddingHorizontal: spacing.lg, minHeight: 44, justifyContent: "center", alignItems: "center", minWidth: 80 },
-  voucherBtnOutline: { borderWidth: 1, borderColor: colors.brandPrimary, borderRadius: radius.pill, paddingHorizontal: spacing.lg, minHeight: 44, justifyContent: "center" },
-  voucherBtnOutlineText: { color: colors.brandPrimary, fontWeight: "500" },
-  voucherOk: { color: colors.success, fontSize: fontSize.sm, marginTop: spacing.sm },
-  myVouchers: { marginTop: spacing.md, gap: spacing.sm },
-  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
-  vChip: { flexDirection: "row", alignItems: "center", gap: 4, borderWidth: 1, borderColor: colors.brandPrimary, borderRadius: radius.pill, paddingHorizontal: spacing.md, minHeight: 34, backgroundColor: colors.brandTertiary },
-  vChipText: { color: colors.brandPrimary, fontSize: 12, fontWeight: "600" },
-
   bottom: { position: "absolute", left: 0, right: 0, bottom: 0, backgroundColor: colors.surface, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, paddingHorizontal: spacing.lg, paddingTop: spacing.md, gap: spacing.sm },
   bottomRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
   errBar: { color: colors.error, fontSize: fontSize.sm },
   smallLabel: { fontSize: 11, color: colors.muted },
   totalValue: { fontSize: fontSize.lg, color: colors.brandPrimary, fontWeight: "500" },
   payBtn: { backgroundColor: colors.brandPrimary, paddingHorizontal: spacing.xl, paddingVertical: 14, borderRadius: radius.pill, minWidth: 180, alignItems: "center" },
-  payBtnText: { color: colors.onBrandPrimary, fontWeight: "500" },
 });

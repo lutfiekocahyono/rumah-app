@@ -1,0 +1,42 @@
+{
+  "summary": "Iteration 17: tested the all-branch catalog. Backend: 14/14 new pytest pass (tests/test_pgs_iter17_all_branch_catalog.py). GET /products (newest and popular) returns the identical list, stock and store_name with X-Store-Id none, pgs-official, pgs-jombang or pgs-jember. Shared items show store_name 'PGS · semua cabang' and summed stock: pgs-9955 = 214+218+218 = 650. A TEST_ exclusive product created by jember@pgs.id appears in search, home newest and category 'dapur' under every header (store_name 'Mitra PGS Jember', stock 7). /recommendations is identical across headers and its shared items are labelled 'semua cabang'. The ?store= shop page keeps per-branch behaviour. Detail with X-Store-Id gives that branch's stock (214/218/218), and the exclusive product returns 200 under every header. Cart: a shared item goes to the X-Store-Id group, capped at that branch's stock (218). An exclusive item goes to the pgs-jember group even when pgs-official is selected. Availability of the exclusive product is jember=7, others=0. Regressions: iter14/15/16 all pass. iter5 has 3 failures, all obsolete because the specs changed (old per-branch listing store_name, the old COD-with-courier rule, and the old pickup checkout shape). Frontend (375x667, guest): every requested flow passes. The home label reads 'Produk semua cabang · toko pilihan' with the selected store name. The cards show 'PGS · semua cabang'. Switching to Mitra PGS Jember through store-switch updates the name, and the first 30 product cards (ids and stock) stay identical. Search shows all-branch results, including the Jember exclusive while Sidoarjo is selected. Product detail shows the selected branch's stock and the 'Ketersediaan di toko' card. 'Belanja di sini' on Jember switches the store (stock 218, toast 'Toko diganti', 'Toko Anda' moves). The cart shows 2 groups (Mitra PGS Jember (1) / PGS Sidoarjo (1)) with the right rows. No page errors.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/products (sort newest/popular)", "issue": "The sort uses the raw DB in_stock flag of Sidoarjo, not the summed stock. pgs-9957 has stock 0 but in_stock=True in the DB, so it is the FIRST home card and shows 'Stok habis'. A shared item that is out of stock at Sidoarjo but stocked at a branch would sort after the in-stock items."},
+      {"endpoint": "GET /api/recommendations", "issue": "The base filter in_stock != False uses Sidoarjo's flag only. Shared items that are sold out at Sidoarjo but stocked at Jombang/Jember are excluded from the all-branch recommendations."},
+      {"endpoint": "_apply_stock(ALL_BRANCHES)", "issue": "Sums store_stock of every OFFICIAL_ID, including a branch whose store status is not active. Hidden branches still add to the 'semua cabang' stock (availability/suggest only uses active stores). Reference: server.py:610"},
+      {"endpoint": "GET /api/products?store=<id>", "issue": "query['store_id'] = store overwrites the $nin visibility filter. The API lists the products of a non-active (pending/rejected/suspended) store when it is called directly. Latent: no non-active store has products today. Reference: server.py:663-664"}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Product detail store link", "issue": "For a shared item, pd-store-link shows the selected branch name (e.g. 'Mitra PGS Jember') but navigates to /shop/pgs-official (product.store_id), so the label and the destination disagree. Reference: app/product/[id].tsx:143", "testID": "pd-store-link", "priority": "low"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Home", "issues": ["The 'Gratis Ongkir' banner still says 'Area Sidoarjo & sekitarnya' when Mitra PGS Jember is selected (may be intended)", "The search placeholder 'Cari dari 6.618 produk…' is hardcoded and does not include branch-exclusive products"]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_pgs_iter17_all_branch_catalog.py", "/app/test_reports/pytest/pytest_iter17.xml"],
+  "action_items": [
+    "Optional: sort newest/popular by effective (summed) availability, or fix the data where stock=0 but in_stock=True (pgs-9957), so a 'Stok habis' item is not the first home card",
+    "Optional: in recommendations, drop the Sidoarjo-only in_stock filter or filter after _apply_stock",
+    "Optional: exclude non-active official branches from the summed stock in _apply_stock",
+    "Optional: on ?store=, combine the store filter with the hidden-store check instead of overwriting it",
+    "Optional: make pd-store-link go to the selected branch's shop for shared items, or show a label consistent with the destination",
+    "Update or retire the obsolete iter5 tests (test_products_store_context, test_full_flow, test_pickup_and_cancel)"
+  ],
+  "critical_code_review_comments": [
+    "server.py add_to_cart: when the same product already sits in another branch's group, it is moved to the new branch with qty = body.quantity (the old qty is dropped). Acceptable, but worth knowing.",
+    "server.py is 1570 lines (>700): consider splitting catalog/cart into a module."
+  ],
+  "updated_files": ["/app/backend/tests/test_pgs_iter17_all_branch_catalog.py"],
+  "success_rate": {"backend": "100% (14/14 new; iter14-16 regressions pass; 3 obsolete iter5 failures)", "frontend": "100%"},
+  "seed_data_creation": "TEST_ exclusive products created by jember@pgs.id (pytest fixture + sp_c919d01919 for the UI) were all deleted by id. Guest carts were cleared. No TEST_ products remain.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run with EXPO_PUBLIC_BACKEND_URL exported: pytest tests/test_pgs_iter17_all_branch_catalog.py -n 0. Its module fixture creates/deletes a TEST_ Jember exclusive product. The store choice persists in localStorage. The guest id is in localStorage 'pgs_guest_id'; clear the cart with DELETE /api/cart + X-Guest-Id. iter5_branches has 3 tests that are obsolete because the specs changed.",
+  "rca_of_issue": ""
+}

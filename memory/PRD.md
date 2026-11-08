@@ -74,3 +74,9 @@ Iteration 2: import all data from pusatgrosirsidoarjo.com; tiered pricing (pembe
 - Iteration 15: COD only for pickup (server 400 otherwise; delivery requires Midtrans/Xendit or full saldo). COD pickup orders get expires_at=+48h; background loop (5 min, server._expire_loop) auto-cancels status 'cod' past expires_at with restock/voucher/saldo return + notification. Seller: POST /seller/orders/{id}/extend {hours}, POST /seller/orders/{id}/ready (pickup+processing) sets ready_at + notifies buyer. UI: seller order extend 24/48h + 'Siap Diambil'; buyer order pickup card; checkout hides COD for delivery.
 - Iteration 16: pickup_code (6 digits) on pickup orders shown to buyer (order-pickup-code) and seller (so-pickup-code); pickup orders hide resi/address; checkout hides address/city/destination for pickup (backend requires address only for courier); store phone/address/pickup_hours optional.
 - Iteration 17: remind_expiring_cod() in _expire_loop notifies store owner once when COD pickup order is within 6h (COD_REMIND_HOURS) of auto-cancel; flag expiry_reminded reset on extend. Verified via API.
+- Iteration 18: listings (/products without ?store, /recommendations) use ALL_BRANCHES ctx: all branches' products visible, shared catalog stock summed, store_name 'PGS · semua cabang'. Product detail & add-to-cart lookup across all branches; stock/cart still per selected store. Home label 'Produk semua cabang · toko pilihan'.
+
+## Refactor (Iteration 18)
+- backend/server.py split: marketing.py (banners, vouchers, flash sale, home settings, uploads/files) and order_tasks.py (release voucher/stock/saldo, COD 48h auto-cancel + reminder loop). Routes unchanged (138).
+- frontend/app/checkout.tsx split into src/components/checkout/ (styles, fields, voucher-section, payment-section, courier-list). testIDs unchanged.
+- Backlog: retire/update old test suites (iter2, iter4-14) written for previous rules.

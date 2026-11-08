@@ -12,6 +12,7 @@ import { useCart } from "@/src/cart-context";
 import { useAuth } from "@/src/auth-context";
 import { Countdown } from "@/src/components/countdown";
 import { BranchAvailability } from "@/src/components/branch-availability";
+import { useStore } from "@/src/store-context";
 
 const { width: screenW } = Dimensions.get("window");
 
@@ -21,6 +22,7 @@ export default function ProductDetail() {
   const router = useRouter();
   const { user } = useAuth();
   const { addToCart, toggleWishlist, isWished, refresh } = useCart();
+  const { storeId } = useStore();
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
   const [qty, setQty] = useState(1);
@@ -140,7 +142,7 @@ export default function ProductDetail() {
           ) : null}
           <Text style={styles.name}>{product.name}</Text>
           {product.store_name ? (
-            <Pressable testID="pd-store-link" style={styles.meta} onPress={() => router.push(`/shop/${product.store_id}` as any)}>
+            <Pressable testID="pd-store-link" style={styles.meta} onPress={() => router.push(`/shop/${product.store_id === "pgs-official" ? storeId : product.store_id}` as any)}>
               <Icon name="storefront-outline" size={14} color={colors.brandPrimary} />
               <Text style={[styles.metaText, { color: colors.brandPrimary }]}>{product.store_name}</Text>
               <Icon name="chevron-forward" size={14} color={colors.brandPrimary} />
