@@ -85,6 +85,8 @@ export default function SellerHome() {
               <Field testID="store-desc" label="Deskripsi toko" value={form.description} onChangeText={(t) => set({ description: t })} multiline />
               <Field testID="store-city" label="Kota" value={form.city} onChangeText={(t) => set({ city: t })} />
               <Field testID="store-phone" label="No. HP / WhatsApp toko" value={form.phone} onChangeText={(t) => set({ phone: t })} keyboardType="phone-pad" />
+              <Field testID="store-address" label="Alamat toko (untuk Ambil di toko)" value={form.address ?? ""} onChangeText={(t) => set({ address: t })} multiline />
+              <Field testID="store-hours" label="Jam ambil pesanan" value={form.pickup_hours ?? ""} onChangeText={(t) => set({ pickup_hours: t })} placeholder="Contoh: Senin–Sabtu 08.00–16.00" />
               <PrimaryButton testID="store-submit" label={store ? "Simpan" : "Ajukan Toko"} onPress={submit} loading={busy} />
               <PrimaryButton label="Batal" variant="outline" onPress={() => setForm(null)} />
             </Card>
@@ -102,7 +104,7 @@ export default function SellerHome() {
                   <Text style={styles.h}>{store.name}</Text>
                   <Text style={adminStyles.muted}>{store.city}</Text>
                 </View>
-                <Pressable testID="store-edit" hitSlop={8} onPress={() => setForm({ name: store.name, description: store.description, city: store.city, phone: store.phone ?? "", logo: store.logo })}>
+                <Pressable testID="store-edit" hitSlop={8} onPress={() => setForm({ name: store.name, description: store.description, city: store.city, phone: store.phone ?? "", logo: store.logo, address: store.address ?? "", pickup_hours: store.pickup_hours ?? "" })}>
                   <Icon name="create-outline" size={22} color={colors.brandPrimary} />
                 </Pressable>
               </View>

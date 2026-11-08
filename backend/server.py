@@ -20,6 +20,7 @@ import promo
 import seller
 import shipping
 import support
+import branches
 import storage
 from pricing import CUSTOMER_TYPES, DEFAULT_PRICING, get_pricing, price_matrix, price_tiers, unit_price
 from pymongo import ReturnDocument
@@ -1457,6 +1458,7 @@ seller.register(api, db, get_current_user, require_admin, _product_out_for_user,
 support.register(api, db, get_current_user, require_admin, ACCT["notify_user"], ACCT["log_activity"])
 
 payments.register_settings(api, db, require_admin)
+branches.register(api, db, get_owner, seller)
 
 SHIP_QUOTE = shipping.register(api, db, require_admin, get_owner, seller.OFFICIAL_IDS, seller.couriers_of)
 

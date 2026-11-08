@@ -160,7 +160,7 @@ class TestCartCheckoutFlow:
         assert {i["store_id"] for i in c["items"]} == {"pgs-jombang", "pgs-official"}
         body = {**SHIP, "payment_method": "cod", "courier": "jne"}
         assert requests.post(f"{API}/checkout", headers=H(buyer), json=body).status_code == 400  # multi-store w/o store_id
-        assert requests.post(f"{API}/checkout", headers=H(buyer), json={**body, "store_id": "pgs-jombang", "courier": "xxx"}).status_code == 400
+        assert requests.post(f"{API}/checkout", headers=H(buyer), json={**body, "store_id": "pgs-jombang", "courier": "xxx"}).status_code in (400, 409)  # 409 since iter10 shipping guard
         requests.put(f"{API}/cart/items/{pid}", headers=H(buyer), json={"quantity": 2})
         jne = next(c for c in requests.get(f"{API}/stores/pgs-jombang/couriers").json() if c["code"] == "jne")
         r = requests.post(f"{API}/checkout", headers=H(buyer), json={**body, "store_id": "pgs-jombang"})

@@ -233,6 +233,11 @@ export const api = {
   savePaymentSettings: (b: { enabled: boolean; production: boolean; server_key: string | null; client_key: string }) =>
     req<PaymentSettings>("/admin/payment-settings", { method: "PUT", body: JSON.stringify(b) }),
   verifyMidtrans: () => req<PaymentSettings>("/admin/payment/verify-midtrans", { method: "POST" }),
+  productAvailability: (id: string, area = "") => req<BranchSuggest>(`/products/${id}/availability?area=${encodeURIComponent(area)}`),
+  suggestStores: (area: string, product_ids: string[] = [], quantities: number[] = []) =>
+    req<BranchSuggest>("/stores/suggest", { method: "POST", body: JSON.stringify({ area, product_ids, quantities }) }),
+  moveCart: (from_store_id: string, to_store_id: string) =>
+    req<{ moved: number; skipped: string[] }>("/cart/move", { method: "POST", body: JSON.stringify({ from_store_id, to_store_id }) }),
   paymentMethods: () => req<{ midtrans: boolean; xendit: boolean; cod: boolean; midtrans_sandbox: boolean }>("/payments/methods"),
   saveShippingSettings: (s: Omit<ShippingSettings, "configured" | "key_hint"> & { api_key?: string | null }) =>
     req<ShippingSettings>("/admin/shipping-settings", { method: "PUT", body: JSON.stringify(s) }),
@@ -337,8 +342,8 @@ export type AddressInput = Omit<Address, "address_id">;
 export type AppNotification = { notif_id: string; kind: "order" | "promo" | "security"; title: string; body: string; link: string; read: boolean; created_at: string };
 export type ActivityLog = { log_id: string; action: string; detail: string; created_at: string };
 export type AccountSettings = { notif_order: boolean; notif_promo: boolean; notif_security: boolean };
-export type Store = { official?: boolean; store_id: string; owner_id: string; name: string; description: string; city: string; phone?: string; logo: string; status: "pending" | "active" | "rejected" | "suspended"; note: string; created_at: string; product_count?: number; owner_name?: string; owner_email?: string };
-export type StoreInput = { name: string; description: string; city: string; phone: string; logo: string };
+export type Store = { official?: boolean; store_id: string; owner_id: string; name: string; description: string; city: string; phone?: string; logo: string; status: "pending" | "active" | "rejected" | "suspended"; note: string; created_at: string; product_count?: number; owner_name?: string; owner_email?: string; address?: string; pickup_hours?: string };
+export type StoreInput = { name: string; description: string; city: string; phone: string; logo: string; address?: string; pickup_hours?: string };
 export type SellerProductInput = { name: string; description: string; category: string; price: number; original_price: number; stock: number; images: string[] };
 export type Courier = { code: string; name: string; cost: number; eta: string; active: boolean; source?: "auto" | "manual" };
 export type Destination = { id: number; label: string };
@@ -380,3 +385,5 @@ export const ORDER_STATUS_LABEL: Record<Order["status"], string> = {
   pending: "Menunggu Pembayaran", paid: "Dibayar", expired: "Kedaluwarsa", failed: "Gagal", cod: "Bayar di Tempat",
   processing: "Diproses", shipped: "Dikirim", completed: "Selesai", cancelled: "Dibatalkan",
 };
+export type BranchRow = { store_id: string; name: string; city: string; address?: string; pickup_hours?: string; phone?: string; stock: Record<string, number>; available: boolean; distance_km: number | null };
+export type BranchSuggest = { located: boolean; suggested: string | null; stores: BranchRow[] };

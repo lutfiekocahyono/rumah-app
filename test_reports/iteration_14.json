@@ -1,0 +1,44 @@
+{
+  "summary": "Iter14 tested the multi-branch features (backend and UI): stock at every branch, nearest-store suggestion, moving the cart between branches, 'Ambil di toko' pickup checkout and the seller store address/pickup hours fields. Backend: 16/17 new tests pass. The one failure is minor: the availability/suggest store rows leave out address/pickup_hours when the DB has no value for them. Regression suites iter3/5/7/9/10 pass after fixing 2 outdated test assertions. UI checks passed on all 7 requested flows: product page branch stock with Terdekat badge and 'Belanja di sini', /pilih-toko distance and badge, checkout nearest banner with Pindah, pickup box with 'Ambil di sini', a pickup order placed in the UI going to Jember (Rp0, listed for the jember seller, stock restored after cancel), seller store edit, and a normal checkout with auto rates and a voucher. One logic bug found: checkout fills the city field with 'Sidoarjo' by default and uses it as the buyer's area, so buyers with no saved address get a wrong 'PGS Sidoarjo lebih dekat ±0 km' suggestion. No deprecated Expo packages detected.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/products/{id}/availability, POST /api/stores/suggest", "issue": "Store rows leave out the address/pickup_hours keys when the store document has no such field (projection only returns fields that exist). Today Jombang/Jember are missing both keys, which breaks the documented response shape. Fix: default them with s.get('address') or '' in branches.py suggest() (~line 84)."},
+      {"endpoint": "POST /api/cart/move", "issue": "branches.py:115 builds the target with i.get('store_id') == to_store_id but no default, while kept/moving use i.get('store_id', PGS_STORE_ID). When moving to pgs-official, a legacy cart item with no store_id field would be removed from both lists and lost. Low risk because add_to_cart always sets store_id now. Also, the target store's status=active is never checked."},
+      {"endpoint": "PUT /api/me/store", "issue": "Mitra PGS Jombang/Jember were seeded with phone ''. StoreIn requires a phone of at least 8 characters, so these store admins cannot save the new address/hours until they also enter a phone. The UI shows the 'Lengkapi ... nomor HP' error, but the seed should have a phone or the error should be clearer."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "checkout BranchSwitcher area", "issue": "checkout.tsx:27 sets the city to 'Sidoarjo' by default and line 193 passes area={dest?.label || city}. A buyer with no saved address, at a Jember/Jombang cart, sees co-nearest-banner 'PGS Sidoarjo lebih dekat ±0 km ... (toko sekarang ±135 km)', and in pickup mode Sidoarjo is marked 'Terdekat'. Reproduced with a fresh TEST user and a Jember cart. Fix: only pass an area the buyer actually entered or saved (dest label or a typed city), not the placeholder default.", "testID": "co-nearest-banner", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "product/[id] branch stock", "issues": ["The pd-branch-switch-* 'Belanja di sini' buttons are 36px high (minHeight 36), below the 44px touch target."]},
+      {"screen": "/pilih-toko", "issues": ["The list is not sorted nearest-first: Jember shows last with the Terdekat badge for a Jember buyer.", "The text '±0 km dari alamat Anda' reads oddly when the buyer is in the same city; show something like '< 1 km' or 'Di kota Anda' (also in branch-availability and branch-switcher)."]},
+      {"screen": "checkout pickup", "issues": ["With 'Ambil di toko' selected, the address fields (co-address, at least 5 characters) are still required and the destination search stays visible.", "The co-pickup-box appears above the courier list, so it can be off-screen when the buyer taps 'Ambil di toko' further down."]},
+      {"screen": "order/[id] for pickup orders", "issues": ["It still shows 'No. resi: belum ada' and 'Dikirim ke <buyer address>'. It should show the pickup store's address and pickup hours instead."]},
+      {"screen": "checkout after Pindah/Ambil di sini", "issues": ["The courier choice is kept by code (e.g. JNE CTC 9.000) and not re-picked as the cheapest at the new branch (SiCepat 6.900). This is minor, since it may be intended."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_pgs_iter14_pickup_nearest.py", "/app/backend/tests/ui_iter14_helper.py", "/app/test_reports/pytest/pytest_iter14.xml"],
+  "action_items": [
+    "Checkout: stop using the default city 'Sidoarjo' as the nearest-branch area when the buyer has no saved or entered address (checkout.tsx:27/193).",
+    "branches.py suggest(): always return address and pickup_hours, defaulting to ''.",
+    "branches.py move_cart: use i.get('store_id', PGS_STORE_ID) when building the target; optionally check that the target store is active.",
+    "Optional UX: sort /pilih-toko nearest-first, show '< 1 km' instead of '±0 km', raise the pd-branch-switch buttons to 44px, show pickup store details on pickup order detail, don't require a shipping address for pickup, and debounce suggestStores while typing in the city field (it currently fires on every keystroke)."
+  ],
+  "critical_code_review_comments": [
+    "BranchSwitcher useEffect depends on area = dest?.label || city, so every keystroke in co-city triggers POST /stores/suggest with no debounce.",
+    "suggest() makes one stock query per store (N+1). Fine for 3 branches.",
+    "Distances are straight-line from static city centroids (Gubeng to Sidoarjo shows ±21 km because Surabaya's centroid is used). This is acceptable as approximate."
+  ],
+  "updated_files": ["/app/backend/tests/test_pgs_iter14_pickup_nearest.py (new)", "/app/backend/tests/ui_iter14_helper.py (new)", "/app/backend/tests/test_pgs_iter5_branches.py (line 163: invalid courier accepts 409)", "/app/backend/tests/test_pgs_iter3_promo.py (line 163: uses o['shipping_cost'] since the default courier is pickup)"],
+  "success_rate": {"backend": "94% (16/17 iter14; regression iter3/5/7/9/10 all pass after test fixes)", "frontend": "100% of requested flows work; 1 logic bug (placeholder-city nearest suggestion) plus minor UX items"},
+  "seed_data_creation": "Created TEST buyers test_ui14_* and test_pick_* with saved addresses (Gubeng 69243, Patrang 30945), plus a TEST_Exclusive Jember product that was deleted via the seller API. All test orders were cancelled: PGS-261108-DE10D7, A564F9, plus EBAAEC and DADA06 left by the old promo test, which never cancels its order. Stock for pgs-9955 is back to 214/218/218. pgs-official address/pickup_hours were set to '' (were missing before); Jombang/Jember untouched.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: cd /app/backend && export $(grep EXPO_PUBLIC_BACKEND_URL /app/frontend/.env | xargs) && pytest tests/test_pgs_iter14_pickup_nearest.py -n 0. Its availability test is expected to fail until address/pickup_hours are always returned. tests/ui_iter14_helper.py creates buyers with saved areas (prints tokens). For UI, inject the token into localStorage 'pgs_auth_token'. Scroll elements to the centre before clicking on the product page: the sticky bottom bar (Keranjang/Beli) covers the lower buttons, and a force click there adds the item to the cart. test_pgs_iter3_promo leaves a COD order with a TESTV* voucher; cancel it via admin.",
+  "rca_of_issue": "Wrong nearest suggestion: checkout keeps city state = 'Sidoarjo' as a form default and BranchSwitcher treats it as the buyer's real area. locate('Sidoarjo') works, so suggested = pgs-official at 0 km. Fix by tracking whether the city came from the user."
+}

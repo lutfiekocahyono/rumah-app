@@ -9,6 +9,8 @@ import { useCart } from "@/src/cart-context";
 import { useAuth } from "@/src/auth-context";
 import { api, type Address, type Courier, type Destination, type PaymentMethod, type Voucher } from "@/src/api";
 import { DestinationSearch } from "@/src/components/destination-search";
+import { BranchSwitcher } from "@/src/components/branch-switcher";
+import { useStore } from "@/src/store-context";
 import * as WebBrowser from "expo-web-browser";
 
 export default function Checkout() {
@@ -16,12 +18,14 @@ export default function Checkout() {
   const router = useRouter();
   const { cart, refresh } = useCart();
   const { user } = useAuth();
+  const { choose } = useStore();
 
   const [fullName, setFullName] = useState(user?.name ?? "");
   useEffect(() => { if (user?.name) setFullName((n) => n || user.name); }, [user?.name]);
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
   const [city, setCity] = useState("Sidoarjo");
+  const [cityIsBuyers, setCityIsBuyers] = useState(false); // default "Sidoarjo" must not count as the buyer's area
   const [method, setMethod] = useState<PaymentMethod>("cod");
   const [payAvail, setPayAvail] = useState({ midtrans: false, xendit: false, midtrans_sandbox: true });
   useEffect(() => { api.paymentMethods().then(setPayAvail).catch(() => {}); }, []);
@@ -40,6 +44,7 @@ export default function Checkout() {
     setPhone(a.phone);
     setAddress(`${a.address}${a.postal_code ? `, ${a.postal_code}` : ""}`);
     setCity(a.city);
+    setCityIsBuyers(true);
     // Saved shipping area -> rates appear immediately, no search needed
     if (a.destination_id) setDest({ id: a.destination_id, label: a.destination_label ?? "" });
     else setDest(null);
@@ -181,12 +186,21 @@ export default function Checkout() {
           <Input testID="co-name" label="Nama Lengkap" value={fullName} onChangeText={setFullName} />
           <Input testID="co-phone" label="No. HP / WhatsApp" value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
           <Input testID="co-address" label="Alamat lengkap" value={address} onChangeText={setAddress} multiline />
-          <Input testID="co-city" label="Kota" value={city} onChangeText={setCity} />
+          <Input testID="co-city" label="Kota" value={city} onChangeText={(t) => { setCity(t); setCityIsBuyers(true); }} />
         </View>
 
         <Text style={[styles.section, { marginTop: spacing.xl }]}>Toko & Kurir</Text>
         <View style={styles.card} testID="checkout-couriers">
           <Text style={styles.paySub}>Dikirim dari: {items[0]?.store_name ?? "-"}</Text>
+          <BranchSwitcher storeId={storeId} items={items} area={dest?.label || (cityIsBuyers ? city : "")} pickup={courier === "pickup"} onMove={async (to) => {
+            setErr("");
+            const r = await api.moveCart(storeId, to).catch((e) => { setErr(e.message); return null; });
+            if (!r) return;
+            await choose(to);
+            await refresh();
+            router.setParams({ store: to });
+            if (r.skipped.length) setErr(`${r.skipped.length} barang tidak tersedia di toko baru dan tetap di keranjang toko lama`);
+          }} />
           {autoShip ? (
             <View style={{ gap: 4 }}>
               <Text style={styles.paySub}>Kecamatan tujuan (untuk ongkir otomatis JNE / J&T / SiCepat)</Text>

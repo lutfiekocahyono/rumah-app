@@ -39,6 +39,8 @@ class StoreIn(BaseModel):
     city: str = Field(min_length=2, max_length=60)
     phone: str = Field(min_length=8, max_length=20)
     logo: str = ""
+    address: str = Field(default="", max_length=300)  # pickup address shown at checkout
+    pickup_hours: str = Field(default="", max_length=80)
 
 
 class StoreStatusIn(BaseModel):
@@ -79,7 +81,7 @@ class SellerProductIn(BaseModel):
 
 def store_out(s: dict) -> dict:
     out = {k: s.get(k) for k in ("store_id", "owner_id", "name", "description", "city", "phone", "logo",
-                                 "status", "note", "created_at")}
+                                 "status", "note", "created_at", "address", "pickup_hours")}
     out["official"] = s.get("store_id") in OFFICIAL_IDS
     return out
 

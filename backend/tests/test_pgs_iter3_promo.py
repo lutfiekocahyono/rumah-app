@@ -160,7 +160,7 @@ class TestVouchers:
         assert r.status_code == 200, r.text
         o = r.json()
         assert o["discount"] == min(5000, sub) and o["voucher_code"] == self.code
-        assert o["total"] == o["subtotal"] - o["discount"] + 25000
+        assert o["total"] == o["subtotal"] - o["discount"] + o["shipping_cost"]  # default courier is pickup now
         v = [v for v in requests.get(f"{API}/admin/vouchers", headers=admin).json() if v["code"] == self.code][0]
         assert v["used"] == 1
         # quota exhausted

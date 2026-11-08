@@ -11,6 +11,7 @@ import { api, CUSTOMER_TYPE_LABEL, type Product } from "@/src/api";
 import { useCart } from "@/src/cart-context";
 import { useAuth } from "@/src/auth-context";
 import { Countdown } from "@/src/components/countdown";
+import { BranchAvailability } from "@/src/components/branch-availability";
 
 const { width: screenW } = Dimensions.get("window");
 
@@ -19,19 +20,20 @@ export default function ProductDetail() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { user } = useAuth();
-  const { addToCart, toggleWishlist, isWished } = useCart();
+  const { addToCart, toggleWishlist, isWished, refresh } = useCart();
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
   const [qty, setQty] = useState(1);
   const [imgIdx, setImgIdx] = useState(0);
   const [adding, setAdding] = useState(false);
   const [toast, setToast] = useState("");
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     if (!id) return;
     api.product(id).then((p) => { setProduct(p); setLoading(false); }).catch(() => setLoading(false));
-    api.trackView(id).catch(() => {});
-  }, [id]);
+    if (!reloadKey) api.trackView(id).catch(() => {});
+  }, [id, reloadKey]);
 
   const handleAdd = async (goCart: boolean) => {
     if (!product) return;
@@ -152,6 +154,12 @@ export default function ProductDetail() {
               {product.in_stock ? `Stok ${product.stock >= 9999 ? "tersedia" : product.stock}` : "Stok habis"}
             </Text>
           </View>
+
+          {product.store_id === "pgs-official" ? (
+            <View style={{ marginTop: spacing.md }}>
+              <BranchAvailability productId={product.product_id} onSwitched={() => { setQty(1); setReloadKey((k) => k + 1); refresh(); setToast("Toko diganti"); }} />
+            </View>
+          ) : null}
 
           {tiers.length > 1 ? (
             <>
