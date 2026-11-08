@@ -23,7 +23,7 @@ function StockRow({ item }: { item: InventoryItem }) {
   return (
     <View style={styles.row} testID={`stock-row-${item.product_id}`}>
       <Image source={item.image} style={styles.img} contentFit="cover" />
-      <Pressable style={{ flex: 1 }} disabled={!item.own} onPress={() => router.push(`/seller/product/${item.product_id}` as any)}>
+      <Pressable style={{ flex: 1 }} disabled={!item.own} onPress={() => router.push(`/product-editor/${item.product_id}` as any)}>
         <Text style={styles.name} numberOfLines={2}>{item.name}</Text>
         <Text style={adminStyles.muted}>{formatIDR(item.price)} · {item.own ? "Produk toko ini" : "Katalog PGS"}</Text>
       </Pressable>

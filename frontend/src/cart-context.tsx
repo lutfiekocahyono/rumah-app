@@ -7,9 +7,9 @@ type CartCtx = {
   wishlist: Product[];
   loading: boolean;
   refresh: () => Promise<void>;
-  addToCart: (product_id: string, quantity?: number) => Promise<string | null>;
-  updateQty: (product_id: string, quantity: number) => Promise<string | null>;
-  removeItem: (product_id: string) => Promise<string | null>;
+  addToCart: (product_id: string, quantity?: number, variant_id?: string | null) => Promise<string | null>;
+  updateQty: (key: string, quantity: number) => Promise<string | null>;
+  removeItem: (key: string) => Promise<string | null>;
   clear: () => Promise<string | null>;
   toggleWishlist: (product_id: string) => Promise<string | null>;
   isWished: (product_id: string) => boolean;
@@ -43,11 +43,11 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const safe = async (fn: () => Promise<void>): Promise<string | null> => {
     try { await fn(); return null; } catch (e: any) { return e?.message || "Terjadi kesalahan"; }
   };
-  const addToCart = (product_id: string, quantity = 1) =>
-    safe(async () => setCart(await api.addCart(product_id, quantity)));  const updateQty = (product_id: string, quantity: number) =>
-    safe(async () => setCart(await api.updateCart(product_id, quantity)));
-  const removeItem = (product_id: string) =>
-    safe(async () => setCart(await api.removeCart(product_id)));
+  const addToCart = (product_id: string, quantity = 1, variant_id?: string | null) =>
+    safe(async () => setCart(await api.addCart(product_id, quantity, variant_id)));  const updateQty = (key: string, quantity: number) =>
+    safe(async () => setCart(await api.updateCart(key, quantity)));
+  const removeItem = (key: string) =>
+    safe(async () => setCart(await api.removeCart(key)));
   const clear = () => safe(async () => setCart(await api.clearCart()));
   const toggleWishlist = (product_id: string) =>
     safe(async () => {

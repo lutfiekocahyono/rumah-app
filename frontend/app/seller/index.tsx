@@ -161,13 +161,13 @@ export default function SellerHome() {
               ) : null}
               <View style={styles.between}>
                 <Text style={styles.h}>Produk Toko Ini ({products.length})</Text>
-                <Pressable testID="seller-add-product" style={styles.addBtn} onPress={() => router.push("/seller/product/new" as any)}>
+                <Pressable testID="seller-add-product" style={styles.addBtn} onPress={() => router.push("/product-editor/new" as any)}>
                   <Icon name="add" size={18} color={colors.onBrandPrimary} />
                   <Text style={styles.addText}>Tambah</Text>
                 </Pressable>
               </View>
               {!products.length ? <Text style={adminStyles.muted}>Belum ada produk. Tambahkan produk pertama Anda.</Text> : products.map((p) => (
-                <Pressable key={p.product_id} testID={`seller-product-${p.product_id}`} style={styles.row} onPress={() => router.push(`/seller/product/${p.product_id}` as any)}>
+                <Pressable key={p.product_id} testID={`seller-product-${p.product_id}`} style={styles.row} onPress={() => router.push(`/product-editor/${p.product_id}` as any)}>
                   <Image source={p.image} style={styles.img} contentFit="cover" />
                   <View style={{ flex: 1 }}>
                     <Text style={styles.name} numberOfLines={2}>{p.name}</Text>

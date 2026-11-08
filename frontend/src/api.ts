@@ -70,12 +70,14 @@ async function req<T>(path: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(url, { ...init, headers: { ...(await headers()), ...(init.headers || {}) } });
   if (!res.ok) {
     let msg = `HTTP ${res.status}`;
+    let fieldErrors: Record<string, string> | undefined;
     try {
       const data = await res.json();
       const d = data.detail;
-      msg = Array.isArray(d) ? d.map((x: any) => x?.msg).filter(Boolean).join(", ") || msg : (typeof d === "string" ? d : data.message || msg);
+      msg = Array.isArray(d) ? d.map((x: any) => x?.msg).filter(Boolean).join(", ") || msg : (typeof d === "string" ? d : d?.message || data.message || msg);
+      if (d && typeof d === "object" && !Array.isArray(d) && d.errors) fieldErrors = d.errors; // field -> message (form validation)
     } catch {}
-    throw Object.assign(new Error(msg), { status: res.status });
+    throw Object.assign(new Error(msg), { status: res.status, errors: fieldErrors });
   }
   return (await res.json()) as T;
 }
@@ -93,6 +95,7 @@ export const api = {
 
   // catalog
   categories: (parent?: string) => req<Category[]>(`/categories${parent ? `?parent=${encodeURIComponent(parent)}` : ""}`),
+  allCategories: () => req<Category[]>("/categories?all=true"),
   productCount: () => req<{ count: number }>("/products/count"),
   products: (params: { category?: string; q?: string; sort?: string; skip?: number; limit?: number; store?: string } = {}) => {
     const qs = new URLSearchParams();
@@ -109,11 +112,12 @@ export const api = {
 
   // cart
   getCart: () => req<Cart>("/cart"),
-  addCart: (product_id: string, quantity = 1) =>
-    req<Cart>("/cart/items", { method: "POST", body: JSON.stringify({ product_id, quantity }) }),
-  updateCart: (product_id: string, quantity: number) =>
-    req<Cart>(`/cart/items/${product_id}`, { method: "PUT", body: JSON.stringify({ product_id, quantity }) }),
-  removeCart: (product_id: string) => req<Cart>(`/cart/items/${product_id}`, { method: "DELETE" }),
+  addCart: (product_id: string, quantity = 1, variant_id?: string | null) =>
+    req<Cart>("/cart/items", { method: "POST", body: JSON.stringify({ product_id, quantity, variant_id }) }),
+  // key = cart line (product_id, or product_id::variant_id)
+  updateCart: (key: string, quantity: number) =>
+    req<Cart>(`/cart/items/${encodeURIComponent(key)}`, { method: "PUT", body: JSON.stringify({ quantity }) }),
+  removeCart: (key: string) => req<Cart>(`/cart/items/${encodeURIComponent(key)}`, { method: "DELETE" }),
   clearCart: () => req<Cart>("/cart", { method: "DELETE" }),
 
   // wishlist
@@ -215,6 +219,15 @@ export const api = {
     req<Product>(id ? `/seller/products/${id}` : "/seller/products", { method: id ? "PUT" : "POST", body: JSON.stringify(p) }),
   sellerDeleteProduct: (id: string) => req<{ ok: boolean }>(`/seller/products/${id}`, { method: "DELETE" }),
   sellerUpload: (file: LocalFile) => uploadTo("/seller/upload", file),
+  editorContext: () => req<EditorContext>("/product-editor/context"),
+  editorDrafts: () => req<ProductDraft[]>("/product-editor/drafts"),
+  editorDraft: (id: string) => req<ProductDraft>(`/product-editor/drafts/${id}`),
+  editorSaveDraft: (b: { draft_id?: string | null; product_id?: string | null; store_id?: string | null; data: ProductForm }) =>
+    req<ProductDraft>("/product-editor/drafts", { method: "POST", body: JSON.stringify(b) }),
+  editorDeleteDraft: (id: string) => req<{ ok: boolean }>(`/product-editor/drafts/${id}`, { method: "DELETE" }),
+  editorProduct: (id: string) => req<{ product_id: string; store_id: string; data: ProductForm }>(`/product-editor/products/${id}`),
+  editorPublish: (b: { draft_id?: string | null; product_id?: string | null; store_id?: string | null; data: ProductForm }) =>
+    req<{ product_id: string; store_id: string; status: "active" | "inactive" }>("/product-editor/publish", { method: "POST", body: JSON.stringify(b) }),
   adminStores: (status?: string) => req<Store[]>(`/admin/stores${status ? `?status=${status}` : ""}`),
   adminSetStoreStatus: (id: string, status: "active" | "rejected" | "suspended", note = "") =>
     req<Store>(`/admin/stores/${id}/status`, { method: "PUT", body: JSON.stringify({ status, note }) }),
@@ -382,12 +395,24 @@ export type Product = {
   price_matrix: ({ min_qty: number } & Record<CustomerType, number>)[];
   flash_price?: number | null; flash_ends_at?: string | null;
   store_id: string; store_name: string;
+  brand?: string; condition?: "new" | "used"; video?: string; min_order?: number; max_order?: number;
+  variant_options?: VariantOption[]; variants?: (Omit<VariantRow, "active"> & { name: string })[];
 };
-export type CartItem = { product_id: string; quantity: number; name: string; price: number; base_price: number; original_price: number; image: string; stock: number; next_tier?: PriceTier | null; store_id: string; store_name: string };
+export type VariantOption = { name: string; values: string[] };
+export type VariantRow = { variant_id: string; values: string[]; price: number; stock: number; sku: string; image: string; active: boolean };
+export type ProductForm = {
+  name: string; category: string; subcategory: string; brand: string; sku: string; condition: "new" | "used"; showcase: string;
+  status: "active" | "inactive"; description: string; images: string[]; video: string; price: number; discount_price: number;
+  stock: number; min_order: number; max_order: number; low_stock_alert: number;
+  variants_enabled: boolean; variant_options: VariantOption[]; variants: VariantRow[];
+};
+export type ProductDraft = { draft_id: string; product_id?: string | null; store_id: string; data: ProductForm; updated_at: string };
+export type EditorContext = { admin: boolean; stores: { store_id: string; name: string }[]; showcases: string[]; limits: { images: number; image_mb: number; video_mb: number; combos: number } };
+export type CartItem = { key: string; variant_id?: string | null; variant_name?: string; min_order?: number; max_order?: number; product_id: string; quantity: number; name: string; price: number; base_price: number; original_price: number; image: string; stock: number; next_tier?: PriceTier | null; store_id: string; store_name: string };
 export type Cart = { items: CartItem[]; subtotal: number; savings: number; item_count: number; customer_type: CustomerType };
 export type PaymentMethod = "midtrans" | "xendit" | "cod" | "saldo";
 export type CheckoutPayload = { full_name: string; phone: string; address: string; city: string; payment_method: PaymentMethod; use_balance?: boolean; voucher_code?: string; store_id: string; courier: string; destination_id?: number | null; expected_shipping_cost?: number; destination_label?: string };
-export type OrderItem = { product_id: string; name: string; price: number; quantity: number; image: string };
+export type OrderItem = { product_id: string; name: string; price: number; quantity: number; image: string; variant_id?: string | null; variant_name?: string };
 export type Order = {
   order_id: string; user_id?: string | null; items: OrderItem[]; subtotal: number; shipping_cost: number; discount?: number; voucher_code?: string | null; total: number;
   shipping: Record<string, string>; status: "pending" | "paid" | "expired" | "failed" | "cod" | "processing" | "shipped" | "completed" | "cancelled"; payment_method: PaymentMethod;

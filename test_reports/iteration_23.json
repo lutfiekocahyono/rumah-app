@@ -1,0 +1,45 @@
+{
+  "summary": "Tested the Seller Center product editor and purchasable variants end to end. Backend: 19/19 new pytest cases pass (tests/test_pgs_iter23_product_editor.py). They cover the context endpoint (seller sees only own store, admin sees all with admin:true, customer gets 403); uploads (jpg/png/mp4 OK and served via /api/files, gif and images over 8MB get 400; object storage works, no 500/502); draft CRUD with owner isolation; publish returning 422 with an errors map for name/category/images/description/price/discount/variant price/max<min; publish, edit and inactive, which hides the product from /products and /products/{id}; admin publishing to a chosen store; variant cart with key pid::vid at variant price and stock; max_order capping quantity; min_order checkout returning 400; COD pickup checkout storing variant_id/variant_name and decreasing variant stock, with admin cancel restoring it; PUT /seller/inventory returning 400 for variant products; the regular product cart regression. Frontend, web at 1280px and 390px: sidebar and every nav testID present, 390px drawer opens and nav-pesanan goes to /seller/orders, Kelola Toko seller-add-product opens the editor, empty publish shows per-field errors plus toast, rich-editor bold/heading/bullet buttons and preview work, multi-photo upload through the file chooser shows progress then tiles, set main/move/remove work, bad gif format message shows, MP4 video upload shows a tile, the variant builder (Warna + Ukuran) builds the table, bulk apply and per-row price/SKU work, discount % auto-calculates, low-stock warning shows, the completeness % updates, publishing goes through confirm-dialog to the success dialog, saving a draft shows pe-toast-ok, draft chips load the draft (?draft=), and /product-editor/{id} opens in edit mode with its variant rows. Buyer side: pd-variant chips appear, the price reads 'Mulai Rp15.000' until every option is chosen and then shows the variant price and stock, adding without a choice shows a toast, after choosing the item is added to the cart, cart-variant-{key} shows, and the description renders formatted with no raw markdown. Admin: Tambah Produk appears in the Admin menu, the editor shows pe-store-* chips, the sidebar shows Promosi and hides Manajemen Stok. Fixed one bug: the subcategory picker was always disabled.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/cart + POST /api/checkout", "issue": "A product switched to status 'inactive' (Nonaktif) stays in existing carts and can still be checked out. Reproduced: added a TEST product to a guest cart, set it inactive, then checkout pickup+COD returned 200 and created an order (cancelled afterwards). _load_cart_detailed and checkout never check product.status. Should skip or flag inactive products (as is done for disabled variants) and reject them at checkout."},
+      {"endpoint": "GET /api/product-editor/products/{id} (to_form)", "issue": "Imported catalog products store a subcategory id as `category` (e.g. pgs-9955 category='peralatan-masak', categories=['peralatan-masak']). to_form returns category='peralatan-masak', subcategory='', so the editor puts a subcategory in 'Kategori utama'. On re-publish categories becomes [sub] only. to_form should map a child category to category=parent, subcategory=child."},
+      {"endpoint": "POST /api/product-editor/upload", "issue": "Reads the whole file into memory (up to 50MB) before checking its size. Consider streaming/chunked reading with an early abort. Low priority."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Product editor – subcategory picker", "issue": "FIXED by testing agent: the editor loaded categories with api.categories(), which only returns main categories (parent=null). subs was therefore always empty, and pe-subcategory was disabled with 'Tidak ada subkategori' for every category (Dapur has 5+ children). Added api.allCategories() (/categories?all=true) and used it in app/product-editor/[id].tsx. Verified: picked Dapur → Peralatan Masak.", "testID": "pe-subcategory", "priority": "HIGH (fixed)"},
+      {"component": "Cart – variant label", "issue": "The 'Variasi: Biru / M' text uses styles.basePrice, which has textDecorationLine 'line-through', so the variant name shows struck through. Reference: app/(tabs)/keranjang.tsx:80 and :175. Needs its own style with no line-through.", "testID": "cart-variant-{key}", "priority": "MEDIUM"},
+      {"component": "Product page toast", "issue": "'Pilih variasi dulu' and other error toasts (e.g. stock errors) appear in the same green success toast with a checkmark icon. They should use an error/warning style. Reference: app/product/[id].tsx:45,53.", "testID": "pd toast", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Product page variants", "issues": ["An option with only one value (e.g. Ukuran: M) is not auto-selected, so the buyer must tap it before the price changes from 'Mulai'. Consider auto-picking single-value options."]},
+      {"screen": "Seller shell / rich editor", "issues": ["Rich-editor toolbar buttons and shell-menu are 40x40 and pe-video-remove is 45x30, all below the 44pt minimum touch target.", "The seller sidebar items Daftar Produk, Laporan Penjualan and Pengaturan Toko all route to /seller (same as Dashboard). Acceptable for Phase 1 but worth noting."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_pgs_iter23_product_editor.py", "/app/test_reports/pytest/pytest_iter23.xml"],
+  "action_items": [
+    "Exclude or flag status='inactive' products in _load_cart_detailed and reject them in /api/checkout",
+    "Fix the cart variant label style (remove line-through) in app/(tabs)/keranjang.tsx:80",
+    "to_form: when product.category has a parent, return category=parent and subcategory=child",
+    "Use an error-styled toast for 'Pilih variasi dulu' and add-to-cart errors on the product page",
+    "Optional: auto-select single-value variant options; raise toolbar and shell-menu touch targets to 44px"
+  ],
+  "critical_code_review_comments": [
+    "product_editor.validate: variant SKU uniqueness and per-variant discount are not validated or supported. The variant table has no discount price, so to_product sets original_price=price for variant products.",
+    "publish with product_id ignores body.store_id (keeps the original store). This is the correct behaviour; noted for clarity.",
+    "Rich editor: format buttons insert at the tracked selection. With programmatic fill (no selection event), bold was inserted at position 0; with real typing it inserts at the cursor. Worth a manual check on native.",
+    "Admin context lists every active store, including leftover test stores from earlier iterations (TEST_Toko 09880, Toko Satu)."
+  ],
+  "updated_files": ["/app/frontend/src/api.ts (added allCategories)", "/app/frontend/app/product-editor/[id].tsx (use api.allCategories)", "/app/backend/tests/test_pgs_iter23_product_editor.py (new)"],
+  "success_rate": {"backend": "100% (19/19); 1 extra edge bug found (inactive product checkout)", "frontend": "~92%: core flows pass; subcategory bug fixed; 1 visual bug (cart variant strikethrough)"},
+  "seed_data_creation": "None kept. All TEST_ products created by the tests and the UI (sp_6f93187e34 and the pytest ones) were deleted by id, drafts deleted, test orders cancelled (restock verified), guest carts cleared. Popular pins verified intact on all 3 branches. Pricing and home settings were not touched.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run with EXPO_PUBLIC_BACKEND_URL exported; pytest.ini uses xdist loadscope. pgs-9957 is out of stock at pgs-official, so use pgs-9955 for regular cart tests. For UI, log in by fetching /api/auth/login and setting localStorage 'pgs_auth_token'. The sticky bottom bar (Simpan Draft/Publikasikan) covers elements, so force-clicks can hit Simpan Draft: scroll elements into view centered and click without force. Variant row testIDs use 'Merah/M' keys. Upload storage currently works.",
+  "rca_of_issue": "Subcategory: api.categories() without a parent sends no query, and the backend defaults to {parent: None}, so only main categories were returned and the client-side filter for children of form.category was always empty. Inactive checkout: _visible() (status != inactive) is only applied to product listing and add_to_cart, not to cart loading or checkout."
+}

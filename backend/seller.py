@@ -106,10 +106,16 @@ async def adjust_stock(db, order: dict, sign: int) -> None:
     """sign=-1 reserve on checkout, +1 give back on cancel. 9999 = unlimited (website import)."""
     sid = order.get("store_id", PGS_STORE_ID)
     for i in order["items"]:
-        p = await db.products.find_one({"product_id": i["product_id"]}, {"store_id": 1, "stock": 1})
+        p = await db.products.find_one({"product_id": i["product_id"]}, {"store_id": 1, "stock": 1, "variants": 1})
         if not p:
             continue
-        if sid != PGS_STORE_ID and p.get("store_id", PGS_STORE_ID) == PGS_STORE_ID:
+        if i.get("variant_id"):  # variant stock lives on the product; total stock follows the active variants
+            await db.products.update_one({"product_id": i["product_id"]}, {"$inc": {"variants.$[v].stock": sign * i["quantity"]}},
+                                         array_filters=[{"v.variant_id": i["variant_id"]}])
+            p = await db.products.find_one({"product_id": i["product_id"]}, {"variants": 1})
+            total = sum(v["stock"] for v in p.get("variants", []) if v.get("active", True))
+            await db.products.update_one({"product_id": i["product_id"]}, {"$set": {"stock": total, "in_stock": total > 0}})
+        elif sid != PGS_STORE_ID and p.get("store_id", PGS_STORE_ID) == PGS_STORE_ID:
             row = await db.store_stock.find_one({"store_id": sid, "product_id": i["product_id"]})
             if row and row["stock"] < 9999:
                 await db.store_stock.update_one({"_id": row["_id"]}, {"$inc": {"stock": sign * i["quantity"]}})
@@ -293,9 +299,11 @@ def register(api, db, get_current_user, require_admin, product_out_for_user, not
     @api.put("/seller/inventory/{product_id}")
     async def seller_set_stock(product_id: str, body: StockIn, ctx=Depends(require_seller)):
         sid = ctx["store"]["store_id"]
-        p = await db.products.find_one({"product_id": product_id}, {"store_id": 1, "stock": 1})
+        p = await db.products.find_one({"product_id": product_id}, {"store_id": 1, "stock": 1, "variants": 1})
         if not p or (p["store_id"] != sid and not (sid in OFFICIAL_IDS and p["store_id"] == PGS_STORE_ID)):
             raise HTTPException(status_code=404, detail="Produk tidak ditemukan")
+        if p.get("variants"):
+            raise HTTPException(status_code=400, detail="Produk ini punya variasi. Atur stok per variasi lewat Ubah Produk")
         if p["store_id"] == sid:
             old = p.get("stock", 0)
             await db.products.update_one({"product_id": product_id}, {"$set": {"stock": body.stock, "in_stock": body.stock > 0, "updated_at": _now()}})

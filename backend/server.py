@@ -19,6 +19,7 @@ import payments
 import account
 import marketing
 import home_feed
+import product_editor
 import order_tasks
 from order_tasks import COD_PICKUP_HOURS, RELEASE_STATUSES
 import promo
@@ -89,6 +90,7 @@ INDEXES: dict[str, list[IndexModel]] = {
                        IndexModel([("user_id", ASCENDING), ("purpose", ASCENDING)], name="user_purpose")],
     "store_stock": [IndexModel([("store_id", ASCENDING), ("product_id", ASCENDING)], name="store_product", unique=True)],
     "home_sections": [IndexModel([("store_id", ASCENDING)], name="store_id", unique=True)],
+    "product_drafts": [IndexModel([("owner", ASCENDING), ("updated_at", ASCENDING)], name="owner_updated")],
     "rate_limits": [IndexModel([("expires_at", ASCENDING)], name="ttl", expireAfterSeconds=0)],
     "addresses": [IndexModel([("user_id", ASCENDING), ("address_id", ASCENDING)], name="user_addr", unique=True)],
     "activity_logs": [IndexModel([("user_id", ASCENDING), ("created_at", DESCENDING)], name="user_time")],
@@ -278,11 +280,19 @@ class Product(BaseModel):
     store_name: str = "PGS Official"
     flash_price: Optional[int] = None
     flash_ends_at: Optional[datetime] = None
+    brand: str = ""
+    condition: str = "new"
+    video: str = ""
+    min_order: int = 1
+    max_order: int = 0
+    variant_options: List[dict] = []
+    variants: List[dict] = []  # active variants only: {variant_id, values, name, price, stock, sku, image}
 
 
 class CartItemIn(BaseModel):
     product_id: str
     quantity: int = Field(ge=1, default=1)
+    variant_id: Optional[str] = None
 
 
 class CartQtyIn(BaseModel):
@@ -302,6 +312,11 @@ class CartItemDetailed(BaseModel):
     next_tier: Optional[PriceTier] = None
     store_id: str = seller.PGS_STORE_ID
     store_name: str = "PGS Sidoarjo"
+    key: str = ""  # cart line: product_id, or product_id::variant_id
+    variant_id: Optional[str] = None
+    variant_name: str = ""
+    min_order: int = 1
+    max_order: int = 0
 
 
 class CartOut(BaseModel):
@@ -337,6 +352,8 @@ class OrderItem(BaseModel):
     price: int
     quantity: int
     image: str
+    variant_id: Optional[str] = None
+    variant_name: str = ""
 
 
 class Order(BaseModel):
@@ -601,16 +618,17 @@ def _ctx(x_store_id: Optional[str]) -> str:
 async def _visible(ctx: str) -> dict:
     """Hide inactive stores and the *own* products of other official branches (catalog is shared)."""
     if ctx == ALL_BRANCHES:
-        return {"store_id": {"$nin": await _hidden_stores()}}
+        return {"store_id": {"$nin": await _hidden_stores()}, "status": {"$ne": "inactive"}}
     others = [s for s in seller.OFFICIAL_IDS if s not in (seller.PGS_STORE_ID, ctx)]
-    return {"store_id": {"$nin": await _hidden_stores() + others}}
+    return {"store_id": {"$nin": await _hidden_stores() + others}, "status": {"$ne": "inactive"}}
 
 
 async def _apply_stock(docs: List[dict], ctx: str) -> List[dict]:
     """Catalog items show the stock of the buyer's chosen branch (or the total of all branches)."""
     if ctx == seller.PGS_STORE_ID:
         return docs
-    ids = [d["product_id"] for d in docs if d.get("store_id", seller.PGS_STORE_ID) == seller.PGS_STORE_ID]
+    # products with variants keep their own per-variant stock (sold by the store that owns them)
+    ids = [d["product_id"] for d in docs if d.get("store_id", seller.PGS_STORE_ID) == seller.PGS_STORE_ID and not d.get("variants")]
     if ctx == ALL_BRANCHES:
         hidden = await _hidden_stores()
         per = [await seller.branch_stocks(db, b, ids) for b in seller.OFFICIAL_IDS if b != seller.PGS_STORE_ID and b not in hidden]
@@ -640,6 +658,8 @@ def _product_out(d: dict, ctype: str, pricing: dict, flash: Optional[dict] = Non
     matrix = price_matrix(d, pricing)
     all_prices = [r[c] for r in matrix for c in CUSTOMER_TYPES] or [d.get("price", 0)]
     fp = (flash or {}).get("prices", {}).get(d["product_id"])
+    d = {**d, "variants": [{k: v.get(k) for k in ("variant_id", "values", "name", "price", "stock", "sku", "image")}
+                           for v in d.get("variants") or [] if v.get("active", True)]}
     return Product(**{k: v for k, v in d.items() if k in Product.model_fields},
                    my_price=min(tiers[0]["price"], fp) if fp else tiers[0]["price"],
                    price_tiers=[PriceTier(**t) for t in tiers],
@@ -704,6 +724,19 @@ async def get_product(product_id: str, user=Depends(get_optional_user), x_store_
 # ---------------------------------------------------------------------------
 # Cart
 # ---------------------------------------------------------------------------
+def _line_key(product_id: str, variant_id: Optional[str]) -> str:
+    return f"{product_id}::{variant_id}" if variant_id else product_id
+
+
+def _variant(p: dict, variant_id: Optional[str]) -> Optional[dict]:
+    return next((v for v in p.get("variants") or [] if v["variant_id"] == variant_id and v.get("active", True)), None) if variant_id else None
+
+
+def _cap(p: dict, stock: int, qty: int) -> int:
+    """Quantity limited by stock and the seller's maximum per order."""
+    return min(stock, qty, p.get("max_order") or qty)
+
+
 async def _load_cart_detailed(owner: str, only_store: Optional[str] = None) -> CartOut:
     ctype = await _ctype_for_owner(owner)
     cart = await db.carts.find_one({"owner": owner}, {"_id": 0}) or {"owner": owner, "items": []}
@@ -722,19 +755,27 @@ async def _load_cart_detailed(owner: str, only_store: Optional[str] = None) -> C
     subtotal = savings = 0
     for it in items:
         p = prods.get(it["product_id"])
-        if not p:
+        if not p or p.get("status") == "inactive":  # switched off by the seller: can't be bought any more
             continue
         sid = it.get("store_id", seller.PGS_STORE_ID)
         stock = stock_by[sid].get(p["product_id"], 0) if sid in stock_by and p.get("store_id") == seller.PGS_STORE_ID else p["stock"]
+        v = _variant(p, it.get("variant_id"))
+        if it.get("variant_id") and not v:
+            continue  # variant was removed or switched off by the seller
+        if v:  # the variant's own price and stock; quantity tiers still apply on top
+            p = {**p, "price": v["price"], "original_price": v["price"], "tier_prices": {}, "image": v.get("image") or p["image"]}
+            stock = v["stock"]
         qty = it["quantity"]
         price = unit_price(p, ctype, qty, pricing)
-        if flash_prices.get(p["product_id"]):
+        if flash_prices.get(p["product_id"]) and not v:
             price = min(price, flash_prices[p["product_id"]])
         nxt = next((t for t in price_tiers(p, ctype, pricing) if t["min_qty"] > qty), None)
         detailed.append(CartItemDetailed(
             product_id=it["product_id"], quantity=qty, name=p["name"], price=price, base_price=p["price"],
             original_price=p["original_price"], image=p["image"], stock=stock,
             next_tier=PriceTier(**nxt) if nxt else None, store_id=sid, store_name=names.get(sid, sid),
+            key=_line_key(it["product_id"], it.get("variant_id")), variant_id=it.get("variant_id"),
+            variant_name=(v or {}).get("name", ""), min_order=p.get("min_order", 1), max_order=p.get("max_order", 0),
         ))
         subtotal += price * qty
         savings += max(0, p["price"] - price) * qty
@@ -755,44 +796,59 @@ async def add_to_cart(body: CartItemIn, owner: str = Depends(get_owner), x_store
         raise HTTPException(status_code=404, detail="Produk tidak ditemukan")
     await _apply_stock([product], ctx)
     item_store = ctx if product.get("store_id", seller.PGS_STORE_ID) == seller.PGS_STORE_ID else product["store_id"]
-    if not product.get("in_stock", True) or product["stock"] <= 0:
+    stock = product["stock"]
+    if product.get("variants"):
+        v = _variant(product, body.variant_id)
+        if not v:
+            raise HTTPException(status_code=400, detail="Pilih variasi produk dulu")
+        stock, item_store = v["stock"], product["store_id"]
+    if not product.get("in_stock", True) or stock <= 0:
         raise HTTPException(status_code=400, detail="Stok habis")
+    vid = body.variant_id if product.get("variants") else None
     cart = await db.carts.find_one({"owner": owner}) or {"owner": owner, "items": []}
     items = cart.get("items", [])
     for it in items:
-        if it["product_id"] == body.product_id:
-            it["quantity"] = min(product["stock"], it["quantity"] + body.quantity) if it.get("store_id", seller.PGS_STORE_ID) == item_store else min(product["stock"], body.quantity)
+        if it["product_id"] == body.product_id and it.get("variant_id") == vid:
+            it["quantity"] = _cap(product, stock, it["quantity"] + body.quantity) if it.get("store_id", seller.PGS_STORE_ID) == item_store else _cap(product, stock, body.quantity)
             it["store_id"] = item_store
             break
     else:
-        items.append({"product_id": body.product_id, "quantity": min(product["stock"], body.quantity), "store_id": item_store})
+        items.append({"product_id": body.product_id, "variant_id": vid, "quantity": _cap(product, stock, body.quantity), "store_id": item_store})
     await db.carts.update_one({"owner": owner}, {"$set": {"items": items, "updated_at": datetime.now(timezone.utc)}}, upsert=True)
     return await _load_cart_detailed(owner)
 
 
-@api.put("/cart/items/{product_id}", response_model=CartOut)
-async def update_cart_item(product_id: str, body: CartQtyIn, owner: str = Depends(get_owner)):
-    product = await db.products.find_one({"product_id": product_id}, {"stock": 1, "product_id": 1, "store_id": 1})
+@api.put("/cart/items/{key}", response_model=CartOut)
+async def update_cart_item(key: str, body: CartQtyIn, owner: str = Depends(get_owner)):
+    """`key` is the cart line: product_id, or product_id::variant_id for a variant."""
+    product_id, _, vid = key.partition("::")
+    vid = vid or None
+    product = await db.products.find_one({"product_id": product_id}, {"stock": 1, "product_id": 1, "store_id": 1, "variants": 1, "max_order": 1})
     if not product:
         raise HTTPException(status_code=404, detail="Produk tidak ditemukan")
+    same = lambda i: i["product_id"] == product_id and i.get("variant_id") == vid  # noqa: E731
     cart = await db.carts.find_one({"owner": owner}) or {"owner": owner, "items": []}
-    items = [i for i in cart.get("items", []) if i["product_id"] != product_id]
+    items = [i for i in cart.get("items", []) if not same(i)]
     if body.quantity > 0:
-        old = next((i for i in cart.get("items", []) if i["product_id"] == product_id), None)
+        old = next((i for i in cart.get("items", []) if same(i)), None)
         sid = (old or {}).get("store_id", seller.PGS_STORE_ID)
         await _apply_stock([product], sid) if sid in seller.OFFICIAL_IDS else None
-        entry = {"product_id": product_id, "quantity": min(product["stock"], body.quantity), "store_id": sid}
+        v = _variant(product, vid)
+        if vid and not v:
+            raise HTTPException(status_code=400, detail="Variasi tidak tersedia lagi")
+        entry = {"product_id": product_id, "variant_id": vid, "quantity": _cap(product, v["stock"] if v else product["stock"], body.quantity), "store_id": sid}
         if old:
-            items = [entry if i["product_id"] == product_id else i for i in cart["items"]]
+            items = [entry if same(i) else i for i in cart["items"]]
         else:
             items.append(entry)
     await db.carts.update_one({"owner": owner}, {"$set": {"items": items, "updated_at": datetime.now(timezone.utc)}}, upsert=True)
     return await _load_cart_detailed(owner)
 
 
-@api.delete("/cart/items/{product_id}", response_model=CartOut)
-async def delete_cart_item(product_id: str, owner: str = Depends(get_owner)):
-    await db.carts.update_one({"owner": owner}, {"$pull": {"items": {"product_id": product_id}}})
+@api.delete("/cart/items/{key}", response_model=CartOut)
+async def delete_cart_item(key: str, owner: str = Depends(get_owner)):
+    product_id, _, vid = key.partition("::")
+    await db.carts.update_one({"owner": owner}, {"$pull": {"items": {"product_id": product_id, "variant_id": vid or None}}})
     return await _load_cart_detailed(owner)
 
 
@@ -849,8 +905,13 @@ async def checkout(body: CheckoutIn, background: BackgroundTasks, owner: str = D
     if cart.item_count == 0:
         raise HTTPException(status_code=400, detail="Keranjang kosong")
     for i in cart.items:
+        label = f"{i.name} ({i.variant_name})" if i.variant_name else i.name
         if i.quantity > i.stock:
-            raise HTTPException(status_code=400, detail=f"Stok {i.name} tidak cukup (sisa {i.stock})")
+            raise HTTPException(status_code=400, detail=f"Stok {label} tidak cukup (sisa {i.stock})")
+        if i.quantity < i.min_order:
+            raise HTTPException(status_code=400, detail=f"Minimal pembelian {label} adalah {i.min_order}")
+        if i.max_order and i.quantity > i.max_order:
+            raise HTTPException(status_code=400, detail=f"Maksimal pembelian {label} adalah {i.max_order}")
     store = await db.stores.find_one({"store_id": store_id, "status": "active"})
     if not store:
         raise HTTPException(status_code=400, detail="Toko tidak aktif")
@@ -899,7 +960,8 @@ async def checkout(body: CheckoutIn, background: BackgroundTasks, owner: str = D
         "user_id": user_id,
         "owner": owner,
         "email": (user or {}).get("email"),
-        "items": [OrderItem(product_id=i.product_id, name=i.name, price=i.price, quantity=i.quantity, image=i.image).model_dump() for i in cart.items],
+        "items": [OrderItem(product_id=i.product_id, name=i.name, price=i.price, quantity=i.quantity, image=i.image,
+                            variant_id=i.variant_id, variant_name=i.variant_name).model_dump() for i in cart.items],
         "subtotal": cart.subtotal,
         "shipping_cost": SHIPPING_COST,
         "discount": discount,
@@ -938,7 +1000,9 @@ async def checkout(body: CheckoutIn, background: BackgroundTasks, owner: str = D
     await _track(owner, [p["category"] for p in await db.products.find(
         {"product_id": {"$in": [i.product_id for i in cart.items]}}, {"category": 1}).to_list(500)], weight=3)
     await seller.adjust_stock(db, order_doc, -1)
-    await db.carts.update_one({"owner": owner}, {"$pull": {"items": {"product_id": {"$in": [i.product_id for i in cart.items]}}}})
+    bought = {i.key for i in cart.items}
+    left = [i for i in (await db.carts.find_one({"owner": owner}) or {}).get("items", []) if _line_key(i["product_id"], i.get("variant_id")) not in bought]
+    await db.carts.update_one({"owner": owner}, {"$set": {"items": left}})
     background.add_task(notify.send_owner_order, order_doc)
     await ACCT["notify_user"](user_id, "order", "Pesanan dibuat", f"Pesanan {order_doc['order_id']} berhasil dibuat.", f"/order/{order_doc['order_id']}")
     await ACCT["log_activity"](user_id, "order", f"Membuat pesanan {order_doc['order_id']}")
@@ -1231,6 +1295,7 @@ marketing.register(api, db, require_admin=require_admin, get_owner=get_owner, ge
 home_feed.register(api, db, get_current_user=get_current_user, require_admin=require_admin, get_optional_owner=get_optional_owner,
                    get_optional_user=get_optional_user, visible=_visible, apply_stock=_apply_stock, product_out=_product_out,
                    all_branches=ALL_BRANCHES)
+product_editor.register(api, db, get_current_user=get_current_user, log_activity=ACCT["log_activity"])
 seller.register(api, db, get_current_user, require_admin, _product_out_for_user, ACCT["notify_user"], ACCT["log_activity"],
                 _release_voucher, _order_out)
 

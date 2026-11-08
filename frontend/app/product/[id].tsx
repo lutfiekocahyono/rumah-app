@@ -12,9 +12,12 @@ import { useCart } from "@/src/cart-context";
 import { useAuth } from "@/src/auth-context";
 import { Countdown } from "@/src/components/countdown";
 import { BranchAvailability } from "@/src/components/branch-availability";
+import { RichText } from "@/src/components/rich-text";
 import { useStore } from "@/src/store-context";
 
 const { width: screenW } = Dimensions.get("window");
+
+const OK_TOASTS = ["Ditambahkan ke keranjang", "Toko diganti"]; // anything else is an error message
 
 export default function ProductDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -30,18 +33,28 @@ export default function ProductDetail() {
   const [adding, setAdding] = useState(false);
   const [toast, setToast] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
+  const [picked, setPicked] = useState<Record<number, string>>({}); // option index -> chosen value
 
   useEffect(() => {
     if (!id) return;
-    api.product(id).then((p) => { setProduct(p); setLoading(false); }).catch(() => setLoading(false));
+    api.product(id).then((p) => {
+      setProduct(p); setQty(Math.max(1, p.min_order ?? 1)); setLoading(false);
+      // options with a single choice are picked automatically
+      setPicked(Object.fromEntries((p.variant_options ?? []).map((o, i) => [i, o.values.length === 1 ? o.values[0] : ""]).filter(([, v]) => v)));
+    }).catch(() => setLoading(false));
     if (!reloadKey) api.trackView(id).catch(() => {});
   }, [id, reloadKey]);
 
   const handleAdd = async (goCart: boolean) => {
     if (!product) return;
+    if (hasVariants && !variant) {
+      setToast("Pilih variasi dulu");
+      setTimeout(() => setToast(""), 2000);
+      return;
+    }
     setAdding(true);
     try {
-      const err = await addToCart(product.product_id, qty);
+      const err = await addToCart(product.product_id, qty, variant?.variant_id);
       if (err) {
         setToast(err);
         setTimeout(() => setToast(""), 2000);
@@ -58,10 +71,15 @@ export default function ProductDetail() {
     }
   };
 
-  const tiers = product?.price_tiers ?? [];
+  const tiers = product?.variants?.length ? [] : product?.price_tiers ?? [];
   const myType = user?.customer_type ?? "langsung";
-  const tierUnit = tiers.reduce((p, t) => (qty >= t.min_qty ? t.price : p), product?.my_price ?? product?.price ?? 0);
-  const flashPrice = product?.flash_price ?? null;
+  const options = product?.variant_options ?? [];
+  const hasVariants = !!product?.variants?.length;
+  const variant = hasVariants && options.every((_, i) => picked[i])
+    ? product!.variants!.find((v) => v.values.every((x, i) => x === picked[i])) ?? null : null;
+  const maxQty = Math.max(1, Math.min(variant ? variant.stock : product?.stock ?? 1, product?.max_order || Infinity));
+  const tierUnit = variant ? variant.price : tiers.reduce((p, t) => (qty >= t.min_qty ? t.price : p), product?.my_price ?? product?.price ?? 0);
+  const flashPrice = hasVariants ? null : product?.flash_price ?? null;
   const unit = flashPrice ? Math.min(tierUnit, flashPrice) : tierUnit;
 
   if (loading) {
@@ -81,7 +99,7 @@ export default function ProductDetail() {
     );
   }
 
-  const images = product.images?.length ? product.images : [product.image];
+  const images = variant?.image ? [variant.image, ...(product.images ?? []).filter((x) => x !== variant.image)] : product.images?.length ? product.images : [product.image];
   const wished = isWished(product.product_id);
 
   return (
@@ -127,7 +145,7 @@ export default function ProductDetail() {
 
         <View style={styles.body}>
           <View style={styles.priceRow}>
-            <Text style={styles.price} testID="pd-unit-price">{formatIDR(unit)}</Text>
+            <Text style={styles.price} testID="pd-unit-price">{hasVariants && !variant ? `Mulai ${formatIDR(product.price)}` : formatIDR(unit)}</Text>
             {unit < product.price ? (
               <Text style={styles.oldPrice}>{formatIDR(product.price)}</Text>
             ) : null}
@@ -153,9 +171,36 @@ export default function ProductDetail() {
             <Text style={styles.metaText}>{product.rating.toFixed(1)}</Text>
             <Text style={styles.metaDot}>·</Text>
             <Text style={[styles.metaText, !product.in_stock && { color: colors.error }]}>
-              {product.in_stock ? `Stok ${product.stock >= 9999 ? "tersedia" : product.stock}` : "Stok habis"}
+              {variant ? (variant.stock > 0 ? `Stok ${variant.stock}` : "Stok variasi habis") : product.in_stock ? `Stok ${product.stock >= 9999 ? "tersedia" : product.stock}` : "Stok habis"}
             </Text>
           </View>
+          {product.brand || product.condition === "used" ? (
+            <Text style={styles.metaText} testID="pd-brand">{[product.brand && `Merek ${product.brand}`, product.condition === "used" ? "Bekas" : "Baru"].filter(Boolean).join(" · ")}</Text>
+          ) : null}
+
+          {hasVariants ? (
+            <View style={{ marginTop: spacing.md, gap: spacing.md }} testID="pd-variants">
+              {options.map((o, oi) => (
+                <View key={o.name} style={{ gap: spacing.sm }}>
+                  <Text style={styles.sectionTitle}>{o.name}{picked[oi] ? `: ${picked[oi]}` : ""}</Text>
+                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }}>
+                    {o.values.map((val) => {
+                      // a value is selectable when some active variant with the other picks has it in stock
+                      const ok = product.variants!.some((v) => v.values[oi] === val && v.stock > 0 && v.values.every((x, i) => i === oi || !picked[i] || x === picked[i]));
+                      const on = picked[oi] === val;
+                      return (
+                        <Pressable key={val} testID={`pd-variant-${oi}-${val}`} disabled={!ok && !on}
+                          onPress={() => { setPicked((p) => ({ ...p, [oi]: on ? "" : val })); setQty(Math.max(1, product.min_order ?? 1)); setImgIdx(0); }}
+                          style={[styles.vChip, on && styles.vChipOn, !ok && !on && { opacity: 0.4 }]}>
+                          <Text style={[styles.vChipText, on && { color: colors.brandPrimary, fontWeight: "600" }]}>{val}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+              ))}
+            </View>
+          ) : null}
 
           {product.store_id === "pgs-official" ? (
             <View style={{ marginTop: spacing.md }}>
@@ -200,16 +245,16 @@ export default function ProductDetail() {
 
           <View style={styles.sep} />
           <Text style={styles.sectionTitle}>Deskripsi</Text>
-          <Text style={styles.desc}>{product.description}</Text>
+          <RichText text={product.description} style={styles.desc} />
 
           <View style={styles.sep} />
           <Text style={styles.sectionTitle}>Jumlah</Text>
           <View style={styles.qtyRow}>
-            <Pressable testID="qty-minus" style={styles.qtyBtn} onPress={() => setQty((q) => Math.max(1, q - 1))}>
+            <Pressable testID="qty-minus" style={styles.qtyBtn} onPress={() => setQty((q) => Math.max(product.min_order ?? 1, q - 1))}>
               <Icon name="remove" size={16} color={colors.onSurface} />
             </Pressable>
             <Text style={styles.qtyText} testID="qty-value">{qty}</Text>
-            <Pressable testID="qty-plus" style={styles.qtyBtn} onPress={() => setQty((q) => Math.min(product.stock, q + 1))}>
+            <Pressable testID="qty-plus" style={styles.qtyBtn} onPress={() => setQty((q) => Math.min(maxQty, q + 1))}>
               <Icon name="add" size={16} color={colors.onSurface} />
             </Pressable>
             <View style={{ flex: 1 }} />
@@ -245,8 +290,8 @@ export default function ProductDetail() {
       </View>
 
       {toast ? (
-        <View style={[styles.toast, { bottom: insets.bottom + 110 }]} testID="toast">
-          <Icon name="checkmark-circle" size={18} color={colors.onSuccess} />
+        <View style={[styles.toast, { bottom: insets.bottom + 110 }, !OK_TOASTS.includes(toast) && { backgroundColor: colors.error }]} testID="toast">
+          <Icon name={OK_TOASTS.includes(toast) ? "checkmark-circle" : "alert-circle"} size={18} color={colors.onSuccess} />
           <Text style={styles.toastText}>{toast}</Text>
         </View>
       ) : null}
@@ -286,6 +331,9 @@ const styles = StyleSheet.create({
   sep: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border, marginVertical: spacing.lg },
   sectionTitle: { fontSize: fontSize.base, color: colors.onSurface, fontWeight: "500", marginBottom: spacing.sm },
   desc: { fontSize: fontSize.sm, color: colors.onSurfaceSecondary, lineHeight: 20 },
+  vChip: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm, paddingHorizontal: spacing.md, minHeight: 40, justifyContent: "center" },
+  vChipOn: { borderColor: colors.brandPrimary, backgroundColor: colors.brandTertiary },
+  vChipText: { fontSize: fontSize.sm, color: colors.onSurface },
 
   qtyRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
   subtotal: { fontSize: fontSize.sm, color: colors.onSurface, fontWeight: "500" },

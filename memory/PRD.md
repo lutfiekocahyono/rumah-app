@@ -100,3 +100,10 @@ Iteration 2: import all data from pusatgrosirsidoarjo.com; tiered pricing (pembe
 
 ## Iteration 22
 - Wholesale display unchanged; pricing settings had been wiped by legacy test teardown. Tests now snapshot/restore pricing. User re-enters values in Admin → Pengaturan Harga.
+
+## Iteration 23 — Seller Center: Tambah Produk (Tahap 1)
+- backend/product_editor.py: /api/product-editor/{context,upload,drafts,drafts/{id},products/{id},publish}. Admin -> any active store; seller/branch admin -> own store.
+- Product fields: brand, sku, condition, showcase, status (inactive hidden via _visible), video, min/max order, low_stock_alert, variant_options, variants[{variant_id,values,name,price,stock,sku,image,active}].
+- Cart lines keyed `product_id::variant_id`; PUT/DELETE /api/cart/items/{key}; checkout enforces min/max order; variant stock adjusted via arrayFilters; variant products keep own stock (no branch store_stock).
+- Frontend: /product-editor/[id] (new|product_id, ?draft=), SellerShell sidebar (≥900px fixed, else drawer), sections Informasi Dasar (rich editor), Foto & Video (multi, drag&drop web, reorder, main, replace, progress), Variasi (table), Harga & Stok, kelengkapan; Simpan Draft + Publikasikan with confirm. Product detail variant picker + RichText.
+- Phase 2 pending: sections 7,8,9, other buttons (Preview, Simpan & Tambah Baru, Batalkan), 12 (autosave, duplicate, import/export, bulk edit, history).

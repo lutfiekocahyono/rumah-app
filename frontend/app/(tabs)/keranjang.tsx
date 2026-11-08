@@ -70,13 +70,15 @@ export default function Keranjang() {
           <Text style={styles.storeLine} testID="cart-store-name">Toko: {groups.find(([id]) => id === activeStore)?.[1]}</Text>
           <FlatList
             data={items}
-            keyExtractor={(it) => it.product_id}
+            keyExtractor={(it) => it.key}
             contentContainerStyle={{ padding: spacing.lg, gap: spacing.md, paddingBottom: 240 }}
             renderItem={({ item }) => (
-              <View style={styles.row} testID={`cart-row-${item.product_id}`}>
+              <View style={styles.row} testID={`cart-row-${item.key}`}>
                 <Image source={item.image} style={styles.rowImg} contentFit="cover" />
                 <View style={{ flex: 1, gap: 4 }}>
                   <Text style={styles.rowName} numberOfLines={2}>{item.name}</Text>
+                  {item.variant_name ? <Text style={styles.variantText} testID={`cart-variant-${item.key}`}>Variasi: {item.variant_name}</Text> : null}
+                  {(item.min_order ?? 1) > item.quantity ? <Text style={styles.nextTier}>Minimal beli {item.min_order}</Text> : null}
                   <View style={styles.priceLine}>
                     <Text style={styles.rowPrice} testID={`cart-unit-price-${item.product_id}`}>{formatIDR(item.price)}</Text>
                     {item.price < item.base_price ? <Text style={styles.basePrice}>{formatIDR(item.base_price)}</Text> : null}
@@ -90,7 +92,7 @@ export default function Keranjang() {
                     <Pressable
                       testID={`cart-minus-${item.product_id}`}
                       style={styles.qtyBtn}
-                      onPress={() => updateQty(item.product_id, Math.max(0, item.quantity - 1))}
+                      onPress={() => updateQty(item.key, Math.max(0, item.quantity - 1))}
                     >
                       <Icon name="remove" size={14} color={colors.onSurface} />
                     </Pressable>
@@ -98,12 +100,12 @@ export default function Keranjang() {
                     <Pressable
                       testID={`cart-plus-${item.product_id}`}
                       style={styles.qtyBtn}
-                      onPress={() => updateQty(item.product_id, Math.min(item.stock, item.quantity + 1))}
+                      onPress={() => updateQty(item.key, Math.min(item.stock, item.max_order || item.stock, item.quantity + 1))}
                     >
                       <Icon name="add" size={14} color={colors.onSurface} />
                     </Pressable>
                     <View style={{ flex: 1 }} />
-                    <Pressable testID={`cart-remove-${item.product_id}`} hitSlop={8} onPress={() => removeItem(item.product_id)}>
+                    <Pressable testID={`cart-remove-${item.product_id}`} hitSlop={8} onPress={() => removeItem(item.key)}>
                       <Icon name="trash-outline" size={18} color={colors.muted} />
                     </Pressable>
                   </View>
@@ -171,6 +173,7 @@ const styles = StyleSheet.create({
   rowPrice: { fontSize: fontSize.base, color: colors.brandPrimary, fontWeight: "500" },
   priceLine: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   basePrice: { fontSize: 11, color: colors.muted, textDecorationLine: "line-through" },
+  variantText: { fontSize: 12, color: colors.onSurfaceSecondary },
   nextTier: { fontSize: 11, color: colors.success },
   qtyRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: 4 },
   qtyBtn: { width: 26, height: 26, borderRadius: 13, backgroundColor: colors.surfaceTertiary, alignItems: "center", justifyContent: "center" },
