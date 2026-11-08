@@ -1,0 +1,353 @@
+{
+ "rates": {
+  "pgs-official": {
+   "Gubeng Surabaya": [
+    {
+     "code": "pickup",
+     "name": "Ambil di toko",
+     "cost": 0,
+     "eta": "Hari ini",
+     "source": "manual"
+    },
+    {
+     "code": "jne",
+     "name": "JNE REG",
+     "cost": 9000,
+     "eta": "2 day",
+     "source": "auto"
+    },
+    {
+     "code": "jnt",
+     "name": "J&T EZ",
+     "cost": 8000,
+     "eta": "2-3 hari",
+     "source": "auto"
+    },
+    {
+     "code": "sicepat",
+     "name": "SiCepat HALU",
+     "cost": 7500,
+     "eta": "3-5 day",
+     "source": "auto"
+    }
+   ],
+   "Lowokwaru Malang": [
+    {
+     "code": "pickup",
+     "name": "Ambil di toko",
+     "cost": 0,
+     "eta": "Hari ini",
+     "source": "manual"
+    },
+    {
+     "code": "jne",
+     "name": "JNE REG",
+     "cost": 9000,
+     "eta": "1 day",
+     "source": "auto"
+    },
+    {
+     "code": "jnt",
+     "name": "J&T EZ",
+     "cost": 10000,
+     "eta": "2-3 hari",
+     "source": "auto"
+    },
+    {
+     "code": "sicepat",
+     "name": "SiCepat HALU",
+     "cost": 9500,
+     "eta": "4-6 day",
+     "source": "auto"
+    }
+   ],
+   "Gambir Jakarta Pusat": [
+    {
+     "code": "pickup",
+     "name": "Ambil di toko",
+     "cost": 0,
+     "eta": "Hari ini",
+     "source": "manual"
+    },
+    {
+     "code": "jne",
+     "name": "JNE REG",
+     "cost": 17000,
+     "eta": "1 day",
+     "source": "auto"
+    },
+    {
+     "code": "jnt",
+     "name": "J&T EZ",
+     "cost": 15000,
+     "eta": "2-3 hari",
+     "source": "auto"
+    },
+    {
+     "code": "sicepat",
+     "name": "SiCepat HALU",
+     "cost": 14500,
+     "eta": "3-5 day",
+     "source": "auto"
+    }
+   ],
+   "(no destination)": [
+    {
+     "code": "pickup",
+     "name": "Ambil di toko",
+     "cost": 0,
+     "source": "manual"
+    },
+    {
+     "code": "jne",
+     "name": "JNE Reguler",
+     "cost": 25000,
+     "source": "manual"
+    },
+    {
+     "code": "jnt",
+     "name": "J&T Express",
+     "cost": 24000,
+     "source": "manual"
+    },
+    {
+     "code": "sicepat",
+     "name": "SiCepat REG",
+     "cost": 22000,
+     "source": "manual"
+    }
+   ]
+  },
+  "pgs-jombang": {
+   "Gubeng Surabaya": [
+    {
+     "code": "pickup",
+     "name": "Ambil di toko",
+     "cost": 0,
+     "eta": "Hari ini",
+     "source": "manual"
+    },
+    {
+     "code": "jne",
+     "name": "JNE REG",
+     "cost": 11000,
+     "eta": "1 day",
+     "source": "auto"
+    },
+    {
+     "code": "jnt",
+     "name": "J&T EZ",
+     "cost": 8000,
+     "eta": "2-3 hari",
+     "source": "auto"
+    },
+    {
+     "code": "sicepat",
+     "name": "SiCepat HALU",
+     "cost": 9000,
+     "eta": "2-4 day",
+     "source": "auto"
+    }
+   ],
+   "Lowokwaru Malang": [
+    {
+     "code": "pickup",
+     "name": "Ambil di toko",
+     "cost": 0,
+     "eta": "Hari ini",
+     "source": "manual"
+    },
+    {
+     "code": "jne",
+     "name": "JNE REG",
+     "cost": 11000,
+     "eta": "1 day",
+     "source": "auto"
+    },
+    {
+     "code": "jnt",
+     "name": "J&T EZ",
+     "cost": 11000,
+     "eta": "2-3 hari",
+     "source": "auto"
+    },
+    {
+     "code": "sicepat",
+     "name": "SiCepat HALU",
+     "cost": 10500,
+     "eta": "5-7 day",
+     "source": "auto"
+    }
+   ],
+   "Gambir Jakarta Pusat": [
+    {
+     "code": "pickup",
+     "name": "Ambil di toko",
+     "cost": 0,
+     "eta": "Hari ini",
+     "source": "manual"
+    },
+    {
+     "code": "jne",
+     "name": "JNE REG",
+     "cost": 19000,
+     "eta": "1 day",
+     "source": "auto"
+    },
+    {
+     "code": "jnt",
+     "name": "J&T EZ",
+     "cost": 17000,
+     "eta": "2-3 hari",
+     "source": "auto"
+    },
+    {
+     "code": "sicepat",
+     "name": "SiCepat HALU",
+     "cost": 20000,
+     "eta": "4-6 day",
+     "source": "auto"
+    }
+   ]
+  },
+  "pgs-jember": {
+   "Gubeng Surabaya": [
+    {
+     "code": "pickup",
+     "name": "Ambil di toko",
+     "cost": 0,
+     "eta": "Hari ini",
+     "source": "manual"
+    },
+    {
+     "code": "jne",
+     "name": "JNE REG",
+     "cost": 9000,
+     "eta": "1 day",
+     "source": "auto"
+    },
+    {
+     "code": "jnt",
+     "name": "J&T EZ",
+     "cost": 9000,
+     "eta": "2-3 hari",
+     "source": "auto"
+    },
+    {
+     "code": "sicepat",
+     "name": "SiCepat HALU",
+     "cost": 8500,
+     "eta": "2-4 day",
+     "source": "auto"
+    }
+   ],
+   "Lowokwaru Malang": [
+    {
+     "code": "pickup",
+     "name": "Ambil di toko",
+     "cost": 0,
+     "eta": "Hari ini",
+     "source": "manual"
+    },
+    {
+     "code": "jne",
+     "name": "JNE REG",
+     "cost": 9000,
+     "eta": "1 day",
+     "source": "auto"
+    },
+    {
+     "code": "jnt",
+     "name": "J&T EZ",
+     "cost": 10000,
+     "eta": "2-3 hari",
+     "source": "auto"
+    },
+    {
+     "code": "sicepat",
+     "name": "SiCepat HALU",
+     "cost": 9400,
+     "eta": "4-6 day",
+     "source": "auto"
+    }
+   ],
+   "Gambir Jakarta Pusat": [
+    {
+     "code": "pickup",
+     "name": "Ambil di toko",
+     "cost": 0,
+     "eta": "Hari ini",
+     "source": "manual"
+    },
+    {
+     "code": "jne",
+     "name": "JNE REG",
+     "cost": 17000,
+     "eta": "1 day",
+     "source": "auto"
+    },
+    {
+     "code": "jnt",
+     "name": "J&T EZ",
+     "cost": 15000,
+     "eta": "2-3 hari",
+     "source": "auto"
+    },
+    {
+     "code": "sicepat",
+     "name": "SiCepat HALU",
+     "cost": 16000,
+     "eta": "5-7 day",
+     "source": "auto"
+    }
+   ]
+  }
+ },
+ "orders": {
+  "pgs-official": {
+   "order_id": "PGS-261108-7823F2",
+   "courier": {
+    "code": "jne",
+    "name": "JNE REG",
+    "cost": 9000,
+    "eta": "2 day",
+    "source": "auto"
+   },
+   "subtotal": 213000,
+   "shipping_cost": 9000,
+   "total": 222000,
+   "status": "cod",
+   "final_status": "cancelled"
+  },
+  "pgs-jombang": {
+   "order_id": "PGS-261108-F8FD47",
+   "courier": {
+    "code": "jnt",
+    "name": "J&T EZ",
+    "cost": 8000,
+    "eta": "2-3 hari",
+    "source": "auto"
+   },
+   "subtotal": 213000,
+   "shipping_cost": 8000,
+   "total": 221000,
+   "status": "cod",
+   "final_status": "cancelled"
+  },
+  "pgs-jember": {
+   "order_id": "PGS-261108-C306D2",
+   "courier": {
+    "code": "sicepat",
+    "name": "SiCepat HALU",
+    "cost": 8500,
+    "eta": "2-4 day",
+    "source": "auto"
+   },
+   "subtotal": 213000,
+   "shipping_cost": 8500,
+   "total": 221500,
+   "status": "cod",
+   "final_status": "cancelled"
+  }
+ }
+}

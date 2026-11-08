@@ -1,0 +1,55 @@
+{
+  "summary": "Iteration 8: chat, unread badges, complaints and saldo refund after the COD refund rule, plus real RajaOngkir (Komerce) auto rates and COD test orders for all 3 stores. Backend: the iter7 suite passed 18/18 when run serially (-n 0). The new suite tests/test_pgs_iter8_cod_shipping.py passed 13/13. Frontend (375x667): 100% of the tested flows passed. The buyer 'Chat Toko' badge showed 1 and cleared after opening the thread. The store 'Kelola Toko' badge and seller-nav-chat-badge showed 3 and dropped to 2 after opening the thread (the other 2 are Demo User's real unread chats, left untouched). Live polling showed the store's reply while the buyer was on the thread, right after the buyer sent a message. On a COD complaint that is shipped but not completed, cd-cod-unpaid is shown and the 'Setujui refund' chip is hidden. After the order was marked completed, the chip appeared, the refund confirmation dialog worked and the buyer's saldo became 5000. Checkout: searching 'gubeng' and picking 69243 switched the prices from manual (25k/24k/22k) to auto (JNE REG 9.000 / J&T EZ 8.000 / SiCepat HALU 7.500). The COD order placed with SiCepat had shipping_cost 7500 and total 220500 with source=auto. The API key and key_hint were never read, printed or changed, and PUT /api/admin/shipping-settings was never called. All test data was cleaned up. pgs-9955 stock at pgs-official is back to 214. My first run left 2 units unrestocked; I fixed that manually.",
+  "shipping_results": {
+    "note": "Real auto rates (weight 1kg, cheapest service). All 3 couriers source=auto for every store/destination. Without destination_id -> manual: JNE Reguler 25000, J&T Express 24000, SiCepat REG 22000 (pickup 0).",
+    "pgs-official (Sidoarjo 71139)": {"Gubeng Surabaya 69243": "JNE REG 9000 (2 day) / J&T EZ 8000 (2-3 hari) / SiCepat HALU 7500 (3-5 day)", "Lowokwaru Malang 46757": "JNE 9000 / J&T 10000 / SiCepat 9500", "Gambir Jakarta Pusat 17601": "JNE 17000 / J&T 15000 / SiCepat 14500"},
+    "pgs-jombang (46293)": {"Gubeng Surabaya 69243": "JNE 11000 / J&T 8000 / SiCepat 9000", "Lowokwaru Malang 46757": "JNE 11000 / J&T 11000 / SiCepat 10500", "Gambir Jakarta Pusat 17601": "JNE 19000 / J&T 17000 / SiCepat 20000"},
+    "pgs-jember (30945)": {"Gubeng Surabaya 69243": "JNE 9000 / J&T 9000 / SiCepat 8500", "Lowokwaru Malang 46757": "JNE 9000 / J&T 10000 / SiCepat 9400", "Gambir Jakarta Pusat 17601": "JNE 17000 / J&T 15000 / SiCepat 16000"},
+    "test_orders_cod_dest_69243": [
+      {"store": "pgs-official", "order_id": "PGS-261108-7823F2", "courier": "JNE REG", "shipping_cost": 9000, "subtotal": 213000, "total": 222000, "source": "auto", "result": "cancelled by store admin, stock restored"},
+      {"store": "pgs-jombang", "order_id": "PGS-261108-F8FD47", "courier": "J&T EZ", "shipping_cost": 8000, "subtotal": 213000, "total": 221000, "source": "auto", "result": "cancelled by store admin, stock restored"},
+      {"store": "pgs-jember", "order_id": "PGS-261108-C306D2", "courier": "SiCepat HALU", "shipping_cost": 8500, "subtotal": 213000, "total": 221500, "source": "auto", "result": "cancelled by store admin, stock restored"},
+      {"store": "pgs-official (UI checkout)", "order_id": "PGS-261108-D1BFB0", "courier": "SiCepat HALU", "shipping_cost": 7500, "total": 220500, "source": "auto", "result": "cancelled + removed in cleanup"}
+    ],
+    "tampered_client_shipping_cost": "ignored, server recalculated"
+  },
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/shipping/rates, POST /api/checkout (shipping.py quote)", "issue": "If RajaOngkir fails at checkout (quota, timeout, invalid key) after the buyer was shown an auto price, quote() silently falls back to the manual tariff. The order is then saved at the higher manual price (e.g. 25000 instead of 9000) and the buyer is not told. Better: reject with 409 'Ongkir berubah' so the UI re-quotes."},
+      {"endpoint": "GET /api/shipping/destinations, POST /api/shipping/rates", "issue": "Guests can call these (get_owner) with no rate limit. Destination search results are not cached, and the UI searches on every debounced keystroke, so the RajaOngkir quota can be used up. Cache the search results and add a simple rate limit."},
+      {"endpoint": "POST /api/shipping/rates (eta)", "issue": "ETA text comes straight from RajaOngkir in English ('2 day', '3-5 day') and sits next to 'hari' from J&T and the manual tariffs. Map 'day' to 'hari' for the Indonesian UI."},
+      {"endpoint": "GET /api/shipping/status", "issue": "Returns auto=true whenever an encrypted key is stored, even if the key is invalid. Older logs at 07:17 show 'Invalid Api key' 400s from before the real key was entered. No API errors happened during this run."},
+      {"endpoint": "PUT /api/admin/orders/{id}/status", "issue": "There are no transition rules: admin can cancel a completed order (it restocks and returns saldo) or move a cancelled order back to completed. A store admin correctly cannot cancel a shipped order (400)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "checkout", "issues": ["The default courier is 'Ambil di toko' even after an auto destination is picked, so buyers can easily place a pickup order by mistake (that happened in the first UI run).", "The default payment method is Midtrans even though the Midtrans/Xendit keys are not configured.", "The 'Kota' field is not synced with the picked destination: it stayed 'Sidoarjo' while the destination was Gubeng, Surabaya."]},
+      {"screen": "akun tab", "issues": ["The unread chat badge only shows on the 'Chat Toko' row, which is below the fold. Consider a badge on the Akun tab icon too."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_pgs_iter8_cod_shipping.py", "/app/backend/tests/test_pgs_iter7_support.py", "/app/backend/tests/ui_iter8_helper.py", "/app/test_reports/pytest/iter8_cod_shipping.xml", "/app/test_reports/pytest/iter8_support.xml", "/app/test_reports/pytest/iter8_shipping_results.json"],
+  "action_items": [
+    "At checkout, if the auto rate cannot be re-fetched, return an error instead of silently charging the manual tariff (or check against the price the client saw).",
+    "Cache RajaOngkir destination searches and rate-limit guest calls to protect the quota.",
+    "Translate RajaOngkir ETA 'day' to 'hari'.",
+    "Optional UX: after picking a destination, preselect the cheapest auto courier instead of pickup; sync the Kota field; don't default to unconfigured Midtrans.",
+    "test_pgs_iter7_support.py (and the new iter8 file) share module state across classes, so they fail under pytest.ini's -n 2 --dist loadscope (9-10 KeyErrors). Run them with -n 0, or merge the classes into one class."
+  ],
+  "critical_code_review_comments": [
+    "support.paid_amount/_out/decide correctly enforce the COD rule. Refundable is the balance_used part while COD is unpaid and the full total after completion. Cancelling after a full saldo refund does not return the saldo twice (checked via admin cancel).",
+    "chat/[id].tsx: sending no longer moves the cursor, and polling dedupes by msg_id. The other side's messages were not missed in the UI.",
+    "destination-search.tsx: an older search response can overwrite a newer one (no stale-request guard). Minor.",
+    "server.py is 1484 lines (more than 700). Consider splitting it."
+  ],
+  "updated_files": ["/app/backend/tests/test_pgs_iter8_cod_shipping.py (new)", "/app/backend/tests/ui_iter8_helper.py (new)"],
+  "success_rate": {"backend": "100% (31/31: iter7 18 + iter8 13, serial)", "frontend": "100% of tested flows"},
+  "seed_data_creation": "Only TEST_ users, orders, complaints and chats were created, and all were removed by id. pgs-9955 stock at pgs-official is back to 214. Note: pgs-9947 stock at pgs-jombang changed from 3 to 1 during the session. My tests never order pgs-9947, so this is from outside activity.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run the suites with: pytest tests/test_pgs_iter8_cod_shipping.py -n 0 (and iter7 with -n 0). The UI helper commands are: python tests/ui_iter8_helper.py setup|msg|cleanup. Its state file /tmp/ui_iter8_state.json holds the tokens. Log in on the UI by setting localStorage pgs_auth_token. The checkout courier rows can sit under the fixed footer, so scroll checkout-voucher into view before clicking co-courier-*. The real RajaOngkir key is configured. Never read or print it, and never call PUT /api/admin/shipping-settings."
+}

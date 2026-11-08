@@ -64,3 +64,4 @@ Iteration 2: import all data from pusatgrosirsidoarjo.com; tiered pricing (pembe
 - Backlog: unread badge on menu, photo evidence (user chose text only for now).
 - Iteration 7b: unread chat badges (src/components/unread-badge.tsx) on Akun menu 'Chat Toko' (buyer) & 'Kelola Toko' (store), and seller dashboard Chat tile. DONE
 - Iteration 7c: refund only for paid amount — COD counts as paid only when order completed; unpaid COD refundable = saldo portion only (support.paid_amount). UI hides 'Setujui refund' + shows warning. DONE
+- Iteration 8 (tests): chat/badges/complaint/COD-refund + real RajaOngkir rates for 3 stores verified. Open minor items: checkout fallback silently uses manual rate if API fails, guest quota/rate-limit on search, ETA 'day'->'hari', status shows auto with invalid key, admin any-status transitions, checkout UX (courier stays pickup after destination, default Midtrans, Kota not auto-filled).
