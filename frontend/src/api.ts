@@ -432,7 +432,8 @@ export type SpecKey = "material" | "color" | "size" | "dimensions" | "weight" | 
 export type EditorListItem = { product_id: string; name: string; image: string; sku: string; price: number; original_price: number; stock: number; status: "active" | "inactive"; variants: number; sold: number; store_id: string };
 export type BulkEdit = { store_id?: string | null; product_ids: string[]; price_mode?: "" | "set" | "up_pct" | "down_pct" | "up" | "down"; price_value?: number; stock_mode?: "" | "set" | "add" | "sub"; stock_value?: number; status?: "" | "active" | "inactive" };
 export type ImportRow = { row: number; name: string; action: "update" | "same" | "create" | "draft" | "skip"; message: string };
-export type ImportReport = { committed: boolean; counts: Record<ImportRow["action"], number>; rows: ImportRow[] };
+export type ImportReport = { committed: boolean; counts: Record<ImportRow["action"], number>; rows: ImportRow[]; format: "xlsx" | "csv";
+  columns: { sheet: string; header: string; field: string | null; label: string }[]; missing: string[] };
 export type ProductDraft = { draft_id: string; product_id?: string | null; store_id: string; data: ProductForm; updated_at: string };
 export type EditorContext = {
   admin: boolean; stores: { store_id: string; name: string }[]; showcases: string[];

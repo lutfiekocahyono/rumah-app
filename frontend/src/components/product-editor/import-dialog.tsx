@@ -23,8 +23,9 @@ export function ImportDialog({ visible, storeId, storeName, onClose, onDone }: {
   const [report, setReport] = useState<ImportReport | null>(null);
   const [busy, setBusy] = useState<"" | "check" | "apply" | "template">("");
   const [err, setErr] = useState("");
+  const [showCols, setShowCols] = useState<boolean | null>(null); // null = auto (open only when some column is unknown)
 
-  useEffect(() => { if (visible) { setFile(null); setReport(null); setErr(""); } }, [visible]);
+  useEffect(() => { if (visible) { setFile(null); setReport(null); setErr(""); setShowCols(null); } }, [visible]);
 
   const check = async (f: LocalFile) => {
     setBusy("check");
@@ -32,11 +33,12 @@ export function ImportDialog({ visible, storeId, storeName, onClose, onDone }: {
     try { setReport(await api.editorImport(f, storeId, false)); } catch (e: any) { setErr(e.message); setReport(null); } finally { setBusy(""); }
   };
   const pick = async () => {
-    const r = await DocumentPicker.getDocumentAsync({ type: [XLSX, "application/vnd.ms-excel", "*/*"], copyToCacheDirectory: true });
+    const r = await DocumentPicker.getDocumentAsync({ type: [XLSX, "text/csv", "text/comma-separated-values", "application/vnd.ms-excel", "*/*"], copyToCacheDirectory: true });
     if (r.canceled || !r.assets?.[0]) return;
     const a = r.assets[0];
-    if (!a.name.toLowerCase().endsWith(".xlsx")) return setErr("Pilih file Excel berformat .xlsx");
-    const f = { uri: a.uri, name: a.name, mimeType: a.mimeType || XLSX };
+    const csv = a.name.toLowerCase().endsWith(".csv");
+    if (!csv && !a.name.toLowerCase().endsWith(".xlsx")) return setErr("Pilih file Excel (.xlsx) atau CSV (.csv)");
+    const f = { uri: a.uri, name: a.name, mimeType: csv ? "text/csv" : a.mimeType || XLSX };
     setFile(f);
     await check(f);
   };
@@ -54,6 +56,7 @@ export function ImportDialog({ visible, storeId, storeName, onClose, onDone }: {
   const c = report?.counts;
   const changes = c ? c.create + c.update + c.draft : 0;
   const rows = report?.rows.filter((r) => r.action !== "same") ?? [];
+  const cols = showCols ?? !!report?.columns?.some((m) => !m.field);
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={s.backdrop}>
@@ -61,14 +64,14 @@ export function ImportDialog({ visible, storeId, storeName, onClose, onDone }: {
           <Text style={s.title}>Impor Produk dari Excel</Text>
           {!report ? (
             <View style={{ gap: spacing.md }}>
-              <Text style={s.sub}>Toko tujuan: {storeName}. Isi baris tanpa ID Produk untuk menambah produk baru, atau ubah file hasil Ekspor untuk memperbarui produk. Data dicek dulu sebelum disimpan.</Text>
+              <Text style={s.sub}>Toko tujuan: {storeName}. Bisa memakai file Ekspor dari aplikasi, template, atau file ekspor produk dari website (WooCommerce .csv/.xlsx). Kolom dicocokkan dulu dan ditampilkan sebelum data disimpan.</Text>
               <Pressable testID="import-template" style={[s.btn, s.cancel, { flexDirection: "row", gap: 6 }]} onPress={template} disabled={!!busy}>
                 {busy === "template" ? <ActivityIndicator color={colors.brandPrimary} /> : <Icon name="download-outline" size={18} color={colors.brandPrimary} />}
                 <Text style={[s.cancelText, { color: colors.brandPrimary }]}>Unduh Template</Text>
               </Pressable>
               <Pressable testID="import-pick" style={[s.btn, { backgroundColor: colors.brandPrimary, flexDirection: "row", gap: 6 }]} onPress={pick} disabled={!!busy}>
                 {busy === "check" ? <ActivityIndicator color={colors.onBrandPrimary} /> : <Icon name="document-attach-outline" size={18} color={colors.onBrandPrimary} />}
-                <Text style={s.okText}>{busy === "check" ? "Memeriksa file…" : "Pilih File Excel (.xlsx)"}</Text>
+                <Text style={s.okText}>{busy === "check" ? "Memeriksa file…" : "Pilih File (.xlsx / .csv)"}</Text>
               </Pressable>
             </View>
           ) : (
@@ -81,7 +84,31 @@ export function ImportDialog({ visible, storeId, storeName, onClose, onDone }: {
                   <Text key={k} style={[s.sub, { color: ACTION[k].color, fontWeight: "600" }]}>{ACTION[k].label}: {c![k]}</Text>
                 ) : null)}
               </View>
-              <ScrollView style={{ maxHeight: 300 }} contentContainerStyle={{ gap: 6 }}>
+              <ScrollView style={{ maxHeight: 340 }} contentContainerStyle={{ gap: 6 }}>
+                {!report.committed && report.columns?.length ? (
+                  <View style={{ gap: 4, marginBottom: spacing.sm }} testID="import-columns">
+                    <Pressable testID="import-columns-toggle" onPress={() => setShowCols((x) => !x)} style={{ flexDirection: "row", alignItems: "center", gap: 6, minHeight: 32 }}>
+                      <Text style={[s.sub, { fontWeight: "700", color: colors.onSurface, flex: 1 }]}>
+                        Pencocokan kolom · {report.columns.filter((m) => m.field).length} dari {report.columns.length} dikenali
+                      </Text>
+                      <Icon name={cols ? "chevron-up" : "chevron-down"} size={16} color={colors.muted} />
+                    </Pressable>
+                    {(cols ? report.columns : []).map((m, i) => (
+                      <View key={`${m.sheet}-${i}`} style={{ flexDirection: "row", gap: 6, alignItems: "center" }} testID={m.field ? "import-col-ok" : "import-col-unknown"}>
+                        <Icon name={m.field ? "checkmark-circle" : "remove-circle-outline"} size={14} color={m.field ? colors.success : colors.muted} />
+                        <Text style={[s.sub, { flex: 1 }]} numberOfLines={2}>
+                          {m.sheet !== "Produk" ? `[${m.sheet}] ` : ""}{m.header} → {m.field ? m.label : m.label || "tidak dikenali (diabaikan)"}
+                        </Text>
+                      </View>
+                    ))}
+                    {report.missing?.length ? (
+                      <Text style={[s.sub, { color: colors.warning }]} testID="import-missing">
+                        Kolom wajib untuk produk baru tidak ada: {report.missing.join(", ")}. Produk baru akan disimpan sebagai draft; produk lama tetap bisa diperbarui.
+                      </Text>
+                    ) : null}
+                  </View>
+                ) : null}
+                <Text style={[s.sub, { fontWeight: "700", color: colors.onSurface }]}>Hasil per baris</Text>
                 {rows.slice(0, 200).map((r, i) => (
                   <View key={`${r.row}-${i}`} style={{ flexDirection: "row", gap: spacing.sm }} testID={`import-row-${r.action}`}>
                     <Text style={[s.sub, { width: 62, color: ACTION[r.action].color, fontWeight: "600" }]}>{ACTION[r.action].label}</Text>

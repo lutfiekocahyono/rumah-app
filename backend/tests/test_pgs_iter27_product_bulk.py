@@ -216,14 +216,14 @@ class TestExcel:
         r = requests.get(f"{API}/product-editor/export", headers=H(tok["seller"]), params={"template": "true"})
         assert r.status_code == 200 and "template-impor-produk.xlsx" in r.headers.get("content-disposition", "")
         wb = load_workbook(io.BytesIO(r.content))
-        assert wb.sheetnames == ["Produk", "Variasi", "Panduan", "Kategori"]
-        assert wb["Produk"].max_row == 2 and wb["Kategori"].max_row > 2
+        assert wb.sheetnames == ["Produk", "Petunjuk Kolom", "Variasi", "Panduan", "Kategori"]  # iter28: + Petunjuk Kolom, 2 example rows
+        assert wb["Produk"].max_row == 3 and wb["Kategori"].max_row > 2
 
     def test_admin_export_pgs(self, tok):
         r = requests.get(f"{API}/product-editor/export", headers=H(tok["admin"]), params={"store_id": "pgs-official"}, timeout=120)
         assert r.status_code == 200, r.text[:300]
         wb = load_workbook(io.BytesIO(r.content), read_only=True)
-        assert wb.sheetnames == ["Produk", "Variasi", "Panduan", "Kategori"]
+        assert wb.sheetnames == ["Produk", "Petunjuk Kolom", "Variasi", "Panduan", "Kategori"]
 
     def test_import_roundtrip(self, tok, store):
         p1 = publish(tok["seller"], form(price=30000, discount_price=0, stock=4, sku=f"IMP1-{TAG}"))

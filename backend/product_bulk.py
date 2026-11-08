@@ -1,4 +1,6 @@
 """Seller Center Tahap 3: product list, bulk edit (price / stock / status), Excel export, template and import."""
+import csv
+import html
 import io
 import re
 import uuid
@@ -24,7 +26,52 @@ COLS = [
     ("min_order", "Min. Beli"), ("max_order", "Maks. Beli (0 = bebas)"), ("weight_grams", "Berat (gram)*"),
     ("length_cm", "Panjang (cm)"), ("width_cm", "Lebar (cm)"), ("height_cm", "Tinggi (cm)"),
     ("images", "URL Foto* (pisahkan dengan baris baru)"), ("description", "Deskripsi* (min. 30 karakter)"),
+    ("permalink", "Link Produk di Website (info)"),
 ]
+# Column names used by the website (WooCommerce export, English & Indonesian) and common spellings -> form key
+ALIASES = {
+    "id": "product_id", "id produk": "product_id", "nama": "name", "name": "name", "nama produk": "name", "product name": "name",
+    "categories": "category", "kategori": "category", "product categories": "category", "subkategori": "subcategory",
+    "brands": "brand", "brand": "brand", "merek": "brand", "merk": "brand", "published": "status", "diterbitkan": "status",
+    "status": "status", "regular price": "price", "harga reguler": "price", "harga normal": "price", "harga": "price",
+    "sale price": "discount_price", "harga obral": "discount_price", "harga diskon": "discount_price", "harga promo": "discount_price",
+    "stock": "stock", "stok": "stock", "stock quantity": "stock", "weight (kg)": "weight_kg", "berat (kg)": "weight_kg",
+    "weight (g)": "weight_grams", "berat (g)": "weight_grams", "berat (gram)": "weight_grams", "berat": "weight_grams",
+    "length (cm)": "length_cm", "panjang (cm)": "length_cm", "width (cm)": "width_cm", "lebar (cm)": "width_cm",
+    "height (cm)": "height_cm", "tinggi (cm)": "height_cm", "images": "images", "gambar": "images", "foto": "images",
+    "description": "description", "deskripsi": "description", "short description": "short_description",
+    "deskripsi singkat": "short_description", "deskripsi pendek": "short_description", "type": "type", "tipe": "type",
+    "jenis": "type", "permalink": "permalink", "link": "permalink", "url": "permalink", "kondisi": "condition",
+    "condition": "condition", "etalase": "showcase", "min. beli": "min_order", "minimum order": "min_order",
+}
+EXTRA_LABEL = {"weight_kg": "Berat (kg, diubah ke gram)", "short_description": "Deskripsi (dipakai jika Deskripsi kosong)",
+               "type": "Tipe produk (baris variasi dilewati)", "permalink": "Link website (info, tidak disimpan)"}
+FIELD_LABEL = {k: h.split(" (")[0].rstrip("*") for k, h in COLS} | EXTRA_LABEL
+REQUIRED_NEW = [("name", ("name",)), ("category", ("category",)), ("price", ("price",)), ("weight_grams", ("weight_grams", "weight_kg")),
+                ("images", ("images",)), ("description", ("description", "short_description"))]
+COL_DOCS = {  # Petunjuk Kolom: (wajib untuk produk baru, format / isi, contoh)
+    "product_id": ("Tidak", "Kosongkan untuk produk baru. Terisi = mengubah produk itu (dari file Ekspor). ID website (mis. 9849) juga dikenali.", "pgs-9849"),
+    "sku": ("Tidak", "Kode barang toko, maks. 40 karakter.", "DBLP32HC"),
+    "name": ("Ya", "5–150 karakter.", "Happy Call Double Pan 32 cm"),
+    "category": ("Ya", "Nama kategori dari sheet Kategori. Format website 'Dapur > Peralatan Masak' juga bisa.", "Dapur"),
+    "subcategory": ("Tidak", "Nama subkategori dari sheet Kategori (harus di bawah kategorinya).", "Peralatan Masak"),
+    "brand": ("Tidak", "Merek, maks. 60 karakter.", "Happy Call"),
+    "condition": ("Tidak", "baru atau bekas (kosong = baru).", "baru"),
+    "status": ("Tidak", "aktif (tampil) atau nonaktif (disembunyikan). Kosong = aktif.", "aktif"),
+    "showcase": ("Tidak", "Nama etalase toko.", "Peralatan Dapur"),
+    "price": ("Ya", "Angka rupiah tanpa titik/Rp, min. 100. Produk bervariasi: isi di sheet Variasi.", "167000"),
+    "discount_price": ("Tidak", "Harus lebih kecil dari Harga Normal. Isi 0 untuk menghapus diskon.", "150000"),
+    "stock": ("Tidak", "Angka 0–999999. 9999 = tidak terbatas.", "100"),
+    "min_order": ("Tidak", "Minimal jumlah beli (kosong = 1).", "1"),
+    "max_order": ("Tidak", "Maksimal jumlah beli, 0 = bebas.", "0"),
+    "weight_grams": ("Ya", "Berat kemasan dalam gram (dipakai menghitung ongkir). Kolom website 'Weight (kg)' otomatis diubah ke gram.", "1500"),
+    "length_cm": ("Tidak", "Panjang paket (cm). Isi ketiganya atau kosongkan semua.", "35"),
+    "width_cm": ("Tidak", "Lebar paket (cm).", "35"),
+    "height_cm": ("Tidak", "Tinggi paket (cm).", "12"),
+    "images": ("Ya", "Link foto https://..., satu per baris di dalam sel (atau dipisah koma). Maks. 12, foto pertama = foto utama.", "https://pusatgrosirsidoarjo.com/wp-content/uploads/....webp"),
+    "description": ("Ya", "Min. 30 karakter. Teks biasa; HTML dari website dibersihkan otomatis.", "Panci dua sisi anti lengket ..."),
+    "permalink": ("Tidak", "Info saja (link produk di pusatgrosirsidoarjo.com), tidak disimpan saat impor.", "https://pusatgrosirsidoarjo.com/..."),
+}
 VCOLS = [("product_id", "ID Produk"), ("variant_id", "ID Variasi (jangan diubah)"), ("product_name", "Nama Produk (info)"),
          ("name", "Variasi (info)"), ("sku", "SKU Variasi"), ("price", "Harga"), ("stock", "Stok"), ("active", "Aktif (ya/tidak)")]
 INT_KEYS = {"price", "discount_price", "stock", "min_order", "max_order", "weight_grams", "length_cm", "width_cm", "height_cm"}
@@ -44,12 +91,29 @@ def _norm(s) -> str:
 
 
 def _int(v) -> int:
+    """167000 / '167.000' / 'Rp 167.000' / '167000.00' -> 167000."""
     if isinstance(v, (int, float)):
-        return max(0, int(v))
-    d = re.sub(r"[^\d]", "", str(v).split(",")[0])
+        return max(0, int(round(v)))
+    s = str(v).strip()
+    if re.fullmatch(r"\d+[.,]\d{1,2}", s):
+        return int(round(float(s.replace(",", "."))))
+    d = re.sub(r"[^\d]", "", s.split(",")[0])
     if not d:
         raise ValueError
     return int(d)
+
+
+def _float(v) -> float:
+    return float(v) if isinstance(v, (int, float)) else float(str(v).strip().replace(",", "."))
+
+
+def clean_html(s: str) -> str:
+    """Website descriptions are HTML: keep line breaks, drop tags."""
+    if "<" not in s and "&" not in s:
+        return s.strip()
+    s = re.sub(r"<br\s*/?>|</p>|</li>|</h\d>", "\n", s)
+    s = html.unescape(re.sub(r"<[^>]+>", "", s))
+    return re.sub(r"\n{3,}", "\n\n", s).strip()
 
 
 class BulkIn(BaseModel):
@@ -164,18 +228,24 @@ def register(api, db, *, actor: Callable, target_store: Callable, editable: Call
         for i, (_, h) in enumerate(cols):
             ws.column_dimensions[ws.cell(1, i + 1).column_letter].width = max(14, min(40, len(h) + 4))
 
-    def build_xlsx(products: list, cats: list, by_id: dict, example: bool) -> bytes:
+    def build_xlsx(products: list, cats: list, by_id: dict, example: bool, examples: list = ()) -> bytes:
         wb = Workbook()
         ws = wb.active
         ws.title = "Produk"
         head(ws, COLS)
         vs = wb.create_sheet("Variasi")
         head(vs, VCOLS)
-        if example:
-            sample_cat = next((c for c in cats if not c.get("parent")), {"name": ""})
-            ws.append(["", "SKU-001", "Contoh Panci Stainless 24cm", sample_cat["name"], "", "Merek A", "baru", "aktif", "Dapur",
-                       85000, 79000, 20, 1, 0, 1200, 26, 26, 14, "https://contoh.com/foto-panci.jpg",
-                       "Panci stainless tebal 24 cm, cocok untuk semua jenis kompor termasuk induksi."])
+        if example:  # real catalogue products as examples (SKU "CONTOH-..." rows are skipped on import)
+            for p in examples:
+                f = form_of(p)
+                cat, sub = by_id.get(f["category"], {}).get("name", ""), by_id.get(f["subcategory"], {}).get("name", "")
+                ws.append(["", f"CONTOH-{f['sku'] or p['product_id']}"[:40], f["name"], cat, sub, f["brand"] or "", "baru", "aktif", "",
+                           f["price"], f["discount_price"] or None, f["stock"] if f["stock"] < 9999 else 100, 1, 0,
+                           f["weight_grams"] or 1000, f["length_cm"] or None, f["width_cm"] or None, f["height_cm"] or None,
+                           "\n".join(f["images"][:3]), f["description"][:600], p.get("permalink", "")])
+            for c in ws[ws.max_row - len(examples) + 1:ws.max_row] if examples else []:
+                for cell in c:
+                    cell.fill = PatternFill("solid", fgColor="FFF4E5")
         for p in products:
             f = form_of(p)
             v = bool(f["variants_enabled"])
@@ -184,7 +254,7 @@ def register(api, db, *, actor: Callable, target_store: Callable, editable: Call
                        "nonaktif" if f["status"] == "inactive" else "aktif", f["showcase"],
                        None if v else f["price"], None if v or not f["discount_price"] else f["discount_price"], None if v else f["stock"],
                        f["min_order"], f["max_order"], f["weight_grams"] or None, f["length_cm"] or None, f["width_cm"] or None,
-                       f["height_cm"] or None, "\n".join(f["images"]), f["description"]])
+                       f["height_cm"] or None, "\n".join(f["images"]), f["description"], p.get("permalink", "")])
             for r in p.get("variants") or []:
                 vs.append([p["product_id"], r.get("variant_id", ""), f["name"], r.get("name") or " / ".join(r.get("values", [])),
                            r.get("sku", ""), r.get("price", 0), r.get("stock", 0), "ya" if r.get("active", True) else "tidak"])
@@ -197,10 +267,21 @@ def register(api, db, *, actor: Callable, target_store: Callable, editable: Call
             "4. Harga & stok produk bervariasi diubah di sheet 'Variasi' (per ID Variasi). Variasi baru ditambah lewat Ubah Produk.",
             "5. URL Foto: link gambar (https://...), satu per baris di dalam sel. Maksimal 12 foto.",
             "6. Produk baru yang datanya belum lengkap disimpan sebagai DRAFT agar bisa dilengkapi di aplikasi.",
-            "7. Maksimal 10.000 baris per file. Simpan dalam format .xlsx.",
+            "7. Maksimal 10.000 baris per file. Format .xlsx (Excel) atau .csv (mis. ekspor produk WooCommerce dari website).",
+            "8. Baris berwarna oranye dengan SKU 'CONTOH-...' adalah contoh dan DILEWATI saat impor. Hapus atau ganti dengan produk Anda.",
+            "9. Sebelum disimpan, aplikasi menampilkan pencocokan kolom file Anda dengan kolom aplikasi. Lihat sheet 'Petunjuk Kolom'.",
         ]:
             g.append([line])
         g.column_dimensions["A"].width = 110
+        pk = wb.create_sheet("Petunjuk Kolom", 1)
+        head(pk, [("", "Kolom"), ("", "Wajib (produk baru)"), ("", "Format / isi"), ("", "Contoh")])
+        for key, label in COLS:
+            pk.append([label, *COL_DOCS[key]])
+        for col, w in zip("ABCD", (34, 18, 90, 40)):
+            pk.column_dimensions[col].width = w
+        for r in pk.iter_rows(min_row=2):
+            for cell in r:
+                cell.alignment = Alignment(wrap_text=True, vertical="top")
         k = wb.create_sheet("Kategori")
         head(k, [("", "Kategori"), ("", "Subkategori"), ("", "ID")])
         names = {c["category_id"]: c["name"] for c in cats}
@@ -216,22 +297,38 @@ def register(api, db, *, actor: Callable, target_store: Callable, editable: Call
         products = [] if template else await db.products.find({"store_id": store["store_id"]}, {"_id": 0}).sort("name", 1).to_list(20000)
         cats, by_id = await cat_maps()
         await load_parents()
-        data = await run_in_threadpool(build_xlsx, products, cats, by_id, template)
+        examples = []
+        if template:  # 2 complete products from the catalogue (website data) as filled-in examples
+            examples = await db.products.find({"images.0": {"$exists": True}, "variants": {"$in": [[], None]}, "price": {"$gte": 1000},
+                                               "description": {"$regex": "^[\\s\\S]{60,}"}, "status": {"$ne": "inactive"}},
+                                              {"_id": 0}).sort("product_id", 1).limit(2).to_list(2)
+        data = await run_in_threadpool(build_xlsx, products, cats, by_id, template, examples)
         name = "template-impor-produk.xlsx" if template else f"produk-{store['store_id']}-{_now():%Y%m%d}.xlsx"
         return Response(content=data, media_type=XLSX, headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
     # ---------------- Excel import ----------------
-    def read_sheet(ws, cols) -> list:
-        rows = ws.iter_rows(values_only=True)
+    def read_sheet(rows, cols, aliases: Optional[dict] = None) -> tuple:
+        """rows: iterator of tuples (first = header). Returns (data rows, column mapping shown to the seller)."""
         header = next(rows, None) or []
-        lookup = {_norm(h): k for k, h in cols} | {k: k for k, _ in cols}
+        lookup = (aliases or {}) | {_norm(v): k for k, v in FIELD_LABEL.items() if aliases is not None} | {_norm(h): k for k, h in cols} | {k: k for k, _ in cols}
         idx = {i: lookup.get(_norm(h)) for i, h in enumerate(header)}
+        labels = FIELD_LABEL if aliases is not None else {k: h.split(" (")[0] for k, h in cols}
+        mapping, used = [], set()
+        for i, h in enumerate(header):
+            if h is None or not str(h).strip():
+                continue
+            k, dup = idx[i], False
+            if k in used:  # same field twice: keep the first column
+                idx[i], k, dup = None, None, True
+            if k:
+                used.add(k)
+            mapping.append({"header": str(h).strip(), "field": k, "label": labels.get(k, "") if k else ("duplikat (diabaikan)" if dup else "")})
         out = []
         for n, r in enumerate(rows, start=2):
             d = {idx[i]: v for i, v in enumerate(r) if idx.get(i) and v is not None and str(v).strip() != ""}
             if d:
                 out.append((n, d))
-        return out
+        return out, mapping
 
     def resolve_cat(val, cats, parent: Optional[str] = None) -> Optional[str]:
         s = _norm(val)
@@ -247,8 +344,28 @@ def register(api, db, *, actor: Callable, target_store: Callable, editable: Call
         for key in ("category", "subcategory"):
             if key in d and by_id is not None and base.get(key) and _norm(d[key]) in (_norm(base[key]), _norm(by_id.get(base[key], {}).get("name"))):
                 d.pop(key)
+        if "category" in d:  # website format "Dapur > Peralatan Masak, Lainnya": first path, parent > child
+            path = [x.strip() for x in str(d["category"]).split(",")[0].split(">") if x.strip()]
+            if path:
+                d["category"] = path[0]
+                if len(path) > 1 and "subcategory" not in d:
+                    d["subcategory"] = path[-1]
+                if not resolve_cat(path[0], cats):  # a subcategory name on its own
+                    sub = next((c for c in cats if c.get("parent") and _norm(c["name"]) == _norm(path[-1])), None)
+                    if sub:
+                        d["category"], d["subcategory"] = sub["parent"], sub["category_id"]
+        if "weight_kg" in d and "weight_grams" not in d:
+            try:
+                f["weight_grams"] = int(round(_float(d["weight_kg"]) * 1000))
+            except ValueError:
+                errs.append("Kolom Berat (kg) harus angka")
+        if "short_description" in d and "description" not in d:
+            f["description"] = clean_html(str(d["short_description"]))
         for k, v in d.items():
-            if k in ("product_id", "category", "subcategory"):
+            if k in ("product_id", "category", "subcategory", "weight_kg", "short_description", "type", "permalink"):
+                continue
+            if k == "description":
+                f[k] = clean_html(str(v))
                 continue
             if k in INT_KEYS:
                 try:
@@ -258,7 +375,7 @@ def register(api, db, *, actor: Callable, target_store: Callable, editable: Call
             elif k == "condition":
                 f[k] = "used" if _norm(v) in ("bekas", "used") else "new"
             elif k == "status":
-                f[k] = "inactive" if _norm(v) in ("nonaktif", "inactive", "tidak aktif") else "active"
+                f[k] = "inactive" if _norm(v) in ("nonaktif", "inactive", "tidak aktif", "0", "-1", "draft", "private", "pending") else "active"
             elif k == "images":
                 f[k] = [u for u in re.split(r"[\n,;\s]+", str(v)) if u.startswith(("http://", "https://", "/api/files/"))][:12]
             else:
@@ -279,20 +396,36 @@ def register(api, db, *, actor: Callable, target_store: Callable, editable: Call
 
     @api.post("/product-editor/import")
     async def import_xlsx(file: UploadFile = File(...), store_id: Optional[str] = None, commit: bool = False, ctx=Depends(actor)):
-        if not (file.filename or "").lower().endswith(".xlsx"):
-            raise HTTPException(status_code=400, detail="File harus berformat .xlsx (Excel)")
+        fname = (file.filename or "").lower()
+        if not fname.endswith((".xlsx", ".csv")):
+            raise HTTPException(status_code=400, detail="File harus berformat .xlsx (Excel) atau .csv")
         raw = await file.read(10 * 1024 * 1024 + 1)
         if len(raw) > 10 * 1024 * 1024:
             raise HTTPException(status_code=400, detail="Ukuran file maksimal 10 MB")
-        try:
-            wb = await run_in_threadpool(load_workbook, io.BytesIO(raw), read_only=True, data_only=True)
-        except Exception:
-            raise HTTPException(status_code=400, detail="File Excel tidak bisa dibaca. Gunakan template dari tombol Unduh Template")
-        ws = wb["Produk"] if "Produk" in wb.sheetnames else wb.worksheets[0]
-        rows = read_sheet(ws, COLS)
-        vrows = read_sheet(wb["Variasi"], VCOLS) if "Variasi" in wb.sheetnames else []
+        vrows, vmap = [], []
+        if fname.endswith(".csv"):  # e.g. WooCommerce product export from the website
+            try:
+                text = raw.decode("utf-8-sig")
+            except UnicodeDecodeError:
+                text = raw.decode("latin-1")
+            first = text.split("\n", 1)[0]
+            rows, pmap = read_sheet(iter(csv.reader(io.StringIO(text), delimiter=";" if first.count(";") > first.count(",") else ",")), COLS, ALIASES)
+        else:
+            try:
+                wb = await run_in_threadpool(load_workbook, io.BytesIO(raw), read_only=True, data_only=True)
+            except Exception:
+                raise HTTPException(status_code=400, detail="File Excel tidak bisa dibaca. Gunakan template dari tombol Unduh Template")
+            ws = wb["Produk"] if "Produk" in wb.sheetnames else wb.worksheets[0]
+            rows, pmap = read_sheet(ws.iter_rows(values_only=True), COLS, ALIASES)
+            if "Variasi" in wb.sheetnames:
+                vrows, vmap = read_sheet(wb["Variasi"].iter_rows(values_only=True), VCOLS)
+        if not any(m["field"] for m in pmap) and not vrows:
+            raise HTTPException(status_code=400, detail="Tidak ada kolom yang dikenali. Gunakan template dari tombol Unduh Template")
         if not rows and not vrows:
             raise HTTPException(status_code=400, detail="Tidak ada data produk di file")
+        found = {m["field"] for m in pmap if m["field"]}
+        missing = [FIELD_LABEL[k] for k, alts in REQUIRED_NEW if not found & set(alts)]
+        columns = [{"sheet": "Produk", **m} for m in pmap] + [{"sheet": "Variasi", **m} for m in vmap]
         if len(rows) + len(vrows) > MAX_ROWS:
             raise HTTPException(status_code=400, detail=f"Maksimal {MAX_ROWS} baris per impor")
         store = await scope(ctx, store_id)
@@ -307,8 +440,18 @@ def register(api, db, *, actor: Callable, target_store: Callable, editable: Call
         seen = set()
         for n, d in rows:
             pid = str(d.get("product_id", "")).strip()
+            if isinstance(d.get("product_id"), float):
+                pid = str(int(d["product_id"]))
             name = str(d.get("name", "")).strip()
+            if str(d.get("sku", "")).upper().startswith("CONTOH"):
+                add(n, name, "skip", "Baris contoh dari template dilewati (hapus atau ganti SKU-nya)")
+                continue
+            if _norm(d.get("type")) in ("variation", "variasi"):
+                add(n, name, "skip", "Baris variasi dari website dilewati — atur variasi lewat Ubah Produk atau sheet Variasi")
+                continue
             if pid:
+                if pid.isdigit() and not await db.products.find_one({"product_id": pid, "store_id": store["store_id"]}, {"_id": 1}):
+                    pid = f"pgs-{pid}"  # website (WooCommerce) ID -> product imported from the website
                 if pid in seen:
                     add(n, name, "skip", "ID produk muncul dua kali di file")
                     continue
@@ -363,7 +506,8 @@ def register(api, db, *, actor: Callable, target_store: Callable, editable: Call
                     if commit:
                         await db.product_drafts.insert_one({"draft_id": f"dr_{uuid.uuid4().hex[:10]}", "owner": owner_key(ctx), "product_id": None,
                                                             "store_id": store["store_id"], "data": form.model_dump(), "updated_at": _now()})
-                    add(n, form.name or "(tanpa nama)", "draft", "Disimpan sebagai draft: " + "; ".join(problems[:3]))
+                    note = "Produk bervariasi dari website — lengkapi variasi & harga di aplikasi. " if _norm(d.get("type")) in ("variable", "bervariasi") else ""
+                    add(n, form.name or "(tanpa nama)", "draft", note + "Disimpan sebagai draft: " + "; ".join(problems[:3]))
 
         # variant sheet: price / stock / sku / active per existing variant
         by_product: dict = {}
@@ -414,4 +558,5 @@ def register(api, db, *, actor: Callable, target_store: Callable, editable: Call
             await log_activity(ctx["user"]["user_id"], "store",
                                f"Impor Excel: {counts['create']} baru, {counts['update']} diubah, {counts['draft']} draft")
         report.sort(key=lambda r: r["row"])
-        return {"committed": commit, "counts": counts, "rows": report[:MAX_ROWS]}
+        return {"committed": commit, "counts": counts, "rows": report[:MAX_ROWS], "columns": columns, "missing": missing,
+                "format": "csv" if fname.endswith(".csv") else "xlsx"}

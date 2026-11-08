@@ -1,0 +1,38 @@
+{
+  "summary": "Tested iteration 28: Excel/CSV import column matching (WooCommerce website format), template download with examples, and the Petunjuk Kolom sheet. Backend: 25/25 pytest passed (11 new + 14 iter27 regression). I had to update 2 stale iter27 assertions on sheet names and template rows; these changes were expected. Template check: 5 sheets in the correct order, 2 CONTOH- example rows filled with real catalogue data, Petunjuk Kolom lists every Produk column with Wajib/Format/Contoh, and the last column is 'Link Produk di Website (info)'. Normal export fills the permalink for pgs-9849. Importing the unmodified template skips 2 rows, creates nothing, shows all 29 columns recognized and missing=[]. WooCommerce CSV check: every column was mapped and Tags got field null; ID 9849 resolved to pgs-9849 with action same. Also confirmed: category 'Dapur > Peralatan Masak' resolved, weight '1,5' became 1500 g, price '25.000' became 25000, HTML description cleaned, Published 0 made the product inactive, variation rows skipped, commit=false wrote nothing (catalog stays at 6618, pgs-9849 updated_at unchanged), and commit=true created the product. Semicolon-delimited CSV works. missing[] correctly lists Berat and URL Foto. A CSV with no recognized columns returns 400. Frontend (390x844, admin): the Impor Excel dialog, Unduh Template download (template-impor-produk.xlsx), picking .csv and .xlsx through the file chooser, and the 'Pencocokan kolom' preview (import-columns, import-col-ok/unknown, import-missing) all work. Per-row results appear before Terapkan. For the template, Terapkan (0) is disabled. Terapkan with a new-product CSV shows import-done, and the product appears in the list as Nonaktif. All test data was cleaned up. Deprecated packages detected: none.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/product-editor/import", "issue": "The short column labels the app shows to users are not recognized as headers. 'URL Foto' and 'Maks. Beli' map to field null. 'URL Foto' is exactly the name the missing[] message tells the user to add, so adding a column named 'URL Foto' still reports it as missing and saves the product as a draft. Reproduced with CSV headers 'Nama Produk,...,URL Foto,...,Maks. Beli'. Fix: in read_sheet, add {_norm(FIELD_LABEL[k]): k} (and the short labels without '*' or units) to the lookup, or add aliases 'url foto', 'maks. beli', 'panjang', 'lebar', 'tinggi', 'link produk di website'."},
+      {"endpoint": "POST /api/product-editor/import", "issue": "When a column repeats a field already mapped (e.g. 'SKU' and 'Sku'), the second column gets field None and the UI says 'tidak dikenali (diabaikan)', which is misleading. It should say the column is a duplicate and was ignored."},
+      {"endpoint": "POST /api/product-editor/import", "issue": "WooCommerce Type=variable parent rows (no Regular price) are imported as simple products and saved as drafts with the generic message 'Harga harus lebih dari 0'. Consider a specific message such as 'Produk bervariasi dari website: lengkapi variasi di Ubah Produk'."},
+      {"endpoint": "POST /api/product-editor/import", "issue": "_int treats 'd+[.,]dd' as decimals, so a price of '1.50' becomes 2 and '25.50' becomes 26, while '25.000' becomes 25000. This is acceptable for IDR, but be aware of the ambiguity."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "ImportDialog preview", "issues": ["For template or export files, the column list (29 rows, Produk + Variasi) fills the whole 340px ScrollView, so the 'Hasil per baris' section is out of view until the user scrolls. Consider collapsing the matched columns when everything is recognized (show only unknown/missing items plus a 'Lihat semua kolom' toggle).", "The count 'X dari Y dikenali' includes the Variasi sheet columns. A per-sheet count would be clearer."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_pgs_iter28_import_mapping.py", "/app/backend/tests/test_pgs_iter27_product_bulk.py", "/app/test_reports/pytest/pytest_iter28.xml"],
+  "action_items": [
+    "Recognize the app's own short labels as import headers ('URL Foto', 'Maks. Beli', 'Panjang', 'Lebar', 'Tinggi', 'Link Produk di Website'), e.g. by adding normalized FIELD_LABEL values to the read_sheet lookup in product_bulk.py.",
+    "Optional: label duplicate columns as 'duplikat (diabaikan)' instead of 'tidak dikenali'.",
+    "Optional: collapse the column-matching list in the import preview when all columns are recognized."
+  ],
+  "critical_code_review_comments": [
+    "product_bulk.py is 561 lines (under 700) and uses async I/O correctly, with xlsx build/load offloaded to a threadpool.",
+    "The template example query is not scoped to the store; it uses the first 2 PGS catalogue products. This is intended ('real catalogue data') but means sellers see PGS products as examples.",
+    "pgs-9849 is stored with category='peralatan-masak' (a subcategory id as its category). Importing 'Dapur > Peralatan Masak' still returns 'same', so the comparison in form_of/load_parents normalizes this correctly."
+  ],
+  "updated_files": ["/app/backend/tests/test_pgs_iter27_product_bulk.py (sheet-name/template-row assertions updated for Petunjuk Kolom + 2 example rows)", "/app/backend/tests/test_pgs_iter28_import_mapping.py (new)"],
+  "success_rate": {"backend": "100% (25/25)", "frontend": "100% of requested flows"},
+  "seed_data_creation": "None persisted. Created TEST_Woo Panci (seller store, via pytest) and TEST_UI28 Panci Baru (pgs-official, via UI commit); both were deleted by product_id. Catalog count is still 6618; no TEST_ products or drafts remain.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Use EXPO_PUBLIC_BACKEND_URL. In the UI, the import file is picked via page.expect_file_chooser after tapping import-pick (expo-document-picker web input). Log the admin in by setting localStorage 'pgs_auth_token'. The admin list defaults to the PGS Sidoarjo (pgs-official) store. WooCommerce ID 9849 resolves to pgs-9849 only within pgs-official, so use the admin token with store_id=pgs-official and commit=false.",
+  "rca_of_issue": "URL Foto not recognized: the read_sheet lookup contains ALIASES, the full COLS headers (normalized, which keeps the '(pisahkan dengan baris baru)' suffix) and the form keys. It does not contain the short FIELD_LABEL values that the API shows to users in missing[] and in columns[].label."
+}

@@ -110,3 +110,8 @@
 - backend/product_bulk.py: GET /api/product-editor/products (list, q/status/store_id/skip), POST /api/product-editor/bulk (price_mode set|up_pct|down_pct|up|down, stock_mode set|add|sub, status), GET /api/product-editor/export (?template=true), POST /api/product-editor/import (multipart file .xlsx, ?commit=false preview / true apply; rows with ID update (only changed fields validated, unchanged = "same"), rows without ID create, incomplete new rows -> drafts; sheet Variasi updates variant price/stock/sku/active)
 - product_editor.py: POST /api/product-editor/products/{id}/duplicate -> new draft "(Salinan)", sku cleared
 - Frontend: /product-editor/list (select, bulk bar, dialogs, export, import), editor autosave 4s after change (pe-autosave), Duplikat button (pe-duplicate), resume-draft banner when editing a product with an autosaved draft.
+
+## Iteration 28 — Impor format website + pencocokan kolom + template contoh
+- product_bulk.py: import accepts .xlsx and .csv; WooCommerce/website column aliases (ID, Type, SKU, Name, Published, Short description, Description, Stock, Sale price, Regular price, Categories "A > B", Images, Weight (kg)->gram, Length/Width/Height (cm)); website numeric ID 9849 -> pgs-9849; HTML descriptions cleaned; Type=variation rows skipped; template rows with SKU "CONTOH-..." skipped. Response adds columns[{sheet,header,field,label}], missing[], format.
+- Template: 2 example rows taken from real catalogue (orange), new sheet "Petunjuk Kolom" (wajib/format/contoh), export adds "Link Produk di Website (info)" column (permalink, not imported).
+- Frontend import dialog: accepts .csv, shows "Pencocokan kolom" (import-columns, import-col-ok/unknown, import-missing) before Terapkan.
