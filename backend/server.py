@@ -18,6 +18,8 @@ import payments
 import account
 import promo
 import seller
+import shipping
+import support
 import storage
 from pricing import CUSTOMER_TYPES, DEFAULT_PRICING, get_pricing, price_matrix, price_tiers, unit_price
 from pymongo import ReturnDocument
@@ -60,6 +62,7 @@ INDEXES: dict[str, list[IndexModel]] = {
     "settings": [
         IndexModel([("key", ASCENDING)], name="key", unique=True),
     ],
+    **support.INDEXES,
     "carts": [
         IndexModel([("owner", ASCENDING)], name="owner", unique=True),
     ],
@@ -311,10 +314,13 @@ class CheckoutIn(BaseModel):
     phone: str = Field(min_length=6)
     address: str = Field(min_length=5)
     city: str = Field(min_length=2)
-    payment_method: str = Field(pattern="^(midtrans|xendit|cod)$")
+    payment_method: str = Field(pattern="^(midtrans|xendit|cod|saldo)$")
+    use_balance: bool = False
     voucher_code: Optional[str] = None
     store_id: Optional[str] = None
     courier: str = "pickup"
+    destination_id: Optional[int] = None
+    destination_label: str = Field(default="", max_length=200)
 
 
 class OrderItem(BaseModel):
@@ -344,6 +350,9 @@ class Order(BaseModel):
     courier: Optional[dict] = None
     tracking_number: str = ""
     status_history: List[dict] = []
+    balance_used: int = 0
+    refunded: int = 0
+    complaint_id: Optional[str] = None
     created_at: datetime
 
 
@@ -808,7 +817,8 @@ async def checkout(body: CheckoutIn, background: BackgroundTasks, owner: str = D
     store = await db.stores.find_one({"store_id": store_id, "status": "active"})
     if not store:
         raise HTTPException(status_code=400, detail="Toko tidak aktif")
-    courier = next((c for c in seller.couriers_of(store) if c["code"] == body.courier and c.get("active", True)), None)
+    options = await SHIP_QUOTE(store, body.destination_id, cart.item_count)
+    courier = next((c for c in options if c["code"] == body.courier), None)
     if not courier:
         raise HTTPException(status_code=400, detail="Pilih kurir pengiriman")
     SHIPPING_COST = int(courier["cost"])
@@ -825,6 +835,18 @@ async def checkout(body: CheckoutIn, background: BackgroundTasks, owner: str = D
             {"$inc": {"used": 1}})
         if not claimed:
             raise HTTPException(status_code=400, detail="Kuota voucher sudah habis")
+    total = cart.subtotal - discount + SHIPPING_COST
+    balance_used = 0
+    if body.use_balance or body.payment_method == "saldo":
+        if not user_id:
+            raise HTTPException(status_code=400, detail="Masuk dulu untuk memakai saldo")
+        balance_used = min(await support.balance_of(db, user_id), total)
+        if body.payment_method == "saldo" and balance_used < total:
+            raise HTTPException(status_code=400, detail="Saldo tidak cukup, pilih metode bayar lain untuk sisanya")
+    pay_method = "saldo" if balance_used and balance_used >= total else body.payment_method
+    if pay_method == "saldo" and not balance_used:
+        raise HTTPException(status_code=400, detail="Saldo tidak cukup")
+    status0 = "paid" if pay_method == "saldo" else "cod" if pay_method == "cod" else "pending"
     order_doc = {
         "order_id": f"PGS-{datetime.now(timezone.utc).strftime('%y%m%d')}-{uuid.uuid4().hex[:6].upper()}",
         "user_id": user_id,
@@ -835,26 +857,33 @@ async def checkout(body: CheckoutIn, background: BackgroundTasks, owner: str = D
         "shipping_cost": SHIPPING_COST,
         "discount": discount,
         "voucher_code": vcode,
-        "total": cart.subtotal - discount + SHIPPING_COST,
-        "shipping": body.model_dump(exclude={"payment_method", "store_id", "courier", "voucher_code"}),
+        "total": total,
+        "balance_used": balance_used,
+        "shipping": body.model_dump(exclude={"payment_method", "store_id", "courier", "voucher_code", "destination_id", "use_balance"}),
         "store_id": store_id,
         "store_name": store["name"],
-        "courier": {k: courier.get(k) for k in ("code", "name", "cost", "eta")},
+        "courier": {k: courier.get(k) for k in ("code", "name", "cost", "eta", "source")},
         "tracking_number": "",
-        "status_history": [{"status": "cod" if body.payment_method == "cod" else "pending", "at": datetime.now(timezone.utc), "note": "Pesanan dibuat"}],
-        "payment_method": body.payment_method,
+        "status_history": [{"status": status0, "at": datetime.now(timezone.utc), "note": "Pesanan dibuat" + (" (dibayar dengan saldo)" if pay_method == "saldo" else "")}],
+        "payment_method": pay_method,
         "customer_type": cart.customer_type,
-        "status": "cod" if body.payment_method == "cod" else "pending",
+        "status": status0,
         "created_at": datetime.now(timezone.utc),
     }
+    if balance_used and not await support.debit(db, user_id, balance_used, order_doc["order_id"]):
+        if vcode:
+            await db.vouchers.update_one({"code": vcode}, {"$inc": {"used": -1}})
+        raise HTTPException(status_code=400, detail="Saldo berubah, coba lagi")
     try:
-        if body.payment_method == "midtrans":
+        if pay_method == "midtrans":
             order_doc.update(await payments.midtrans_create(order_doc))
-        elif body.payment_method == "xendit":
+        elif pay_method == "xendit":
             order_doc.update(await payments.xendit_create(order_doc))
     except Exception:
         if vcode:  # give the voucher use back when payment creation fails
             await db.vouchers.update_one({"code": vcode}, {"$inc": {"used": -1}})
+        if balance_used:
+            await support.credit(db, user_id, balance_used, "return", order_doc["order_id"], "Saldo dikembalikan, pembayaran gagal dibuat")
         raise
     await db.orders.insert_one(order_doc)
     await _track(owner, [p["category"] for p in await db.products.find(
@@ -878,6 +907,7 @@ async def _release_voucher(order_id: str) -> None:
     if o:
         await db.vouchers.update_one({"code": o["voucher_code"], "used": {"$gt": 0}}, {"$inc": {"used": -1}})
     await seller.restock_once(db, order_id)
+    await support.return_balance_once(db, order_id)
 
 
 @api.get("/orders", response_model=List[Order])
@@ -1417,6 +1447,10 @@ async def _product_out_for_user(d: dict, user: dict) -> Product:
 ACCT = account.register(api, db, get_current_user, _user_out, _make_token)
 seller.register(api, db, get_current_user, require_admin, _product_out_for_user, ACCT["notify_user"], ACCT["log_activity"],
                 _release_voucher, _order_out)
+
+support.register(api, db, get_current_user, require_admin, ACCT["notify_user"], ACCT["log_activity"])
+
+SHIP_QUOTE = shipping.register(api, db, require_admin, get_owner, seller.OFFICIAL_IDS, seller.couriers_of)
 
 app.include_router(api)
 

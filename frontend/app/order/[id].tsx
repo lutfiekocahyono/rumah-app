@@ -10,7 +10,17 @@ import { colors, fontSize, radius, spacing, formatIDR } from "@/src/theme";
 import { api, ORDER_STATUS_LABEL, type Order } from "@/src/api";
 import { OrderTracking } from "@/src/components/order-tracking";
 
-const METHOD_LABEL = { midtrans: "Midtrans", xendit: "Xendit", cod: "COD (Bayar di Tempat)" };
+const METHOD_LABEL = { midtrans: "Midtrans", xendit: "Xendit", cod: "COD (Bayar di Tempat)", saldo: "Saldo" };
+const COMPLAINT_DAYS = 7;
+
+/** Komplain: after the order was shipped (or picked up), for 7 days. Server re-checks. */
+function canComplain(o: Order) {
+  if (!["shipped", "completed"].includes(o.status)) return false;
+  const h = [...o.status_history].reverse().find((x) => x.status === "shipped") ?? o.status_history.find((x) => x.status === "completed");
+  if (!h) return false;
+  const at = new Date(/Z$|[+-]\d{2}:\d{2}$/.test(h.at) ? h.at : h.at + "Z").getTime();
+  return Date.now() - at <= COMPLAINT_DAYS * 86400000;
+}
 
 export default function OrderDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -98,6 +108,25 @@ export default function OrderDetail() {
           </Pressable>
         ) : null}
 
+        {order.user_id ? (
+          <View style={styles.actions}>
+            <Pressable testID="chat-store-btn" style={styles.outlineBtn} disabled={checking} onPress={async () => {
+              try { const c = await api.startChat(order.store_id); router.push(`/chat/${c.conv_id}` as any); } catch (e: any) { setErr(e.message); }
+            }}>
+              <Text style={styles.outlineText}>Chat Toko</Text>
+            </Pressable>
+            {order.complaint_id ? (
+              <Pressable testID="view-complaint-btn" style={styles.outlineBtn} onPress={() => router.push(`/complaint/${order.complaint_id}` as any)}>
+                <Text style={styles.outlineText}>Lihat Komplain</Text>
+              </Pressable>
+            ) : canComplain(order) ? (
+              <Pressable testID="complain-btn" style={styles.outlineBtn} onPress={() => router.push(`/complaint/new?order=${order.order_id}` as any)}>
+                <Text style={styles.outlineText}>Ajukan Komplain</Text>
+              </Pressable>
+            ) : null}
+          </View>
+        ) : null}
+
         <View style={styles.card}>
           {order.items.map((it) => (
             <View key={it.product_id} style={styles.itemRow}>
@@ -118,6 +147,9 @@ export default function OrderDetail() {
           <Row label="Metode bayar" value={METHOD_LABEL[order.payment_method]} />
           <View style={styles.sep} />
           <Row label="Total" value={formatIDR(order.total)} big />
+          {order.balance_used ? <Row label="Dibayar dengan saldo" value={`-${formatIDR(order.balance_used)}`} /> : null}
+          {order.balance_used && order.payment_method !== "saldo" ? <Row label="Sisa dibayar" value={formatIDR(order.total - order.balance_used)} /> : null}
+          {order.refunded ? <Row label="Sudah di-refund ke saldo" value={formatIDR(order.refunded)} /> : null}
         </View>
 
         <View style={styles.card}>
@@ -180,6 +212,7 @@ const styles = StyleSheet.create({
   row: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   rowValue: { fontSize: fontSize.sm, color: colors.onSurface, fontWeight: "500" },
   sep: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border },
+  actions: { flexDirection: "row", gap: spacing.sm },
   bottom: { position: "absolute", left: 0, right: 0, bottom: 0, flexDirection: "row", gap: spacing.sm, padding: spacing.lg, backgroundColor: colors.surface, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
   outlineBtn: { flex: 1, minHeight: 48, borderWidth: 1, borderColor: colors.border, borderRadius: radius.pill, alignItems: "center", justifyContent: "center" },
   outlineText: { color: colors.onSurface, fontWeight: "500" },

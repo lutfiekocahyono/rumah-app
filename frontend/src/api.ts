@@ -227,7 +227,54 @@ export const api = {
     req<Order>(`/seller/orders/${id}/status`, { method: "PUT", body: JSON.stringify({ status, tracking_number }) }),
   sellerReport: () => req<Report>("/seller/report"),
   adminReport: () => req<{ all: Report; stores: (Report & { store_id: string; name: string })[] }>("/admin/report"),
+  shippingSettings: () => req<ShippingSettings>("/admin/shipping-settings"),
+  saveShippingSettings: (s: Omit<ShippingSettings, "configured" | "key_hint"> & { api_key?: string | null }) =>
+    req<ShippingSettings>("/admin/shipping-settings", { method: "PUT", body: JSON.stringify(s) }),
+  adminDestinations: (q: string) => req<Destination[]>(`/admin/shipping/destinations?q=${encodeURIComponent(q)}`),
+  shippingStatus: () => req<{ auto: boolean }>("/shipping/status"),
+  destinations: (q: string) => req<{ auto: boolean; data: Destination[] }>(`/shipping/destinations?q=${encodeURIComponent(q)}`),
+  shippingRates: (store_id: string, destination_id?: number | null) =>
+    req<Courier[]>("/shipping/rates", { method: "POST", body: JSON.stringify({ store_id, destination_id: destination_id ?? null }) }),
+
+  // saldo, komplain & refund, chat
+  wallet: () => req<Wallet>("/wallet"),
+  createComplaint: (b: { order_id: string; reason: ComplaintReason; description: string; refund_amount: number }) =>
+    req<Complaint>("/complaints", { method: "POST", body: JSON.stringify(b) }),
+  complaints: (scope: "mine" | "store" | "admin", status = "") =>
+    req<Complaint[]>(`${scope === "mine" ? "/complaints" : scope === "store" ? "/seller/complaints" : "/admin/complaints"}${status ? `?status=${status}` : ""}`),
+  complaint: (id: string) => req<Complaint>(`/complaints/${id}`),
+  replyComplaint: (id: string, text: string) => req<Complaint>(`/complaints/${id}/messages`, { method: "POST", body: JSON.stringify({ text }) }),
+  escalateComplaint: (id: string, text: string) => req<Complaint>(`/complaints/${id}/escalate`, { method: "POST", body: JSON.stringify({ text }) }),
+  decideComplaint: (id: string, action: "refund" | "reject" | "resolve", amount = 0, note = "") =>
+    req<Complaint>(`/complaints/${id}/decide`, { method: "POST", body: JSON.stringify({ action, amount, note }) }),
+  startChat: (store_id: string) => req<Conversation>("/chats", { method: "POST", body: JSON.stringify({ store_id }) }),
+  sellerStartChat: (order_id: string) => req<Conversation>("/seller/chats", { method: "POST", body: JSON.stringify({ order_id }) }),
+  chats: (side: "buyer" | "store") => req<Conversation[]>(side === "store" ? "/seller/chats" : "/chats"),
+  chatUnread: () => req<{ buyer: number; store: number }>("/chats/unread"),
+  chatThread: (id: string, after?: string) => req<ChatThread>(`/chats/${id}${after ? `?after=${encodeURIComponent(after)}` : ""}`),
+  sendChat: (id: string, text: string) => req<ChatMessage>(`/chats/${id}/messages`, { method: "POST", body: JSON.stringify({ text }) }),
 };
+
+export type Wallet = { balance: number; transactions: { tx_id: string; amount: number; kind: "refund" | "payment" | "return"; ref: string; note: string; created_at: string }[] };
+export type ComplaintReason = "damaged" | "wrong_item" | "missing" | "not_received" | "other";
+export const COMPLAINT_REASONS: { id: ComplaintReason; label: string }[] = [
+  { id: "damaged", label: "Barang rusak" }, { id: "wrong_item", label: "Barang tidak sesuai" }, { id: "missing", label: "Barang kurang" },
+  { id: "not_received", label: "Barang belum diterima" }, { id: "other", label: "Lainnya" },
+];
+export type ComplaintStatus = "open" | "escalated" | "refunded" | "rejected" | "resolved";
+export const COMPLAINT_STATUS_LABEL: Record<ComplaintStatus, string> = {
+  open: "Menunggu toko", escalated: "Ditangani Admin PGS", refunded: "Refund ke saldo", rejected: "Ditolak", resolved: "Selesai",
+};
+export type Complaint = {
+  complaint_id: string; order_id: string; store_id: string; store_name: string; user_id: string; user_name: string;
+  reason: ComplaintReason; reason_label: string; description: string; refund_amount: number; order_total: number; refunded: number; refundable: number;
+  status: ComplaintStatus; decision: { action: string; amount: number; note: string; by: string; at: string } | null;
+  messages: { by: "buyer" | "store" | "admin"; name: string; text: string; at: string }[];
+  viewer: "buyer" | "store" | "admin"; can_decide: boolean; can_escalate: boolean; can_reply: boolean; created_at: string; updated_at: string;
+};
+export type Conversation = { conv_id: string; user_id: string; user_name: string; store_id: string; store_name: string; last_text: string; last_at: string; last_sender?: "user" | "store"; unread_user: number; unread_store: number };
+export type ChatMessage = { msg_id: string; conv_id: string; sender: "user" | "store"; text: string; created_at: string };
+export type ChatThread = { conversation: Conversation; me: "user" | "store"; messages: ChatMessage[] };
 
 async function uploadTo(path: string, file: LocalFile): Promise<{ url: string }> {
   const token = await getToken();
@@ -287,7 +334,9 @@ export type AccountSettings = { notif_order: boolean; notif_promo: boolean; noti
 export type Store = { official?: boolean; store_id: string; owner_id: string; name: string; description: string; city: string; phone?: string; logo: string; status: "pending" | "active" | "rejected" | "suspended"; note: string; created_at: string; product_count?: number; owner_name?: string; owner_email?: string };
 export type StoreInput = { name: string; description: string; city: string; phone: string; logo: string };
 export type SellerProductInput = { name: string; description: string; category: string; price: number; original_price: number; stock: number; images: string[] };
-export type Courier = { code: string; name: string; cost: number; eta: string; active: boolean };
+export type Courier = { code: string; name: string; cost: number; eta: string; active: boolean; source?: "auto" | "manual" };
+export type Destination = { id: number; label: string };
+export type ShippingSettings = { configured: boolean; key_hint: string; enabled: boolean; default_weight_grams: number; origins: Record<string, Destination> };
 export type InventoryItem = { product_id: string; name: string; image: string; price: number; stock: number; own: boolean };
 export type Report = {
   revenue_completed: number; orders_completed: number; revenue_in_progress: number;
@@ -307,8 +356,8 @@ export type Product = {
 };
 export type CartItem = { product_id: string; quantity: number; name: string; price: number; base_price: number; original_price: number; image: string; stock: number; next_tier?: PriceTier | null; store_id: string; store_name: string };
 export type Cart = { items: CartItem[]; subtotal: number; savings: number; item_count: number; customer_type: CustomerType };
-export type PaymentMethod = "midtrans" | "xendit" | "cod";
-export type CheckoutPayload = { full_name: string; phone: string; address: string; city: string; payment_method: PaymentMethod; voucher_code?: string; store_id: string; courier: string };
+export type PaymentMethod = "midtrans" | "xendit" | "cod" | "saldo";
+export type CheckoutPayload = { full_name: string; phone: string; address: string; city: string; payment_method: PaymentMethod; use_balance?: boolean; voucher_code?: string; store_id: string; courier: string; destination_id?: number | null; destination_label?: string };
 export type OrderItem = { product_id: string; name: string; price: number; quantity: number; image: string };
 export type Order = {
   order_id: string; user_id?: string | null; items: OrderItem[]; subtotal: number; shipping_cost: number; discount?: number; voucher_code?: string | null; total: number;
@@ -316,6 +365,7 @@ export type Order = {
   payment_url?: string | null; customer_type: CustomerType; created_at: string;
   store_id: string; store_name: string; courier?: { code: string; name: string; cost: number; eta: string } | null;
   tracking_number: string; status_history: { status: Order["status"]; at: string; note: string }[];
+  balance_used?: number; refunded?: number; complaint_id?: string | null;
 };
 export type AdminStats = { orders_today: number; revenue_today: number; need_action: number; waiting_payment: number; customers: number; products: number };
 export const ORDER_STATUS_LABEL: Record<Order["status"], string> = {

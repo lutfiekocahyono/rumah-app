@@ -1,0 +1,43 @@
+{
+  "summary": "Iteration 7: Komplain & Refund, Saldo wallet, buyer<->store chat, checkout with saldo. Backend: 18/18 new pytest tests pass (run serially -n 0; suite shares state) + iter6 checkout regression 3/3 pass. Frontend (375x667 Expo web): buyer order detail buttons (Chat Toko / Ajukan Komplain / Lihat Komplain), complaint form validation + submit, complaint detail reply, store reject (note required + confirm dialog), buyer escalate (reason required, once), admin refund via admin-menu-complaint list, wallet screen + history, checkout co-use-balance partial (COD remainder) and full coverage (payment_method saldo, status Dibayar), store chat list/thread with unread badge, seller order so-chat, Akun menu entries, seller-nav-chat/complaint all WORK. One confirmed chat bug: messages from the other party sent within the 4s poll window before you send your own message are never shown until reload (cursor jumps past them). No deprecated Expo packages found.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "PUT /api/admin/orders/{id}/status (cancelled)", "issue": "Admin can cancel an order in ANY status (no transition guard, pre-existing). If a shipped/completed order paid partly/fully with saldo already got a complaint refund, cancelling it then also returns full balance_used via return_balance_once -> buyer can be refunded twice (refund + saldo return). Cap the return at balance_used - refunded or block cancelling orders that have refunded complaints."},
+      {"endpoint": "POST /api/complaints/{id}/decide (refund)", "issue": "Refund up to full order_total is allowed for COD orders that are only 'shipped' (buyer may not have paid yet). Business decision: consider limiting COD refunds to completed orders or to the amount actually paid."},
+      {"endpoint": "GET /api/chats/unread", "issue": "Works, but is not used anywhere in the frontend (api.chatUnread unused) -> no unread badge on Akun 'Chat Toko' menu or seller-nav-chat. Badge only shows per row inside the chat lists."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Chat thread poll cursor", "issue": "Message loss race. In send(), merge([sentMsg]) sets lastAt.current to your own message's created_at. If the other side sent a message after the last poll but before your send, the next poll asks for after=<your msg> and skips it, so it stays hidden until reload. Reproduced: store sent via API, buyer sent via UI within 4s, waited 9s, store message missing; it showed up after reload. Fix: don't move the cursor on send (append the sent message without touching lastAt, then call poll()), or move the cursor only from poll results. Reference: /app/frontend/app/chat/[id].tsx:25-32,58", "testID": "chat-send", "priority": "HIGH"},
+      {"component": "Complaint form error", "issue": "Validation error stays on screen after the user fixes the field. It only clears on the next submit. Reference: /app/frontend/app/complaint/new.tsx:66", "testID": "cn-error", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Checkout", "issues": ["When saldo covers the whole order, the bottom bar shows 'Total Rp0' (and 'Rp218.000' for a partial payment) while the summary total is Rp238.000. Label it 'Total bayar' or 'Sisa bayar' to avoid confusion."]},
+      {"screen": "Chat thread", "issues": ["Polling setInterval runs from mount to unmount, not on focus, so it keeps polling every 4s while other screens are pushed on top. Use useFocusEffect instead. Reference: /app/frontend/app/chat/[id].tsx:44-52"]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_pgs_iter7_support.py", "/app/backend/tests/ui_support_helper.py", "/app/test_reports/pytest/pytest_iter7.xml"],
+  "action_items": [
+    "HIGH: Fix the chat cursor race in /app/frontend/app/chat/[id].tsx. Only poll results should advance lastAt. After sending, append the message (deduped by msg_id) and trigger poll() with the old cursor.",
+    "MEDIUM: Prevent double refunds. On admin cancel of an order that has a refunded complaint, return at most balance_used - refunded, or block the cancel. Also consider adding a status-transition guard to admin cancel.",
+    "LOW: Show an unread chat badge with api.chatUnread on the Akun 'Chat Toko' menu and seller-nav-chat.",
+    "LOW: Clear cn-error when the inputs change. Rename the checkout bottom bar label to 'Total bayar' when saldo is used.",
+    "LOW: Decide how COD refunds work when the order is shipped but not yet completed/paid."
+  ],
+  "critical_code_review_comments": [
+    "support.py: eligibility, access control (other store -> 404), one complaint per order (unique index + pre-check), atomic status-conditioned updates in decide/escalate and atomic wallet debit all look correct.",
+    "server.py checkout: debit happens before payment creation and the saldo is returned on gateway failure. Partial saldo with Midtrans adds a negative item_details line; it can't be checked here because the keys are not configured (503).",
+    "Backend pytest.ini forces xdist -n 2 --dist loadscope. The iter7 suite shares state across classes, so run it with -n 0."
+  ],
+  "updated_files": ["/app/backend/tests/test_pgs_iter7_support.py (new)", "/app/backend/tests/ui_support_helper.py (new)"],
+  "success_rate": {"backend": "100% (18/18 new + 3/3 checkout regression)", "frontend": "~95% (all flows work; 1 chat race bug)"},
+  "seed_data_creation": "No permanent seed data. Tests register throwaway TEST_ users (test_kmp_* / test_ui_kmp_*), create orders at pgs-official, ship them as sidoarjo, and directly top up only the TEST user's wallet. All of it was deleted afterwards by id: users, orders, complaints, conversations, messages, wallet, notifications. pgs-9955 stock was restored to 215. Demo data was not touched: saldo 10000, KMP-555564BC.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: cd /app/backend && python -m pytest tests/test_pgs_iter7_support.py -n 0. UI helper: python tests/ui_support_helper.py setup prints email, uid, order_id and total for a TEST buyer with a shipped order (password Test1234!). Clean up with python tests/ui_support_helper.py cleanup <uid>. Web logout: localStorage.clear(). Akun menu testIDs: menu-saldo-saya, menu-chat-toko, menu-komplain-saya. Chips testIDs: <id>-<option>, e.g. cn-refund-yes, cd-action-reject. The confirm dialog button is the text 'Ya, simpan'. The server clock is Nov 2026.",
+  "rca_of_issue": "Chat message loss: lastAt is one cursor shared by poll() and send(). A send moves the cursor to the server time of your own message, so any other-party message created between the last poll and your send falls before the cursor and is never fetched. Repro: open a thread, send a store message via the API, send a buyer message in the UI within 4s, wait 2 polls; the store message is missing until reload."
+}

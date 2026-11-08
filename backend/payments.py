@@ -37,9 +37,11 @@ async def midtrans_create(order: dict) -> dict:
         items.append({"id": "ongkir", "price": order["shipping_cost"], "quantity": 1, "name": "Ongkos Kirim"})
     if order.get("discount"):
         items.append({"id": "voucher", "price": -order["discount"], "quantity": 1, "name": f"Voucher {order.get('voucher_code') or ''}"[:50]})
+    if order.get("balance_used"):
+        items.append({"id": "saldo", "price": -order["balance_used"], "quantity": 1, "name": "Potongan Saldo"})
     ship = order["shipping"]
     payload = {
-        "transaction_details": {"order_id": order["order_id"], "gross_amount": order["total"]},
+        "transaction_details": {"order_id": order["order_id"], "gross_amount": order["total"] - order.get("balance_used", 0)},
         "item_details": items,
         "customer_details": {"first_name": ship["full_name"][:50], "phone": ship["phone"][:20],
                               **({"email": order["email"]} if order.get("email") else {})},
@@ -92,14 +94,15 @@ def _xendit_key() -> str:
 async def xendit_create(order: dict) -> dict:
     payload = {
         "external_id": order["order_id"],
-        "amount": order["total"],
+        "amount": order["total"] - order.get("balance_used", 0),
         "currency": "IDR",
         "description": f"Pesanan {order['order_id']} - Pusat Grosir Sidoarjo",
         "invoice_duration": 86400,
         "customer": {"given_names": order["shipping"]["full_name"][:50], "mobile_number": order["shipping"]["phone"][:20]},
         "items": [{"name": i["name"][:100], "quantity": i["quantity"], "price": i["price"]} for i in order["items"]],
         "fees": ([{"type": "Ongkos Kirim", "value": order["shipping_cost"]}] if order.get("shipping_cost") else [])
-        + ([{"type": f"Voucher {order.get('voucher_code') or ''}", "value": -order["discount"]}] if order.get("discount") else []),
+        + ([{"type": f"Voucher {order.get('voucher_code') or ''}", "value": -order["discount"]}] if order.get("discount") else [])
+        + ([{"type": "Potongan Saldo", "value": -order["balance_used"]}] if order.get("balance_used") else []),
     }
     if order.get("email"):
         payload["payer_email"] = order["email"]

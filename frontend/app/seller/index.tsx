@@ -133,8 +133,10 @@ export default function SellerHome() {
                   { icon: "receipt-outline", label: "Pesanan", to: "/seller/orders" },
                   { icon: "cube-outline", label: "Stok", to: "/seller/stock" },
                   { icon: "car-outline", label: "Tarif Kurir", to: "/seller/couriers" },
+                  { icon: "chatbubbles-outline", label: "Chat", to: "/chat?side=store" },
+                  { icon: "alert-circle-outline", label: "Komplain", to: "/complaint?scope=store" },
                 ].map((n) => (
-                  <Pressable key={n.to} testID={`seller-nav-${n.to.split("/").pop()}`} style={styles.navItem} onPress={() => router.push(n.to as any)}>
+                  <Pressable key={n.to} testID={`seller-nav-${n.to.split("/").pop()!.replace(/\?.*/, "")}`} style={styles.navItem} onPress={() => router.push(n.to as any)}>
                     <Icon name={n.icon as any} size={24} color={colors.brandPrimary} />
                     <Text style={styles.navText}>{n.label}</Text>
                   </Pressable>
@@ -179,8 +181,8 @@ const styles = StyleSheet.create({
   stats: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   stat: { width: "48%", flexGrow: 1, backgroundColor: colors.surface, borderRadius: radius.md, padding: spacing.md, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, gap: 2 },
   statVal: { fontSize: fontSize.base, fontWeight: "700", color: colors.brandPrimary },
-  nav: { flexDirection: "row", gap: spacing.sm },
-  navItem: { flex: 1, alignItems: "center", gap: 6, backgroundColor: colors.surface, borderRadius: radius.md, paddingVertical: spacing.md, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, minHeight: 72 },
+  nav: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  navItem: { width: "31%", flexGrow: 1, alignItems: "center", gap: 6, backgroundColor: colors.surface, borderRadius: radius.md, paddingVertical: spacing.md, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, minHeight: 72 },
   navText: { fontSize: 13, color: colors.onSurface, fontWeight: "500" },
   between: { flexDirection: "row", alignItems: "center", gap: spacing.sm, justifyContent: "space-between" },
   status: { flexDirection: "row", alignItems: "center", gap: 6, borderWidth: 1, borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: 6, alignSelf: "flex-start" },

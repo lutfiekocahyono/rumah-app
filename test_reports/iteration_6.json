@@ -1,0 +1,41 @@
+{
+  "summary": "Tested RajaOngkir auto shipping settings and manual fallback on backend and frontend. Backend: 14/14 pytest pass. Settings are admin only (store_admin gets 403). The raw key is never returned. In Mongo it is stored Fernet-encrypted as api_key_enc. '' removes the key; null or omitted keeps it. /shipping/status returns false without a key and true with one. /shipping/rates returns manual couriers when there is no key and also falls back to manual with an invalid key plus origin plus destination (no courier disappears). COD checkout with destination_id/destination_label works and shipping_cost equals the courier cost. Frontend: the admin /admin/shipping flow works (Belum diisi -> Tersimpan (••••9x8y) -> Hapus -> Belum diisi; the weight saves and persists; ship-ok shows). The jombang store admin is redirected from /admin, /admin/report and /admin/shipping to /akun, and Akun has no Admin section. Guest checkout without a key shows no destination search and the 4 couriers at manual prices (0/25000/24000/22000); the COD order succeeded with J&T Rp24.000. Main issue: the backend's 502 for a failed location search is replaced by the ingress HTML page, so the UI shows a bare 'HTTP 502' and not the backend message. This happens in the admin origin search and in the customer checkout search when the key is invalid.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/admin/shipping/destinations, GET /api/shipping/destinations", "issue": "When RajaOngkir rejects the key, the backend raises HTTPException(502, 'Pencarian lokasi gagal, periksa API key ongkir'). The k8s ingress swaps any 502 body for its own HTML error page, so clients never receive the JSON detail and the UI shows 'HTTP 502'. Use a non-gateway status code (e.g. 400/422/424) in shipping.py:83."},
+      {"endpoint": "PUT /api/admin/shipping-settings", "issue": "A non-numeric origins[*].id (e.g. {'id':'abc'}) causes int() ValueError and returns 500. Validate it with a typed Pydantic model (Origin {id:int,label:str}) so it returns 422. shipping.py:66"},
+      {"endpoint": "PUT /api/admin/shipping-settings", "issue": "PUT is a full replace: if a client omits origins/enabled, they reset to {} / true. The current frontend always sends all fields, so this is OK today, but it is fragile for other clients."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "DestinationSearch (checkout co-dest, admin origin-*)", "issue": "With an invalid or expired key, the error under the search input reads 'HTTP 502' (caused by the backend 502 + ingress, see above). At checkout the customer sees this raw error. Consider hiding it or showing a friendly 'Ongkir otomatis tidak tersedia, memakai tarif standar'.", "testID": "co-dest-input / origin-pgs-official-input", "priority": "MEDIUM"},
+      {"component": "ship-weight field", "issue": "Math.max(1, digits(t)) means clearing the field leaves '1'. Typing afterwards appends to it (e.g. '1'+'500' = '1500'). Allow an empty value while editing and validate on save.", "testID": "ship-weight", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/admin/shipping", "issues": ["The 'Dapatkan key: collaborator.komerce.id' link is 12px text with no padding, so the touch target is under 44px."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_pgs_iter6_shipping.py", "/app/test_reports/pytest/pytest_iter6.xml"],
+  "action_items": [
+    "shipping.py:83 - replace status_code=502 with 400 (or 422/424) so the Indonesian error message reaches the client through the ingress",
+    "Checkout: when the destination search fails, show a friendly message (or hide the search) and keep the manual tariffs; do not show 'HTTP 502' to customers",
+    "Validate ShippingSettingsIn.origins with a typed model (id:int) so bad input returns 422, not 500",
+    "ship-weight input: allow an empty string while typing"
+  ],
+  "critical_code_review_comments": [
+    "Good: the key is Fernet-encrypted (KEY_ENCRYPTION_SECRET from env) and _public() never returns it. Checkout recomputes the courier cost server-side through SHIP_QUOTE, so the client cannot tamper with the price.",
+    "quote(): a 404 from RajaOngkir is treated as 'route not served' and is cached for 30 min, which hides that courier. If Komerce ever returns 404 for auth or other errors, couriers would disappear. Worth confirming against the real API once a key exists.",
+    "Fallback to manual also happens on network exceptions; error results are not cached (good)."
+  ],
+  "updated_files": ["/app/backend/tests/test_pgs_iter6_shipping.py (new)"],
+  "success_rate": {"backend": "100% (14/14 pytest; plus manual curl found 1 minor 500 on a bad origin id)", "frontend": "~90% (all requested flows pass; error-message UX issue when the key is invalid)"},
+  "seed_data_creation": "None kept. 2 API test orders and 1 UI test order (PGS-261108-C6DB16) were deleted by order_id. The product used is pgs-9985 (stock 9999 = unlimited, so stock is unchanged). Final shipping_api settings: api_key_enc None, key_hint '', enabled true, weight 1000, origins {} (manual mode).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run with: set -a && . /app/frontend/.env && set +a && pytest tests/test_pgs_iter6_shipping.py -n 0. The env var is EXPO_PUBLIC_BACKEND_URL. The module teardown always resets the key to '' and origins to {}. No real RajaOngkir key exists; a dummy key makes search return 502 (ingress HTML body). On product detail, buy-now goes to /keranjang, then navigate to /checkout.",
+  "rca_of_issue": "'HTTP 502' in the UI: shipping._search raises HTTPException(502). The preview/production ingress intercepts upstream 502 responses and returns an HTML error page. api.ts req() then fails to parse JSON and falls back to `HTTP ${status}`. Reproduce: save any dummy key, then GET /api/admin/shipping/destinations?q=sidoarjo through the public URL returns an HTML body. Fix: use a 4xx status."
+}

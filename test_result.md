@@ -101,3 +101,7 @@
 #====================================================================================================
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
+## Iteration 7 — Komplain & Refund (saldo) + Chat Pembeli–Toko
+- backend/support.py: wallet (/api/wallet), complaints (/api/complaints, /seller/complaints, /admin/complaints, /complaints/{id}, /messages, /escalate, /decide), chat (/api/chats, /seller/chats, /chats/unread, /chats/{id}, /chats/{id}/messages)
+- checkout: use_balance + payment_method "saldo"; balance returned on cancel/expired/failed
+- Frontend: /wallet, /complaint (scope=mine|store|admin), /complaint/new?order=, /complaint/[id], /chat (side=store), /chat/[id]; buttons on order detail & seller order detail; menus in Akun, Admin, Seller

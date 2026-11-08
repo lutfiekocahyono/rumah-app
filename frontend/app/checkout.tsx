@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { View, Text, StyleSheet, Pressable, TextInput, KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -7,7 +7,8 @@ import Icon from "@react-native-vector-icons/ionicons";
 import { colors, fontSize, radius, spacing, formatIDR } from "@/src/theme";
 import { useCart } from "@/src/cart-context";
 import { useAuth } from "@/src/auth-context";
-import { api, type Address, type Courier, type PaymentMethod, type Voucher } from "@/src/api";
+import { api, type Address, type Courier, type Destination, type PaymentMethod, type Voucher } from "@/src/api";
+import { DestinationSearch } from "@/src/components/destination-search";
 import * as WebBrowser from "expo-web-browser";
 
 export default function Checkout() {
@@ -68,11 +69,23 @@ export default function Checkout() {
   const itemCount = items.reduce((t, i) => t + i.quantity, 0);
   const [couriers, setCouriers] = useState<Courier[]>([]);
   const [courier, setCourier] = useState("");
+  const [dest, setDest] = useState<Destination | null>(null);
+  const [autoShip, setAutoShip] = useState(false);
+  const searchDest = useCallback(async (q: string) => { const r = await api.destinations(q); setAutoShip(r.auto); return r.data; }, []);
+  useEffect(() => { api.shippingStatus().then((r) => setAutoShip(r.auto)).catch(() => {}); }, []);
   useEffect(() => {
-    api.storeCouriers(storeId).then((l) => { setCouriers(l); setCourier((c) => c || l[0]?.code || ""); }).catch(() => {});
-  }, [storeId]);
+    api.shippingRates(storeId, dest?.id).then((l) => {
+      setCouriers(l);
+      setCourier((c) => (l.some((x) => x.code === c) ? c : l[0]?.code || ""));
+    }).catch(() => {});
+  }, [storeId, dest?.id]);
   const shipCost = couriers.find((c) => c.code === courier)?.cost ?? 0;
   const total = subtotal - discount + shipCost;
+  const [balance, setBalance] = useState(0);
+  const [useBalance, setUseBalance] = useState(false);
+  useEffect(() => { if (user) api.wallet().then((w) => setBalance(w.balance)).catch(() => {}); }, [user]);
+  const balanceUsed = useBalance ? Math.min(balance, total) : 0;
+  const toPay = total - balanceUsed;
 
   const submit = async () => {
     setErr("");
@@ -90,7 +103,7 @@ export default function Checkout() {
     }
     setLoading(true);
     try {
-      const order = await api.checkout({ full_name: fullName, phone, address, city, payment_method: method, voucher_code: voucher?.code, store_id: storeId, courier });
+      const order = await api.checkout({ full_name: fullName, phone, address, city, payment_method: toPay === 0 && balanceUsed > 0 ? "saldo" : method, use_balance: useBalance, voucher_code: voucher?.code, store_id: storeId, courier, destination_id: dest?.id ?? null, destination_label: dest?.label ?? "" });
       await refresh();
       router.replace(`/order/${order.order_id}` as any);
       if (order.payment_url) await WebBrowser.openBrowserAsync(order.payment_url);
@@ -137,6 +150,13 @@ export default function Checkout() {
         <Text style={[styles.section, { marginTop: spacing.xl }]}>Toko & Kurir</Text>
         <View style={styles.card} testID="checkout-couriers">
           <Text style={styles.paySub}>Dikirim dari: {items[0]?.store_name ?? "-"}</Text>
+          {autoShip ? (
+            <View style={{ gap: 4 }}>
+              <Text style={styles.paySub}>Kecamatan tujuan (untuk ongkir otomatis JNE / J&T / SiCepat)</Text>
+              <DestinationSearch testID="co-dest" search={searchDest} value={dest} onPick={setDest} />
+            </View>
+          ) : null}
+          {autoShip && !dest ? <Text style={styles.paySub}>Pilih kecamatan tujuan dulu; sementara tampil tarif standar.</Text> : null}
           {couriers.map((c) => (
             <Pressable key={c.code} testID={`co-courier-${c.code}`} onPress={() => setCourier(c.code)}
               style={{ flexDirection: "row", alignItems: "center", gap: spacing.md, minHeight: 48 }}>
@@ -150,8 +170,21 @@ export default function Checkout() {
           ))}
         </View>
 
-        <Text style={[styles.section, { marginTop: spacing.xl }]}>Metode Pembayaran</Text>
-        <View style={styles.card}>
+        {balance > 0 ? (
+          <>
+            <Text style={[styles.section, { marginTop: spacing.xl }]}>Saldo</Text>
+            <Pressable testID="co-use-balance" style={[styles.card, styles.payRow]} onPress={() => setUseBalance((v) => !v)}>
+              <Icon name={useBalance ? "checkbox" : "square-outline"} size={22} color={useBalance ? colors.brandPrimary : colors.muted} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.payLabel}>Pakai saldo {formatIDR(balance)}</Text>
+                <Text style={styles.paySub}>{useBalance ? (toPay === 0 ? "Pesanan lunas dengan saldo" : `Sisa ${formatIDR(toPay)} dibayar dengan metode di bawah`) : "Dari refund komplain yang disetujui"}</Text>
+              </View>
+            </Pressable>
+          </>
+        ) : null}
+
+        {toPay > 0 ? <Text style={[styles.section, { marginTop: spacing.xl }]}>Metode Pembayaran</Text> : null}
+        {toPay > 0 ? <View style={styles.card}>
           {([
             { id: "midtrans", label: "Midtrans", sub: "QRIS · Transfer Bank (VA) · GoPay · ShopeePay", icon: "qr-code-outline" },
             { id: "xendit", label: "Xendit", sub: "QRIS · Transfer Bank (VA) · OVO · DANA · ShopeePay", icon: "wallet-outline" },
@@ -173,7 +206,7 @@ export default function Checkout() {
               </View>
             </Pressable>
           ))}
-        </View>
+        </View> : null}
 
         <Text style={[styles.section, { marginTop: spacing.xl }]}>Voucher Diskon</Text>
         <View style={styles.card} testID="checkout-voucher">
@@ -220,7 +253,8 @@ export default function Checkout() {
           <Row label={`Ongkos kirim${couriers.find((c) => c.code === courier) ? ` (${couriers.find((c) => c.code === courier)!.name})` : ""}`} value={formatIDR(shipCost)} />
           {discount > 0 ? <Row label={`Voucher ${voucher?.code}`} value={`-${formatIDR(discount)}`} /> : null}
           <View style={styles.sep} />
-          <Row label="Total Pembayaran" value={formatIDR(total)} big />
+          {balanceUsed > 0 ? <Row label="Pakai saldo" value={`-${formatIDR(balanceUsed)}`} /> : null}
+          <Row label="Total Pembayaran" value={formatIDR(toPay)} big />
         </View>
 
         {err ? <Text style={styles.err} testID="checkout-error">{err}</Text> : null}
@@ -230,8 +264,8 @@ export default function Checkout() {
         {err ? <Text style={styles.errBar} testID="checkout-error-bar">{err}</Text> : null}
         <View style={styles.bottomRow}>
         <View style={{ flex: 1 }}>
-          <Text style={styles.smallLabel}>Total</Text>
-          <Text style={styles.totalValue}>{formatIDR(total)}</Text>
+          <Text style={styles.smallLabel}>Total bayar</Text>
+          <Text style={styles.totalValue}>{formatIDR(toPay)}</Text>
         </View>
         <Pressable testID="pay-now-btn" style={styles.payBtn} onPress={submit} disabled={loading}>
           {loading ? <ActivityIndicator color={colors.onBrandPrimary} /> : <Text style={styles.payBtnText}>Bayar Sekarang</Text>}

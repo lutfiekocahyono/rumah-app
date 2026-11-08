@@ -51,3 +51,14 @@ Iteration 2: import all data from pusatgrosirsidoarjo.com; tiered pricing (pembe
 - Order: store_id/name, courier, tracking_number, status_history. Store admin: /seller/orders → process → ship (resi required unless pickup) → buyer "Pesanan Sudah Diterima" → completed. Cancel restores stock + voucher.
 - No commission: revenue report /seller/report and /admin/report (per store).
 - Backlog: super admin dashboard (users, refunds, complaints, roles), chat, reviews, RajaOngkir optional, admin acting as any store.
+
+## Iteration 6 — Ongkir otomatis RajaOngkir (Komerce)
+- backend/shipping.py: owner enters API key at /admin/shipping (encrypted with KEY_ENCRYPTION_SECRET, never returned), default weight per item, origin kecamatan per store. JNE/J&T/SiCepat cost via rajaongkir.komerce.id (cheapest service, 30-min cache); fallback to manual tariffs when no key/origin/destination or API error. Pickup & custom couriers stay manual.
+- Checkout: buyer searches destination kecamatan when auto is on; POST /api/shipping/rates; checkout recomputes cost server-side.
+- Admin panel guarded client-side (app/admin/_layout.tsx) for role admin only; store admins only see their store.
+
+## Iteration 7 — Komplain & Refund + Saldo + Chat Pembeli–Toko (DONE, tested iteration_7)
+- backend/support.py. Komplain: buyer files from order detail after shipped/completed, max 7 days, 1 per order, text only, optional refund amount. Branch store owner decides while open (refund/reject with reason/resolve); buyer may escalate a rejection once → Super Admin decides; super admin sees all at /complaint?scope=admin and can decide open ones too.
+- Refund → Saldo (wallets, wallet_tx). /wallet screen. Checkout "Pakai saldo" (use_balance; full coverage = payment_method saldo, status paid). Saldo returned once on cancel/expired/failed (minus already refunded). Midtrans/Xendit get negative "Potongan Saldo" line.
+- Chat: conversation per buyer+store (buyer must have ordered there); store opens from seller order detail. Polling 4s, unread counters, inbox notification on first unread. Screens /chat, /chat?side=store, /chat/[id].
+- Backlog: unread badge on menu, photo evidence (user chose text only for now).

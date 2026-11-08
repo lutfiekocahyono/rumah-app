@@ -19,8 +19,10 @@ const MENU = [
   { icon: "flash-outline", label: "Flash Sale", sub: "Produk, harga flash & jam berakhir", to: "/admin/flash-sale" },
   { icon: "ticket-outline", label: "Voucher Diskon", sub: "Kode kupon % atau Rp untuk checkout", to: "/admin/vouchers" },
   { icon: "car-outline", label: "Gratis Ongkir & Rekomendasi", sub: "Banner ongkir & mode rekomendasi", to: "/admin/home-settings" },
+  { icon: "alert-circle-outline", label: "Komplain & Refund", sub: "Pantau semua toko, putuskan komplain yang diteruskan", to: "/complaint?scope=admin" },
   { icon: "storefront-outline", label: "Verifikasi Toko", sub: "Setujui / tolak toko penjual baru", to: "/admin/stores" },
   { icon: "bar-chart-outline", label: "Laporan Pendapatan", sub: "Pendapatan & tarif kurir per toko", to: "/admin/report" },
+  { icon: "navigate-outline", label: "Pengaturan Ongkir Otomatis", sub: "API key RajaOngkir & lokasi asal tiap toko", to: "/admin/shipping" },
 ];
 
 export default function AdminHome() {
@@ -92,7 +94,7 @@ export default function AdminHome() {
         </View>
         <View style={styles.list}>
           {MENU.map((m, i) => (
-            <Pressable key={m.to} testID={`admin-menu-${m.to.split("/").pop()}`} style={[styles.row, i === MENU.length - 1 && { borderBottomWidth: 0 }]} onPress={() => router.push(m.to as any)}>
+            <Pressable key={m.to} testID={`admin-menu-${m.to.split("/").pop()!.replace(/\?.*/, "")}`} style={[styles.row, i === MENU.length - 1 && { borderBottomWidth: 0 }]} onPress={() => router.push(m.to as any)}>
               <View style={styles.rowIcon}><Icon name={m.icon as any} size={20} color={colors.brandPrimary} /></View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.rowLabel}>{m.label}</Text>

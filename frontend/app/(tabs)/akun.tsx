@@ -30,6 +30,7 @@ export default function Akun() {
             { icon: "people-outline", label: "Kategori Pelanggan", to: "/admin/customers" },
             { icon: "cube-outline", label: "Harga Manual per Produk", to: "/admin/products" },
             { icon: "storefront-outline", label: "Verifikasi Toko", to: "/admin/stores" },
+            { icon: "alert-circle-outline", label: "Komplain & Refund", to: "/complaint?scope=admin" },
           ],
         }]
       : []),
@@ -38,6 +39,7 @@ export default function Akun() {
           title: "Akun Saya",
           items: [
             { icon: "person-outline", label: "Edit Profil", to: "/account/profile" },
+            { icon: "wallet-outline", label: "Saldo Saya", to: "/wallet" },
             { icon: "location-outline", label: "Alamat Pengiriman", to: "/account/addresses" },
             { icon: "notifications-outline", label: "Notifikasi", to: "/notifications" },
             { icon: "time-outline", label: "Riwayat Aktivitas", to: "/account/activity" },
@@ -50,6 +52,10 @@ export default function Akun() {
       items: [
         { icon: "receipt-outline", label: "Daftar Pesanan", to: "/orders" },
         { icon: "heart-outline", label: "Wishlist", to: "/wishlist" },
+        ...(user ? [
+          { icon: "chatbubbles-outline", label: "Chat Toko", to: "/chat" },
+          { icon: "alert-circle-outline", label: "Komplain Saya", to: "/complaint" },
+        ] : []),
       ],
     },
     {

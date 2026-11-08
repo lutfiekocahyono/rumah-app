@@ -16,7 +16,7 @@ const ACTIONS: { id: Order["status"]; label: string; icon: string }[] = [
   { id: "completed", label: "Selesai", icon: "checkmark-done-outline" },
   { id: "cancelled", label: "Batalkan", icon: "close-circle-outline" },
 ];
-const METHOD_LABEL = { midtrans: "Midtrans", xendit: "Xendit", cod: "COD" };
+const METHOD_LABEL = { midtrans: "Midtrans", xendit: "Xendit", cod: "COD", saldo: "Saldo" };
 
 function waNumber(phone: string) {
   const d = phone.replace(/\D/g, "");

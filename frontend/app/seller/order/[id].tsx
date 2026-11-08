@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { View, Text, StyleSheet, ScrollView, ActivityIndicator, KeyboardAvoidingView, Platform } from "react-native";
 import { Image } from "expo-image";
-import { useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { colors, fontSize, radius, spacing, formatIDR } from "@/src/theme";
@@ -14,6 +14,7 @@ import { adminStyles, Card, Field, PrimaryButton } from "@/src/components/admin-
 export default function SellerOrderDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const [order, setOrder] = useState<Order | null>(null);
   const [resi, setResi] = useState("");
   const [busy, setBusy] = useState("");
@@ -45,6 +46,21 @@ export default function SellerOrderDetail() {
       <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.md, paddingBottom: insets.bottom + spacing["2xl"] }} keyboardShouldPersistTaps="handled">
         <Text style={styles.status} testID="so-status">{ORDER_STATUS_LABEL[s]}</Text>
         <OrderTracking order={order} />
+        <View style={{ flexDirection: "row", gap: spacing.sm }}>
+          {order.user_id ? (
+            <View style={{ flex: 1 }}>
+              <PrimaryButton testID="so-chat" label="Chat Pembeli" variant="outline" loading={busy === "chat"} onPress={async () => {
+                setBusy("chat");
+                try { const c = await api.sellerStartChat(order.order_id); router.push(`/chat/${c.conv_id}` as any); } catch (e: any) { setErr(e.message); } finally { setBusy(""); }
+              }} />
+            </View>
+          ) : null}
+          {order.complaint_id ? (
+            <View style={{ flex: 1 }}>
+              <PrimaryButton testID="so-complaint" label="Lihat Komplain" variant="danger" onPress={() => router.push(`/complaint/${order.complaint_id}` as any)} />
+            </View>
+          ) : null}
+        </View>
         <Card>
           {order.items.map((i) => (
             <View key={i.product_id} style={styles.item}>
