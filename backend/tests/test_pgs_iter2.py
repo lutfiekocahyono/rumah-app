@@ -38,13 +38,16 @@ def prods():
 
 @pytest.fixture(scope="module", autouse=True)
 def reset_after(admin, demo, prods):
+    # snapshot the shop's real pricing and restore it afterwards (never wipe it to zero)
+    saved = requests.get(f"{API}/admin/pricing", headers=admin).json()
+    saved_tiers = {p["product_id"]: requests.get(f"{API}/admin/products/{p['product_id']}/tiers", headers=admin).json().get("tier_prices") for p in prods[:2]}
     yield
     h, u = demo
-    requests.put(f"{API}/admin/pricing", headers=admin, json={"type_discounts": {"langsung": 0, "pengecer": 0, "reseller": 0}, "qty_tiers": []})
+    requests.put(f"{API}/admin/pricing", headers=admin, json={k: saved[k] for k in ("type_discounts", "type_discount_modes", "qty_tiers") if k in saved})
     requests.put(f"{API}/admin/customers/{u['user_id']}", headers=admin, json={"customer_type": "langsung"})
     for p in prods[:2]:
         requests.put(f"{API}/admin/products/{p['product_id']}/tiers", headers=admin,
-                     json={"tier_prices": {"langsung": [], "pengecer": [], "reseller": []}})
+                     json={"tier_prices": saved_tiers.get(p["product_id"]) or {"langsung": [], "pengecer": [], "reseller": []}})
     requests.delete(f"{API}/cart", headers=h)
 
 
@@ -112,7 +115,7 @@ class TestPricing:
         h, u = demo
         r = requests.put(f"{API}/admin/pricing", headers=admin, json={
             "type_discounts": {"langsung": 0, "pengecer": 3, "reseller": 5},
-            "qty_tiers": [{"min_qty": 6, "discount_percent": 2}, {"min_qty": 12, "discount_percent": 4}]})
+            "qty_tiers": [{"min_qty": 6, "mode": "percent", "value": 2}, {"min_qty": 12, "mode": "percent", "value": 4}]})
         assert r.status_code == 200, r.text
         assert requests.get(f"{API}/admin/pricing", headers=admin).json()["type_discounts"]["reseller"] == 5
         r = requests.put(f"{API}/admin/customers/{u['user_id']}", headers=admin, json={"customer_type": "reseller"})

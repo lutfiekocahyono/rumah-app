@@ -1,5 +1,5 @@
 # Helper for UI tests: setup (pricing + reseller + COD order) and reset
-import os, sys, requests
+import os, sys, json, requests
 API = os.environ["EXPO_PUBLIC_BACKEND_URL"].rstrip("/") + "/api"
 
 
@@ -18,13 +18,22 @@ if cmd == "order":
     o = requests.post(f"{API}/checkout", headers=D, json={"full_name": "TEST_UIBuyer", "phone": "081234567890", "address": "Jl. Test 1", "city": "Sidoarjo", "payment_method": "cod"}).json()
     print(o["order_id"])
 elif cmd == "pricing":
+    # keep a copy of the shop's real pricing so "reset" can put it back
+    if os.path.exists("/tmp/pgs_pricing_backup.json"):  # keep the first (real) backup if "pricing" runs twice
+        pass
+    else:
+        with open("/tmp/pgs_pricing_backup.json", "w") as f:
+            json.dump(requests.get(f"{API}/admin/pricing", headers=A).json(), f)
     requests.put(f"{API}/admin/pricing", headers=A, json={"type_discounts": {"langsung": 0, "pengecer": 3, "reseller": 5},
-                 "qty_tiers": [{"min_qty": 6, "discount_percent": 2}, {"min_qty": 12, "discount_percent": 4}]})
+                 "qty_tiers": [{"min_qty": 6, "mode": "percent", "value": 2}, {"min_qty": 12, "mode": "percent", "value": 4}]}).raise_for_status()
     requests.put(f"{API}/admin/customers/{uid}", headers=A, json={"customer_type": "reseller"})
     p = [x for x in requests.get(f"{API}/products").json() if x["in_stock"] and x["stock"] > 20][0]
     print(p["product_id"], p["price"])
 elif cmd == "reset":
-    requests.put(f"{API}/admin/pricing", headers=A, json={"type_discounts": {"langsung": 0, "pengecer": 0, "reseller": 0}, "qty_tiers": []})
+    if os.path.exists("/tmp/pgs_pricing_backup.json"):
+        saved = json.load(open("/tmp/pgs_pricing_backup.json"))
+        requests.put(f"{API}/admin/pricing", headers=A, json={k: saved[k] for k in ("type_discounts", "type_discount_modes", "qty_tiers") if k in saved})
+        os.remove("/tmp/pgs_pricing_backup.json")
     requests.put(f"{API}/admin/customers/{uid}", headers=A, json={"customer_type": "langsung"})
     for pid in sys.argv[2:]:
         requests.put(f"{API}/admin/products/{pid}/tiers", headers=A, json={"tier_prices": {"langsung": [], "pengecer": [], "reseller": []}})

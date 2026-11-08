@@ -97,3 +97,6 @@ Iteration 2: import all data from pusatgrosirsidoarjo.com; tiered pricing (pembe
 
 ## Iteration 21
 - POST /api/admin/home-sections/{id}/copy-pins (super admin): copies manual picks of all 3 sections to other branches (only pinned fields). UI: hs-copy button + confirm on /admin/home-sections.
+
+## Iteration 22
+- Wholesale display unchanged; pricing settings had been wiped by legacy test teardown. Tests now snapshot/restore pricing. User re-enters values in Admin → Pengaturan Harga.

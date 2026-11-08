@@ -1,0 +1,43 @@
+{
+  "summary": "Wholesale price display verified working once admin pricing is configured. Temporary pricing (pengecer 3%, reseller 5%, qty ≥6→2%, ≥12→4%) was saved via Admin → Pengaturan Harga UI (persisted after reload). Guest + demo@pgs.id: home/search cards show price-range 'RpX - RpY' (e.g. Rp194.256 - Rp213.000), hemat badge shows, product detail shows Harga Grosir table (1-5 —/Rp213.000, 6-11 2%/Rp208.740, 12+ 4%/Rp204.480); tapping a row updates unit price. Marketplace seller product (TEST_ product by acct1) shows flat price, no range, no table. Fixed teardown verified: after running test_pgs_iter2.py the temporary pricing was still intact (not zeroed); ui_helper 'pricing'→'reset' left pricing exactly as before (tested with distinct values 1/2/7%, ≥10→3%). BUT ui_helper 'pricing' and test_pgs_iter2 TestPricing use legacy payload {min_qty, discount_percent} which backend now rejects with 422, so they silently/explicitly fail to apply test pricing. Final state restored and verified EQUAL to session start (all 0, percent, qty_tiers []), demo customer_type=langsung, 0 products with tier_prices, popular pins intact on 3 branches.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "tests/ui_helper.py pricing", "issue": "Sends qty_tiers [{min_qty, discount_percent}] → PUT /api/admin/pricing returns 422 (QtyTier requires 'value'); response not checked, so the 'pricing' command silently does NOT apply the test pricing (only sets demo to reseller)."},
+      {"endpoint": "tests/test_pgs_iter2.py", "issue": "5/20 fail due to stale assertions, not app bugs: TestPricing::test_global_pricing_reseller (same legacy discount_percent payload → 422), test_manual_tiers_override_reseller_only (cascade: demo not reseller), test_gateway_503[midtrans/xendit] (backend now returns 400 'Pembayaran online belum aktif...'), test_cod_and_admin_flow (expects +25000 shipping, now 0 → order left in 'cod' status; I cancelled my own PGS-261108-407E4B). Restore logic itself works."},
+      {"endpoint": "tests/ui_helper.py", "issue": "Backup file /tmp/pgs_pricing_backup.json is never removed after 'reset' and is overwritten if 'pricing' runs twice (second run would back up the test values). Suggest refusing to overwrite an existing backup and deleting it after reset."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Product card / detail price range", "issues": ["Range min is the cheapest price across ALL customer types (reseller 12+ = Rp194.256), while a guest/langsung buyer's own table bottoms at Rp204.480. Can confuse buyers ('Rentang harga Rp194.256' unreachable for them). Confirm this is the intended 'termurah–termahal'."]},
+      {"screen": "Admin Pengaturan Harga", "issues": ["After adding one qty tier, 'Tambah aturan jumlah' button sits under the fixed bottom 'Simpan' bar at 375x667; it must be scrolled into view first (paddingBottom 120 covers it only after scrolling). Minor."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_pgs_iter22_wholesale_display.py",
+    "/app/backend/tests/pricing_snapshot.py",
+    "/app/test_reports/pytest/iter22_wholesale.xml",
+    "/app/test_reports/pytest/iter22_iter2.xml"
+  ],
+  "action_items": [
+    "Update tests/ui_helper.py 'pricing' and tests/test_pgs_iter2.py TestPricing payload to qty_tiers [{min_qty, mode:'percent', value}] (and assert status 200) — currently 422.",
+    "Update stale iter2 assertions: gateway now 400 'Pembayaran online belum aktif', COD shipping no longer +25000.",
+    "Optional: ui_helper should not overwrite an existing backup and should delete it after reset.",
+    "Optional: decide whether card/detail range should use the viewer's own tiers instead of all customer types."
+  ],
+  "critical_code_review_comments": [
+    "pricing.py price_tiers: non-'pgs-official' store products → flat price; correct per spec. No products currently exist with other store_id (only via seller create).",
+    "Display code (product-card price-range, [id].tsx price-matrix-table) relies on price_max > price_min and tiers.length > 1 — correct; nothing renders when pricing is all-zero, which explains the user report."
+  ],
+  "updated_files": ["/app/backend/tests/test_pgs_iter22_wholesale_display.py (new)", "/app/backend/tests/pricing_snapshot.py (new helper: save/show/compare/restore)"],
+  "success_rate": {"backend": "100% (6/6 new display tests); legacy iter2 15/20 (failures are stale tests)", "frontend": "100%"},
+  "seed_data_creation": "Created & deleted TEST_iter22 flat products (sp_...) via acct1; created then cancelled COD order PGS-261108-407E4B (from iter2 run). Note: pre-existing TEST_Buyer COD order PGS-261108-B72F47 from an earlier session is still in 'cod' status (not mine, untouched). demo@pgs.id cart was cleared by iter2/ui_helper teardowns.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Use `python tests/pricing_snapshot.py save` before and `restore`/`compare` after any pricing changes (EXPO_PUBLIC_BACKEND_URL env). Pricing PUT requires qty_tiers items {min_qty, mode, value}. Final pricing must stay as user sets it. Popular pins verified ['pgs-45768','pgs-29488','pgs-51234','pgs-51477'] on all 3 branches.",
+  "rca_of_issue": "Prices hidden because settings 'pricing' was all-zero/empty → price_min==price_max and single tier → UI hides range/table by design. Confirmed fixed tests no longer wipe pricing."
+}
