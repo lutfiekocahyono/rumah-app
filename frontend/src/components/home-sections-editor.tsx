@@ -8,6 +8,7 @@ import { colors, fontSize, radius, spacing } from "@/src/theme";
 import { api, imgUrl, type Category, type HomeSectionKey, type HomeSectionsSettings, type HomeSort } from "@/src/api";
 import { adminStyles, Card, Chips, digits, Field, PrimaryButton, ToggleRow } from "@/src/components/admin-form";
 import { ProductPicker } from "@/src/components/product-picker";
+import { ConfirmDialog } from "@/src/components/confirm-dialog";
 
 type Pin = { product_id: string; name: string; image: string };
 type Draft = { enabled: boolean; title: string; limit: string; sort: HomeSort; categories: string[]; days: string; pins: Pin[] };
@@ -32,11 +33,13 @@ const toDrafts = (s: HomeSectionsSettings) =>
     return [key, { enabled: c.enabled, title: c.title, limit: String(c.limit), sort: c.sort, categories: c.categories, days: String(c.days), pins: c.pinned_products }];
   })) as unknown as Record<HomeSectionKey, Draft>;
 
-/** Rules editor for the three homepage product sections of one branch. */
-export function HomeSectionsEditor({ load, save, header }: {
+/** Rules editor for the three homepage product sections of one branch.
+ *  `copyAction` (super admin): save first, then copy this branch's manual picks to the other branches. */
+export function HomeSectionsEditor({ load, save, header, copyAction }: {
   load: () => Promise<HomeSectionsSettings>;
   save: (s: Parameters<typeof api.saveSellerHomeSections>[0]) => Promise<HomeSectionsSettings>;
   header?: React.ReactNode;
+  copyAction?: { label: string; confirm: string; run: () => Promise<string> };
 }) {
   const insets = useSafeAreaInsets();
   const [drafts, setDrafts] = useState<Record<HomeSectionKey, Draft> | null>(null);
@@ -64,8 +67,8 @@ export function HomeSectionsEditor({ load, save, header }: {
     set({ pins });
   };
 
-  const submit = async () => {
-    if (!drafts) return;
+  const submit = async (): Promise<boolean> => {
+    if (!drafts) return false;
     setSaving(true);
     setMsg({ err: "", ok: "" });
     try {
@@ -77,10 +80,27 @@ export function HomeSectionsEditor({ load, save, header }: {
       const s = await save(body);
       setDrafts(toDrafts(s));
       setMsg({ err: "", ok: "Pengaturan beranda disimpan" });
+      return true;
     } catch (e: any) {
       setMsg({ err: e.message, ok: "" });
+      return false;
     } finally {
       setSaving(false);
+    }
+  };
+
+  const [askCopy, setAskCopy] = useState(false);
+  const [copying, setCopying] = useState(false);
+  const copy = async () => {
+    if (!copyAction) return;
+    setCopying(true);
+    try {
+      if (await submit()) setMsg({ err: "", ok: await copyAction.run() });
+    } catch (e: any) {
+      setMsg({ err: `Pengaturan tersimpan, tapi gagal disalin: ${e.message}`, ok: "" });
+    } finally {
+      setCopying(false);
+      setAskCopy(false);
     }
   };
 
@@ -154,6 +174,13 @@ export function HomeSectionsEditor({ load, save, header }: {
             {msg.err ? <Text style={adminStyles.err} testID="hs-error">{msg.err}</Text> : null}
             {msg.ok ? <Text style={adminStyles.ok} testID="hs-ok">{msg.ok}</Text> : null}
             <PrimaryButton testID="hs-save" label="Simpan Semua Bagian" onPress={submit} loading={saving} />
+            {copyAction ? (
+              <>
+                <PrimaryButton testID="hs-copy" label={copyAction.label} variant="outline" onPress={() => setAskCopy(true)} loading={copying} />
+                <ConfirmDialog visible={askCopy} title="Salin ke semua cabang?" message={copyAction.confirm} confirmLabel="Ya, salin" danger={false}
+                  loading={copying} onConfirm={copy} onCancel={() => setAskCopy(false)} />
+              </>
+            ) : null}
           </>
         )}
       </ScrollView>

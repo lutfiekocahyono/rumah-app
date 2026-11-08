@@ -94,3 +94,6 @@ Iteration 2: import all data from pusatgrosirsidoarjo.com; tiered pricing (pembe
 - Per section: show/hide, title, limit, sort (terlaris/rating/paling dilihat/terbaru-restok/acak/+sesuai minat for rekomendasi), category filter, manual pins (ordered, merged across branches, buyer's branch first), Terbaru window N days (upload OR restock).
 - products.sold += on completion (once), -= on later cancel; products.views on view; products.restocked_at when stock raised.
 - Screens: /seller/home-sections (Beranda nav, official branches), /admin/home-sections (branch chips).
+
+## Iteration 21
+- POST /api/admin/home-sections/{id}/copy-pins (super admin): copies manual picks of all 3 sections to other branches (only pinned fields). UI: hs-copy button + confirm on /admin/home-sections.

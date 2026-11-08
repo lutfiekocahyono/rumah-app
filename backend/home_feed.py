@@ -198,3 +198,13 @@ def register(api, db, *, get_current_user, require_admin, get_optional_owner, ge
     @api.put("/admin/home-sections/{store_id}")
     async def admin_set_sections(store_id: str, body: SectionsIn, _=Depends(require_admin)):
         return await save(official(store_id), body)
+
+    @api.post("/admin/home-sections/{store_id}/copy-pins")
+    async def admin_copy_pins(store_id: str, _=Depends(require_admin)):
+        """Copy this branch's saved manual picks (all three sections, same order) to every other PGS branch; their rules stay."""
+        src = await load_cfg(official(store_id))
+        targets = [s for s in seller.OFFICIAL_IDS if s != store_id]
+        for sid in targets:
+            await db.home_sections.update_one({"store_id": sid}, {"$set": {
+                **{f"{k}.pinned": src[k]["pinned"] for k in SECTION_KEYS}, "updated_at": datetime.now(timezone.utc)}}, upsert=True)
+        return {"copied_to": targets, "counts": {k: len(src[k]["pinned"]) for k in SECTION_KEYS}}

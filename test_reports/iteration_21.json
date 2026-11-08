@@ -1,0 +1,30 @@
+{
+  "summary": "Iteration 21 tested the Super Admin 'Salin ke Semua Cabang' feature (copy manual picks to the other branches). Backend: new suite tests/test_pgs_iter21_copy_pins.py, 7/7 pass. POST /api/admin/home-sections/{id}/copy-pins from Jember copies the popular/newest/recommended pins to pgs-official and pgs-jombang in the same order. The targets' title, limit, sort, categories, enabled and days stay the same; this was checked with distinct Jombang rules (rating sort, limit 5, a category, newest disabled, days 14). The source branch is unchanged. The response is {copied_to, counts} and the values are correct. Copying empty pins clears the targets. Copying from Sidoarjo works. Branch admin jombang gets 403, no token gets 401/403, and an unknown store gets 404 'Cabang tidak ditemukan'. Frontend at 375x667, no page errors. Logged in as admin, opened /admin/home-sections and switched to Jember. Added an UNSAVED pin (pgs-12180 via search 'piring'). hs-copy opens confirm-dialog; its text names the source and both target branches. Cancel closes it and nothing is saved or copied. Confirm saved the unsaved pin first, then copied it. hs-ok showed 'Disimpan & disalin ke PGS Sidoarjo, Mitra PGS Jombang (Populer 5, Terbaru 0, Rekomendasi 0 produk)' and the dialog closed. Switching to Jombang and to Sidoarjo showed the same 5 pins in the same order. Seller sidoarjo /seller/home-sections has hs-save but no hs-copy. Touch targets: hs-copy is 343x48, confirm-ok and confirm-cancel are 48px tall. State restored at the end: all 3 branches have popular pinned = [pgs-45768, pgs-29488, pgs-51234, pgs-51477] and newest/recommended = []. All other rules are back to their previous values (verified in the DB). Deprecated packages: none found in the files reviewed.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/admin/home-sections/{id}/copy-pins", "issue": "For a target branch whose doc has no 'recommended' key, load_cfg() fills recommended.sort from the global promo recommend_mode, and copy-pins then writes it into the doc. That branch then stops following later changes to the global setting. Low impact: all 3 branches already have full docs."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_pgs_iter21_copy_pins.py", "/app/test_reports/pytest/pytest_iter21.xml"],
+  "action_items": [
+    "Optional: in copy-pins, $set only '<key>.pinned' for each target (e.g. {'popular.pinned': [...]}) instead of rewriting whole sections from load_cfg, so default and inherited values are not frozen into target docs.",
+    "Optional: if save succeeds but copyAction.run() fails, the UI shows only the error. Consider saying the save succeeded but the copy failed."
+  ],
+  "critical_code_review_comments": [
+    "home_feed.py admin_copy_pins: targets are written one by one without a bulk write or transaction. Fine for 3 branches.",
+    "home-sections-editor.tsx copy(): it saves first (submit) and copies only if the save succeeds, so unsaved edits are included."
+  ],
+  "updated_files": ["/app/backend/tests/test_pgs_iter21_copy_pins.py"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "None. The suite snapshots the home_sections docs of the 3 official branches and restores them exactly afterwards. The UI test's extra pin (pgs-12180) was removed in the DB afterwards.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Run with: cd /app/backend && set -a && . /app/frontend/.env && set +a && python -m pytest tests/test_pgs_iter21_copy_pins.py -n0. The env var is EXPO_PUBLIC_BACKEND_URL. The user's real pins are popular [pgs-45768, pgs-29488, pgs-51234, pgs-51477] on all 3 branches, and newest/recommended are empty. Always restore this state. For UI, log in through /login (email-input/password-input/login-submit), then goto /admin/home-sections."
+}

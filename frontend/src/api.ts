@@ -164,6 +164,7 @@ export const api = {
   saveSellerHomeSections: (s: HomeSectionsInput) => req<HomeSectionsSettings>("/seller/home-sections", { method: "PUT", body: JSON.stringify(s) }),
   adminHomeSections: (storeId: string) => req<HomeSectionsSettings>(`/admin/home-sections/${storeId}`),
   saveAdminHomeSections: (storeId: string, s: HomeSectionsInput) => req<HomeSectionsSettings>(`/admin/home-sections/${storeId}`, { method: "PUT", body: JSON.stringify(s) }),
+  copyHomePins: (storeId: string) => req<{ copied_to: string[]; counts: Record<HomeSectionKey, number> }>(`/admin/home-sections/${storeId}/copy-pins`, { method: "POST" }),
 
   // admin promo
   adminBanners: () => req<Banner[]>("/admin/banners"),
