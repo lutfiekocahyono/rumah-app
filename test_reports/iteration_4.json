@@ -1,0 +1,48 @@
+{
+  "summary": "Frontend-only test of Phase 1 account + seller + admin confirm features on Expo web (375x667). PASS: Akun menu (all 5 Akun Saya items, verify-reminder, Toko Saya/Buka Toko, logout confirm-dialog cancel), forgot password (step 2 + wrong-code forgot-error, tested with delivered@resend.dev), profile name/gender save + phone OTP test-mode (phone-dev-code -> Terverifikasi), register + change password (new pw works, old 401, session kept), addresses add/default/delete with confirm, checkout co-addr chips fill fields + co-addr-manage, notifications tabs/read-all + home notif-bell badge, activity (recently viewed + logs), settings toggles persist after reload, seller acct1 Toko Satu active + add-product sp-error without photo + product list row, throwaway user open-store -> 'Menunggu verifikasi admin', admin stores filters + approve with confirm, banner/voucher delete confirm-dialog (cancelled), product card 'PGS Official' + pd-store-link -> /shop/pgs-official. FAIL/BUGS: profile form empty on direct load/reload (HIGH); duplicate products in paginated lists (FIXED by me); guest on /account/* sees raw 'Not authenticated'. No deprecated packages (expo-av/barcode-scanner/background-fetch) detected.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/products (sort=popular|price_asc|price_desc|rating)", "issue": "Unstable sort (no unique tiebreaker) caused overlapping pages with skip pagination -> 'Encountered two children with the same key' on shop page. FIXED: added product_id tiebreaker in server.py sort_map; verified 0 duplicates across 3 pages."},
+      {"endpoint": "data: products", "issue": "Some products have stock=0 but in_stock=true (e.g. pgs-9957) -> card shows '0 stok tersedia' and sorts first in 'popular'."},
+      {"endpoint": "POST /api/auth/password-reset/request", "issue": "demo@pgs.id returns 'Alamat email ini tidak bisa menerima pesan' (email provider 422 for fake domain). Expected; not a bug."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "account/profile.tsx", "issue": "When /account/profile is opened via direct URL / browser reload, name, gender, birthdate and phone inputs are EMPTY because useState initial values are taken from `user` while auth is still loading (profile.tsx:26-31). Pressing Simpan would blank the profile. Fix: sync state in useEffect when user loads or render form only after auth loading=false.", "testID": "profile-name", "priority": "HIGH"},
+      {"component": "account/* screens (addresses, etc.)", "issue": "No auth guard: guest opening /account/addresses sees raw English 'Not authenticated' error instead of redirect to /login.", "testID": "address-error", "priority": "MEDIUM"},
+      {"component": "shop/[id].tsx loadMore", "issue": "onEndReached fired before initial load / concurrently -> duplicated items. FIXED by me (guard !items.length + dedupe by product_id). Same pattern exists in (tabs)/kategori.tsx:44 and category/[id].tsx:48 (no dedupe).", "testID": "shop-screen", "priority": "MEDIUM"},
+      {"component": "account/password.tsx:31", "issue": "router.back() without canGoBack fallback/success message: when opened by deep link, page stays after successful change with no feedback.", "testID": "pw-save", "priority": "LOW"},
+      {"component": "account/addresses.tsx:92-95", "issue": "addr-default onPress has no try/catch -> unhandled rejection and no error shown on failure.", "testID": "addr-default-{id}", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "notifications", "issues": ["'Tandai dibaca' (notif-read-all) text is cut off at right edge at 375px width (tabs row overflow)."]},
+      {"screen": "register", "issues": ["Password placeholder says 'Password (min. 6)' but validation requires 8 (register.tsx:67)."]},
+      {"screen": "checkout", "issues": ["Saved-address chips show only label (two 'Rumah' chips are indistinguishable); show recipient/city too."]},
+      {"screen": "settings / ToggleRow", "issues": ["Switch element is 40x20px; ensure whole row is pressable for 44pt touch target."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_pgs_iter4_account_seller.py"],
+  "action_items": [
+    "HIGH: Fix profile.tsx initial state when user loads after mount (useEffect sync or gate on auth loading).",
+    "Add auth guard/redirect to /login for /account/*, /notifications, /seller when user is null.",
+    "Apply the same dedupe/guard to loadMore in (tabs)/kategori.tsx and category/[id].tsx.",
+    "password.tsx: use router.canGoBack() ? back() : replace('/(tabs)/akun') and show success.",
+    "Fix register placeholder to 'min. 8'; fix notif-read-all overflow; improve checkout address chip labels; wrap addr-default in try/catch.",
+    "Data: reconcile in_stock with stock=0 products."
+  ],
+  "critical_code_review_comments": [
+    "server.py sort_map lacked unique tiebreakers -> skip pagination unstable (fixed).",
+    "profile.tsx derives form state from async-loaded context only at mount."
+  ],
+  "updated_files": ["/app/backend/server.py (sort_map tiebreakers)", "/app/frontend/app/shop/[id].tsx (loadMore guard + dedupe)"],
+  "success_rate": {"backend": "N/A (frontend only)", "frontend": "~92% (all 12 requested flows work; 1 HIGH reload bug + minor issues)"},
+  "seed_data_creation": "Created throwaway users test_u1_1794109561@example.com (pw TestPass456!, phone 6285774883013 verified) and test_seller_1794109880@example.com (pw TestPass123!) with store st_ec55e73baf 'TEST_Toko 09880' (approved -> active, no products; no delete endpoint). Seller product sp_8d0f2d52ec created for acct1 and deleted. U1 addresses + cart deleted. 1 password-reset request sent for delivered@resend.dev (not completed). Seeded banners/vouchers untouched (3 banners remain). demo/admin/acct1 passwords unchanged.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Login via UI is reliable; injecting pgs_auth_token into localStorage before reload did NOT work in one attempt (API 401). In expo-router web, previous screens stay in DOM so testID counts can include hidden screens (e.g. notif-bell). FlatList scroll needs JS scrollTop on inner div, mouse.wheel doesn't trigger loadMore.",
+  "rca_of_issue": "Duplicate keys on /shop/pgs-official: (1) Mongo sort on non-unique fields (in_stock, sold, updated_at) without tiebreaker gives non-deterministic order across skip pages; (2) FlatList onEndReached ran loadMore with items.length=0 concurrently with initial fetch. Both fixed and verified: 106 unique cards after scrolling, 0 duplicate-key errors."
+}

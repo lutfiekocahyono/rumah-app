@@ -7,7 +7,7 @@ import Icon from "@react-native-vector-icons/ionicons";
 import { colors, fontSize, radius, spacing, formatIDR } from "@/src/theme";
 import { useCart } from "@/src/cart-context";
 import { useAuth } from "@/src/auth-context";
-import { api, type PaymentMethod, type Voucher } from "@/src/api";
+import { api, type Address, type PaymentMethod, type Voucher } from "@/src/api";
 import * as WebBrowser from "expo-web-browser";
 
 export default function Checkout() {
@@ -28,6 +28,20 @@ export default function Checkout() {
   const [voucherErr, setVoucherErr] = useState("");
   const [voucherBusy, setVoucherBusy] = useState(false);
   const [myVouchers, setMyVouchers] = useState<Voucher[]>([]);
+  const [addresses, setAddresses] = useState<Address[]>([]);
+  const [addrId, setAddrId] = useState("");
+  const pickAddress = (a: Address) => {
+    setAddrId(a.address_id);
+    setFullName(a.recipient);
+    setPhone(a.phone);
+    setAddress(`${a.address}${a.postal_code ? `, ${a.postal_code}` : ""}`);
+    setCity(a.city);
+  };
+
+  useEffect(() => {
+    if (!user) return;
+    api.addresses().then((l) => { setAddresses(l); const d = l.find((a) => a.is_default) ?? l[0]; if (d) pickAddress(d); }).catch(() => {});
+  }, [user]);
 
   useEffect(() => { api.myVouchers().then(setMyVouchers).catch(() => {}); }, []);
 
@@ -84,6 +98,20 @@ export default function Checkout() {
 
       <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: 160 }} keyboardShouldPersistTaps="handled">
         <Text style={styles.section}>Alamat Pengiriman</Text>
+        {user ? (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm, paddingBottom: spacing.sm }}>
+            {addresses.map((a) => (
+              <Pressable key={a.address_id} testID={`co-addr-${a.address_id}`} onPress={() => pickAddress(a)} style={[styles.vChip, addrId === a.address_id && { backgroundColor: colors.brandPrimary }]}>
+                <Icon name="location-outline" size={14} color={addrId === a.address_id ? colors.onBrandPrimary : colors.brandPrimary} />
+                <Text style={[styles.vChipText, addrId === a.address_id && { color: colors.onBrandPrimary }]}>{a.label} · {a.recipient}</Text>
+              </Pressable>
+            ))}
+            <Pressable testID="co-addr-manage" onPress={() => router.push("/account/addresses" as any)} style={styles.vChip}>
+              <Icon name="add" size={14} color={colors.brandPrimary} />
+              <Text style={styles.vChipText}>{addresses.length ? "Kelola alamat" : "Simpan alamat"}</Text>
+            </Pressable>
+          </ScrollView>
+        ) : null}
         <View style={styles.card}>
           <Input testID="co-name" label="Nama Lengkap" value={fullName} onChangeText={setFullName} />
           <Input testID="co-phone" label="No. HP / WhatsApp" value={phone} onChangeText={setPhone} keyboardType="phone-pad" />

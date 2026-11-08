@@ -43,6 +43,12 @@ export function ProductCard({ product, style }: { product: Product; style?: any 
       </View>
       <View style={styles.info}>
         <Text style={styles.name} numberOfLines={2}>{product.name}</Text>
+        {product.store_name ? (
+          <View style={styles.meta}>
+            <Icon name={product.store_id === "pgs-official" ? "shield-checkmark" : "storefront-outline"} size={12} color={colors.brandPrimary} />
+            <Text style={styles.store} numberOfLines={1}>{product.store_name}</Text>
+          </View>
+        ) : null}
         <View style={styles.meta}>
           <Icon name={product.in_stock ? "checkmark" : "close"} size={14} color={product.in_stock ? colors.onSurfaceSecondary : colors.error} />
           <Text style={[styles.metaText, !product.in_stock && { color: colors.error }]} testID={`stock-${product.product_id}`}>
@@ -91,4 +97,5 @@ const styles = StyleSheet.create({
   range: { fontSize: fontSize.sm, color: colors.priceLink, fontWeight: "500", marginTop: 2 },
   meta: { flexDirection: "row", alignItems: "center", gap: 3, marginTop: 2 },
   metaText: { fontSize: 12, color: colors.onSurfaceSecondary },
+  store: { fontSize: 11, color: colors.muted, flex: 1 },
 });

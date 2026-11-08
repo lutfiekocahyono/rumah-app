@@ -9,6 +9,7 @@ import { colors, fontSize, radius, spacing } from "@/src/theme";
 import { api, imgUrl, type Banner, type BannerInput, type Category } from "@/src/api";
 import { ScreenHeader } from "@/src/components/screen-header";
 import { ProductPicker } from "@/src/components/product-picker";
+import { ConfirmDialog } from "@/src/components/confirm-dialog";
 import { adminStyles, Card, Chips, digits, Field, PrimaryButton, ToggleRow } from "@/src/components/admin-form";
 
 const EMPTY: BannerInput = { title: "", subtitle: "", image: "", link_type: "none", link_value: "", order: 0, active: true };
@@ -26,6 +27,7 @@ export default function AdminBanners() {
   const [editId, setEditId] = useState<string | undefined>();
   const [productName, setProductName] = useState("");
   const [busy, setBusy] = useState("");
+  const [askDel, setAskDel] = useState(false);
   const [msg, setMsg] = useState({ err: "", ok: "" });
 
   const load = useCallback(async () => {
@@ -134,7 +136,9 @@ export default function AdminBanners() {
             <ToggleRow testID="banner-active" label="Tampilkan di beranda" value={form.active} onChange={(v) => set({ active: v })} />
             <PrimaryButton testID="banner-save" label="Simpan Banner" onPress={save} loading={busy === "save"} />
             <PrimaryButton label="Batal" variant="outline" onPress={() => setForm(null)} />
-            {editId ? <PrimaryButton testID="banner-delete" label="Hapus Banner" variant="danger" loading={busy === `del-${editId}`} onPress={() => remove(editId)} /> : null}
+            {editId ? <PrimaryButton testID="banner-delete" label="Hapus Banner" variant="danger" onPress={() => setAskDel(true)} /> : null}
+            <ConfirmDialog visible={askDel} title="Hapus banner?" message={`Banner "${form.title}" akan dihapus dari beranda.`}
+              loading={busy === `del-${editId}`} onCancel={() => setAskDel(false)} onConfirm={async () => { await remove(editId!); setAskDel(false); }} />
           </Card>
         ) : (
           <PrimaryButton testID="banner-add" label="+ Tambah Banner" onPress={() => edit()} />

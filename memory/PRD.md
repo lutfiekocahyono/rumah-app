@@ -35,3 +35,11 @@ Iteration 2: import all data from pusatgrosirsidoarjo.com; tiered pricing (pembe
 - Rekomendasi: `home.recommend_mode` personal (activity: viewed + purchased categories) | random.
 - Admin screens: /admin/banners, /admin/flash-sale, /admin/vouchers, /admin/home-settings.
 - Backlog: per-user voucher limit (not requested yet), delete confirmations in admin.
+
+## Iteration 4 — Akun pengguna + dasar toko penjual (Phase 1 of marketplace)
+- Akun: register (min 8), login/logout (confirm), Google, verifikasi email (kode 6 angka via Emergent email), OTP HP via WhatsApp Fonnte (OTP_TEST_MODE=true → kode tampil di layar), lupa password, ubah/buat password (revokes old sessions), edit profil, foto profil (object storage), multi alamat (checkout picker), wishlist, riwayat aktivitas (activity_logs + recently viewed), pengaturan notifikasi, kotak notifikasi (order/promo/security).
+- Rate limits: login fail 10/15min per email, code requests/confirm limited (rate_limits TTL).
+- Seller: anyone opens store → pending → admin verifies (/admin/stores). Existing 6,618 products = store "PGS Official". Seller CRUD products with photos (/seller, /seller/product/[id]); public store page /shop/[id]. Seller products have flat price (no PGS tier pricing).
+- Confirm dialogs on delete banner/voucher/address/product + logout.
+- Backend modules: account.py, seller.py, mailer.py (registered from server.py).
+- NEXT Phase 2: multi-store transaksi (split order per toko, ekspedisi/ongkir RajaOngkir, resi, konfirmasi terima, komisi, saldo, penarikan), chat, review. Phase 3: super admin dashboard (users, komisi, refund, komplain, roles, laporan).

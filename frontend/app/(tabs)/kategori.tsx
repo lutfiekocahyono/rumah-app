@@ -42,7 +42,7 @@ export default function Kategori() {
     setMoreLoading(true);
     try {
       const p = await api.products({ category: active, skip: products.length });
-      setProducts((cur) => [...cur, ...p]);
+      setProducts((cur) => { const have = new Set(cur.map((x) => x.product_id)); return [...cur, ...p.filter((x) => !have.has(x.product_id))]; });
       if (p.length < 40) setDone(true);
     } finally {
       setMoreLoading(false);

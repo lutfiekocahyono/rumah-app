@@ -19,6 +19,7 @@ const MENU = [
   { icon: "flash-outline", label: "Flash Sale", sub: "Produk, harga flash & jam berakhir", to: "/admin/flash-sale" },
   { icon: "ticket-outline", label: "Voucher Diskon", sub: "Kode kupon % atau Rp untuk checkout", to: "/admin/vouchers" },
   { icon: "car-outline", label: "Gratis Ongkir & Rekomendasi", sub: "Banner ongkir & mode rekomendasi", to: "/admin/home-settings" },
+  { icon: "storefront-outline", label: "Verifikasi Toko", sub: "Setujui / tolak toko penjual baru", to: "/admin/stores" },
 ];
 
 export default function AdminHome() {

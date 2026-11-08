@@ -11,6 +11,8 @@ type AuthCtx = State & {
   loginWithGoogle: () => Promise<boolean>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
+  setUser: (u: User) => void;
+  setSession: (token: string, u: User) => Promise<void>;
 };
 
 const Ctx = createContext<AuthCtx | null>(null);
@@ -74,7 +76,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setState({ user: null, loading: false });
   };
 
-  return <Ctx.Provider value={{ ...state, login, register, loginWithGoogle, logout, refresh }}>{children}</Ctx.Provider>;
+  const setUser = (u: User) => setState({ user: u, loading: false });
+  const setSession = async (token: string, u: User) => {
+    await setToken(token);
+    setState({ user: u, loading: false });
+  };
+
+  return <Ctx.Provider value={{ ...state, login, register, loginWithGoogle, logout, refresh, setUser, setSession }}>{children}</Ctx.Provider>;
 }
 
 export function useAuth(): AuthCtx {

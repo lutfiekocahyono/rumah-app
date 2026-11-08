@@ -34,6 +34,8 @@ def _apply(value: float, mode: str, amount: float) -> int:
 
 def price_tiers(product: dict, ctype: str, pricing: dict) -> list[dict]:
     """Unit price table [{min_qty, price}] for this customer category, ascending."""
+    if product.get("store_id", "pgs-official") != "pgs-official":
+        return [{"min_qty": 1, "price": int(product.get("price", 0))}]  # marketplace sellers: flat price
     ctype = ctype if ctype in CUSTOMER_TYPES else "langsung"
     mode = (pricing.get("type_discount_modes") or {}).get(ctype, "percent")
     base = _apply(product.get("price", 0), mode, pricing.get("type_discounts", {}).get(ctype, 0))

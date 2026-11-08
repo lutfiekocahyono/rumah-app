@@ -21,8 +21,8 @@ export default function Register() {
 
   const submit = async () => {
     setErr("");
-    if (!name.trim() || !email.trim() || password.length < 6) {
-      setErr("Lengkapi nama, email, dan password min. 6 karakter");
+    if (!name.trim() || !email.trim() || password.length < 8) {
+      setErr("Lengkapi nama, email, dan password min. 8 karakter");
       return;
     }
     setLoading(true);
@@ -64,7 +64,7 @@ export default function Register() {
         </View>
         <View style={styles.inputWrap}>
           <Icon name="lock-closed-outline" size={18} color={colors.muted} />
-          <TextInput testID="password-input" placeholder="Password (min. 6)" placeholderTextColor={colors.muted} secureTextEntry style={styles.input} value={password} onChangeText={setPassword} />
+          <TextInput testID="password-input" placeholder="Password (min. 8)" placeholderTextColor={colors.muted} secureTextEntry style={styles.input} value={password} onChangeText={setPassword} />
         </View>
 
         {err ? <Text style={styles.err} testID="register-error">{err}</Text> : null}

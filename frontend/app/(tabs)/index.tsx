@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { View, Text, ScrollView, StyleSheet, Pressable, ActivityIndicator, FlatList, Dimensions, RefreshControl } from "react-native";
 import { Image } from "expo-image";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
+import { useAuth } from "@/src/auth-context";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Icon from "@react-native-vector-icons/ionicons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -32,6 +33,12 @@ export default function Home() {
   const [recMore, setRecMore] = useState(false);
   const [recDone, setRecDone] = useState(false);
   const recSkip = useRef(0); // server-side offset (dedupe on screen may hide some items)
+  const { user } = useAuth();
+  const [unread, setUnread] = useState(0);
+  useFocusEffect(useCallback(() => {
+    if (!user) { setUnread(0); return; }
+    api.unreadCount().then((r) => setUnread(r.count)).catch(() => {});
+  }, [user]));
   const bannerRef = useRef<ScrollView>(null);
 
   const load = useCallback(async () => {
@@ -94,6 +101,10 @@ export default function Home() {
             <Text style={styles.brandLabel}>Pusat Grosir</Text>
             <Text style={styles.brandCity}>Sidoarjo</Text>
           </View>
+          <Pressable testID="notif-bell" hitSlop={8} onPress={() => router.push("/notifications" as any)} style={styles.iconBtn}>
+            <Icon name="notifications-outline" size={22} color={colors.onSurface} />
+            {unread > 0 ? <View style={styles.badge}><Text style={styles.badgeText}>{unread > 99 ? "99+" : unread}</Text></View> : null}
+          </Pressable>
           <Pressable testID="wishlist-shortcut" hitSlop={8} onPress={() => router.push("/wishlist" as any)} style={styles.iconBtn}>
             <Icon name="heart-outline" size={22} color={colors.onSurface} />
           </Pressable>
@@ -212,6 +223,8 @@ const styles = StyleSheet.create({
   brandLabel: { fontSize: 11, color: colors.muted },
   brandCity: { fontSize: fontSize.lg, color: colors.onSurface, fontWeight: "500" },
   iconBtn: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center", backgroundColor: colors.surfaceTertiary },
+  badge: { position: "absolute", top: -2, right: -2, minWidth: 18, height: 18, borderRadius: 9, backgroundColor: colors.error, alignItems: "center", justifyContent: "center", paddingHorizontal: 4 },
+  badgeText: { color: colors.onError, fontSize: 10, fontWeight: "700" },
   search: {
     flexDirection: "row", alignItems: "center", gap: spacing.sm, backgroundColor: colors.surfaceTertiary,
     paddingHorizontal: spacing.md, paddingVertical: 10, borderRadius: radius.pill, marginTop: 4,

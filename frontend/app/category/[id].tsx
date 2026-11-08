@@ -46,7 +46,7 @@ export default function CategoryPage() {
     setMoreLoading(true);
     try {
       const p = await api.products({ category: id, sort, skip: products.length });
-      setProducts((cur) => [...cur, ...p]);
+      setProducts((cur) => { const have = new Set(cur.map((x) => x.product_id)); return [...cur, ...p.filter((x) => !have.has(x.product_id))]; });
       if (p.length < 40) setDone(true);
     } finally {
       setMoreLoading(false);

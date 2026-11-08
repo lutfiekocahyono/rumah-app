@@ -88,8 +88,9 @@ export const api = {
 
   // catalog
   categories: (parent?: string) => req<Category[]>(`/categories${parent ? `?parent=${encodeURIComponent(parent)}` : ""}`),
-  products: (params: { category?: string; q?: string; sort?: string; skip?: number; limit?: number } = {}) => {
+  products: (params: { category?: string; q?: string; sort?: string; skip?: number; limit?: number; store?: string } = {}) => {
     const qs = new URLSearchParams();
+    if (params.store) qs.set("store", params.store);
     if (params.category) qs.set("category", params.category);
     if (params.q) qs.set("q", params.q);
     if (params.sort) qs.set("sort", params.sort);
@@ -165,17 +166,57 @@ export const api = {
     req<Voucher>(isNew ? "/admin/vouchers" : `/admin/vouchers/${v.code}`, { method: isNew ? "POST" : "PUT", body: JSON.stringify(v) }),
   adminDeleteVoucher: (code: string) => req<{ ok: boolean }>(`/admin/vouchers/${code}`, { method: "DELETE" }),
   adminSaveHomeSettings: (s: Omit<HomeSettings, "key">) => req<HomeSettings>("/admin/home-settings", { method: "PUT", body: JSON.stringify(s) }),
-  adminUpload: async (file: LocalFile) => {
-    const token = await getToken();
-    const res = await uploadForm(`${BASE}/api/admin/upload`, { headers: token ? { Authorization: `Bearer ${token}` } : {}, files: { file } });
-    if (!res.ok) {
-      let msg = `HTTP ${res.status}`;
-      try { msg = (await res.json()).detail || msg; } catch {}
-      throw new Error(msg);
-    }
-    return (await res.json()) as { url: string };
-  },
+  adminUpload: (file: LocalFile) => uploadTo("/admin/upload", file),
+
+  // account
+  verifyEmailRequest: () => req<{ message: string }>("/auth/verify-email/request", { method: "POST" }),
+  verifyEmailConfirm: (code: string) => req<User>("/auth/verify-email/confirm", { method: "POST", body: JSON.stringify({ code }) }),
+  phoneRequest: (phone: string) => req<{ message: string; phone: string; dev_code?: string }>("/auth/phone/request", { method: "POST", body: JSON.stringify({ phone }) }),
+  phoneConfirm: (code: string) => req<User>("/auth/phone/confirm", { method: "POST", body: JSON.stringify({ code }) }),
+  resetRequest: (email: string) => req<{ message: string }>("/auth/password-reset/request", { method: "POST", body: JSON.stringify({ email }) }),
+  resetConfirm: (email: string, code: string, new_password: string) =>
+    req<{ message: string }>("/auth/password-reset/confirm", { method: "POST", body: JSON.stringify({ email, code, new_password }) }),
+  changePassword: (current_password: string, new_password: string) =>
+    req<{ token: string; user: User }>("/auth/password/change", { method: "POST", body: JSON.stringify({ current_password, new_password }) }),
+  updateProfile: (p: { name: string; gender: string; birthdate: string }) => req<User>("/me/profile", { method: "PUT", body: JSON.stringify(p) }),
+  uploadAvatar: async (file: LocalFile) => (await uploadTo("/me/avatar", file)) as unknown as User,
+  addresses: () => req<Address[]>("/me/addresses"),
+  saveAddress: (a: AddressInput, id?: string) =>
+    req<Address[]>(id ? `/me/addresses/${id}` : "/me/addresses", { method: id ? "PUT" : "POST", body: JSON.stringify(a) }),
+  deleteAddress: (id: string) => req<Address[]>(`/me/addresses/${id}`, { method: "DELETE" }),
+  activity: () => req<{ logs: ActivityLog[]; recently_viewed: { product_id: string; name: string; image: string; price: number }[] }>("/me/activity"),
+  settings: () => req<AccountSettings>("/me/settings"),
+  saveSettings: (s: AccountSettings) => req<AccountSettings>("/me/settings", { method: "PUT", body: JSON.stringify(s) }),
+  notifications: () => req<AppNotification[]>("/notifications"),
+  unreadCount: () => req<{ count: number }>("/notifications/unread-count"),
+  readAll: () => req<{ ok: boolean }>("/notifications/read-all", { method: "POST" }),
+  readOne: (id: string) => req<{ ok: boolean }>(`/notifications/${id}/read`, { method: "POST" }),
+
+  // seller
+  myStore: () => req<Store | null>("/me/store"),
+  openStore: (s: StoreInput) => req<Store>("/stores", { method: "POST", body: JSON.stringify(s) }),
+  editStore: (s: StoreInput) => req<Store>("/me/store", { method: "PUT", body: JSON.stringify(s) }),
+  storePage: (id: string) => req<Store>(`/stores/${id}`),
+  sellerProducts: () => req<Product[]>("/seller/products"),
+  sellerSaveProduct: (p: SellerProductInput, id?: string) =>
+    req<Product>(id ? `/seller/products/${id}` : "/seller/products", { method: id ? "PUT" : "POST", body: JSON.stringify(p) }),
+  sellerDeleteProduct: (id: string) => req<{ ok: boolean }>(`/seller/products/${id}`, { method: "DELETE" }),
+  sellerUpload: (file: LocalFile) => uploadTo("/seller/upload", file),
+  adminStores: (status?: string) => req<Store[]>(`/admin/stores${status ? `?status=${status}` : ""}`),
+  adminSetStoreStatus: (id: string, status: "active" | "rejected" | "suspended", note = "") =>
+    req<Store>(`/admin/stores/${id}/status`, { method: "PUT", body: JSON.stringify({ status, note }) }),
 };
+
+async function uploadTo(path: string, file: LocalFile): Promise<{ url: string }> {
+  const token = await getToken();
+  const res = await uploadForm(`${BASE}/api${path}`, { headers: token ? { Authorization: `Bearer ${token}` } : {}, files: { file } });
+  if (!res.ok) {
+    let msg = `HTTP ${res.status}`;
+    try { msg = (await res.json()).detail || msg; } catch {}
+    throw new Error(msg);
+  }
+  return (await res.json()) as { url: string };
+}
 
 /** Uploaded files come back as "/api/files/..." — make them absolute for <Image>. */
 export const imgUrl = (u: string) => (u?.startsWith("/") ? `${BASE}${u}` : u);
@@ -212,7 +253,18 @@ export type StoreInfo = {
   hours: { day: string; time: string }[];
   branches: { name: string; address: string; phone: string; lat: number; lng: number }[];
 };
-export type User = { user_id: string; email: string; name: string; role: "admin" | "customer"; customer_type: CustomerType; picture?: string | null };
+export type User = {
+  user_id: string; email: string; name: string; role: "admin" | "customer"; customer_type: CustomerType; picture?: string | null;
+  email_verified: boolean; phone?: string | null; phone_verified: boolean; gender: string; birthdate: string; has_password: boolean;
+};
+export type Address = { address_id: string; label: string; recipient: string; phone: string; address: string; city: string; postal_code: string; is_default: boolean };
+export type AddressInput = Omit<Address, "address_id">;
+export type AppNotification = { notif_id: string; kind: "order" | "promo" | "security"; title: string; body: string; link: string; read: boolean; created_at: string };
+export type ActivityLog = { log_id: string; action: string; detail: string; created_at: string };
+export type AccountSettings = { notif_order: boolean; notif_promo: boolean; notif_security: boolean };
+export type Store = { store_id: string; owner_id: string; name: string; description: string; city: string; phone?: string; logo: string; status: "pending" | "active" | "rejected" | "suspended"; note: string; created_at: string; product_count?: number; owner_name?: string; owner_email?: string };
+export type StoreInput = { name: string; description: string; city: string; phone: string; logo: string };
+export type SellerProductInput = { name: string; description: string; category: string; price: number; original_price: number; stock: number; images: string[] };
 export type Category = { category_id: string; name: string; icon: string; image: string; parent?: string | null; count: number };
 export type Product = {
   product_id: string; name: string; category: string; price: number; original_price: number;
@@ -221,6 +273,7 @@ export type Product = {
   price_min: number; price_max: number;
   price_matrix: ({ min_qty: number } & Record<CustomerType, number>)[];
   flash_price?: number | null; flash_ends_at?: string | null;
+  store_id: string; store_name: string;
 };
 export type CartItem = { product_id: string; quantity: number; name: string; price: number; base_price: number; original_price: number; image: string; stock: number; next_tier?: PriceTier | null };
 export type Cart = { items: CartItem[]; subtotal: number; savings: number; item_count: number; customer_type: CustomerType };

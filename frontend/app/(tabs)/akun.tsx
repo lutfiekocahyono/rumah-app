@@ -1,12 +1,13 @@
-import React from "react";
+import React, { useState } from "react";
 import { View, Text, StyleSheet, Pressable, ScrollView } from "react-native";
+import { ConfirmDialog } from "@/src/components/confirm-dialog";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Icon from "@react-native-vector-icons/ionicons";
 
 import { colors, fontSize, radius, spacing } from "@/src/theme";
 import { useAuth } from "@/src/auth-context";
-import { CUSTOMER_TYPE_LABEL } from "@/src/api";
+import { CUSTOMER_TYPE_LABEL, imgUrl } from "@/src/api";
 import { Image } from "expo-image";
 import { GoogleButton } from "@/src/components/google-button";
 
@@ -16,6 +17,7 @@ export default function Akun() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { user, logout } = useAuth();
+  const [askLogout, setAskLogout] = useState(false);
 
   const menuGroups: { title: string; items: MenuItem[] }[] = [
     ...(user?.role === "admin"
@@ -27,6 +29,19 @@ export default function Akun() {
             { icon: "pricetags-outline", label: "Pengaturan Harga", to: "/admin/pricing" },
             { icon: "people-outline", label: "Kategori Pelanggan", to: "/admin/customers" },
             { icon: "cube-outline", label: "Harga Manual per Produk", to: "/admin/products" },
+            { icon: "storefront-outline", label: "Verifikasi Toko", to: "/admin/stores" },
+          ],
+        }]
+      : []),
+    ...(user
+      ? [{
+          title: "Akun Saya",
+          items: [
+            { icon: "person-outline", label: "Edit Profil", to: "/account/profile" },
+            { icon: "location-outline", label: "Alamat Pengiriman", to: "/account/addresses" },
+            { icon: "notifications-outline", label: "Notifikasi", to: "/notifications" },
+            { icon: "time-outline", label: "Riwayat Aktivitas", to: "/account/activity" },
+            { icon: "settings-outline", label: "Pengaturan Akun", to: "/account/settings" },
           ],
         }]
       : []),
@@ -40,7 +55,8 @@ export default function Akun() {
     {
       title: "Toko",
       items: [
-        { icon: "storefront-outline", label: "Alamat & Kontak Toko", to: "/store" },
+        { icon: "storefront-outline", label: user?.role === "admin" ? "Toko PGS Official" : "Toko Saya / Buka Toko", to: user?.role === "admin" ? "/shop/pgs-official" : "/seller" },
+        { icon: "location-outline", label: "Alamat & Kontak Toko", to: "/store" },
       ],
     },
   ];
@@ -55,7 +71,7 @@ export default function Akun() {
           <View style={styles.profile} testID="profile-card">
             <View style={styles.avatar}>
               {user.picture ? (
-                <Image source={user.picture} style={styles.avatarImg} />
+                <Image source={imgUrl(user.picture)} style={styles.avatarImg} />
               ) : (
                 <Text style={styles.avatarText}>{user.name?.[0]?.toUpperCase() ?? "U"}</Text>
               )}
@@ -91,6 +107,16 @@ export default function Akun() {
           </View>
         )}
 
+        {user && (!user.email_verified || !user.phone_verified) ? (
+          <Pressable testID="verify-reminder" style={styles.verify} onPress={() => router.push("/account/profile" as any)}>
+            <Icon name="shield-outline" size={20} color={colors.warning} />
+            <Text style={styles.verifyText}>
+              {!user.email_verified && !user.phone_verified ? "Verifikasi email & nomor HP Anda" : !user.email_verified ? "Verifikasi email Anda" : "Verifikasi nomor HP Anda"}
+            </Text>
+            <Icon name="chevron-forward" size={18} color={colors.muted} />
+          </Pressable>
+        ) : null}
+
         {menuGroups.map((g) => (
           <View key={g.title} style={styles.group}>
             <Text style={styles.groupTitle}>{g.title}</Text>
@@ -112,7 +138,7 @@ export default function Akun() {
         ))}
 
         {user ? (
-          <Pressable testID="logout-btn" style={styles.logout} onPress={logout}>
+          <Pressable testID="logout-btn" style={styles.logout} onPress={() => setAskLogout(true)}>
             <Icon name="log-out-outline" size={20} color={colors.error} />
             <Text style={styles.logoutText}>Keluar</Text>
           </Pressable>
@@ -120,11 +146,15 @@ export default function Akun() {
 
         <Text style={styles.footer}>Pusat Grosir Sidoarjo · v1.0.0</Text>
       </ScrollView>
+      <ConfirmDialog visible={askLogout} title="Keluar dari akun?" confirmLabel="Keluar" onCancel={() => setAskLogout(false)}
+        onConfirm={async () => { setAskLogout(false); await logout(); }} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  verify: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginHorizontal: spacing.lg, marginTop: spacing.md, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surfaceTertiary, minHeight: 48 },
+  verifyText: { flex: 1, fontSize: fontSize.sm, color: colors.onSurface, fontWeight: "500" },
   root: { flex: 1, backgroundColor: colors.surface },
   header: { paddingHorizontal: spacing.lg, paddingVertical: spacing.md, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
   title: { fontSize: fontSize.xl, fontWeight: "500", color: colors.onSurface },

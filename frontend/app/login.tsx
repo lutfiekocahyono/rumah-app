@@ -73,6 +73,9 @@ export default function Login() {
 
         {err ? <Text style={styles.err} testID="login-error">{err}</Text> : null}
 
+        <Pressable testID="forgot-password-link" hitSlop={8} onPress={() => router.push("/forgot-password" as any)} style={{ alignSelf: "flex-end", marginBottom: spacing.md }}>
+          <Text style={{ color: colors.brandPrimary, fontSize: fontSize.sm }}>Lupa password?</Text>
+        </Pressable>
         <Pressable testID="login-submit" style={styles.primaryBtn} onPress={submit} disabled={loading}>
           {loading ? <ActivityIndicator color={colors.onBrandPrimary} /> : <Text style={styles.primaryText}>Masuk</Text>}
         </Pressable>

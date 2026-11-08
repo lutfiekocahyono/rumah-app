@@ -7,6 +7,7 @@ import { colors, fontSize, radius, spacing, formatIDR } from "@/src/theme";
 import { api, type Voucher, type VoucherInput } from "@/src/api";
 import { ScreenHeader } from "@/src/components/screen-header";
 import { DateTimeField } from "@/src/components/datetime-field";
+import { ConfirmDialog } from "@/src/components/confirm-dialog";
 import { voucherValue } from "@/src/components/home-sections";
 import { adminStyles, Card, Chips, digits, Field, PrimaryButton, ToggleRow } from "@/src/components/admin-form";
 
@@ -23,6 +24,7 @@ export default function AdminVouchers() {
   const [isNew, setIsNew] = useState(true);
   const [valueText, setValueText] = useState("");
   const [busy, setBusy] = useState("");
+  const [askDel, setAskDel] = useState(false);
   const [msg, setMsg] = useState({ err: "", ok: "" });
 
   const load = useCallback(async () => {
@@ -90,7 +92,9 @@ export default function AdminVouchers() {
             <ToggleRow testID="voucher-home" label="Tampilkan di beranda" sub="Pembeli bisa klaim dari halaman utama" value={form.show_on_home} onChange={(v) => set({ show_on_home: v })} />
             <PrimaryButton testID="voucher-save" label="Simpan Voucher" onPress={save} loading={busy === "save"} />
             <PrimaryButton label="Batal" variant="outline" onPress={() => setForm(null)} />
-            {!isNew ? <PrimaryButton testID="voucher-delete" label="Hapus Voucher" variant="danger" loading={busy === "del"} onPress={() => remove(form.code)} /> : null}
+            {!isNew ? <PrimaryButton testID="voucher-delete" label="Hapus Voucher" variant="danger" onPress={() => setAskDel(true)} /> : null}
+            <ConfirmDialog visible={askDel} title="Hapus voucher?" message={`Voucher ${form.code} akan dihapus dan tidak bisa dipakai lagi.`}
+              loading={busy === "del"} onCancel={() => setAskDel(false)} onConfirm={async () => { await remove(form.code); setAskDel(false); }} />
           </Card>
         ) : (
           <PrimaryButton testID="voucher-add" label="+ Buat Voucher" onPress={() => edit()} />

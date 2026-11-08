@@ -15,7 +15,9 @@ from fastapi.concurrency import run_in_threadpool
 import httpx
 import notify
 import payments
+import account
 import promo
+import seller
 import storage
 from pricing import CUSTOMER_TYPES, DEFAULT_PRICING, get_pricing, price_matrix, price_tiers, unit_price
 from pymongo import ReturnDocument
@@ -49,6 +51,7 @@ INDEXES: dict[str, list[IndexModel]] = {
         IndexModel([("name", ASCENDING)], name="name"),
         IndexModel([("in_stock", DESCENDING), ("created_at", DESCENDING), ("product_id", DESCENDING)], name="newest"),
         IndexModel([("price", ASCENDING)], name="price"),
+        IndexModel([("store_id", ASCENDING), ("created_at", DESCENDING)], name="store"),
     ],
     "categories": [
         IndexModel([("category_id", ASCENDING)], name="category_id", unique=True),
@@ -73,6 +76,15 @@ INDEXES: dict[str, list[IndexModel]] = {
     "voucher_claims": [IndexModel([("owner", ASCENDING)], name="owner", unique=True)],
     "activity": [IndexModel([("owner", ASCENDING)], name="owner", unique=True)],
     "uploads": [IndexModel([("storage_path", ASCENDING)], name="storage_path", unique=True)],
+    "one_time_codes": [IndexModel([("expires_at", ASCENDING)], name="ttl", expireAfterSeconds=0),
+                       IndexModel([("user_id", ASCENDING), ("purpose", ASCENDING)], name="user_purpose")],
+    "rate_limits": [IndexModel([("expires_at", ASCENDING)], name="ttl", expireAfterSeconds=0)],
+    "addresses": [IndexModel([("user_id", ASCENDING), ("address_id", ASCENDING)], name="user_addr", unique=True)],
+    "activity_logs": [IndexModel([("user_id", ASCENDING), ("created_at", DESCENDING)], name="user_time")],
+    "notifications": [IndexModel([("user_id", ASCENDING), ("created_at", DESCENDING)], name="user_time")],
+    "stores": [IndexModel([("store_id", ASCENDING)], name="store_id", unique=True),
+               IndexModel([("owner_id", ASCENDING)], name="owner_id", unique=True),
+               IndexModel([("status", ASCENDING)], name="status")],
 }
 
 
@@ -146,6 +158,15 @@ async def seed_data() -> None:
     await db.users.update_many({"role": {"$exists": False}}, {"$set": {"role": "customer"}})
     if not await db.settings.find_one({"key": "pricing"}):
         await db.settings.insert_one({**DEFAULT_PRICING})
+    admin_u = await db.users.find_one({"email": os.environ["ADMIN_EMAIL"]}, {"user_id": 1})
+    if admin_u and not await db.stores.find_one({"store_id": seller.PGS_STORE_ID}):
+        await db.stores.insert_one({"store_id": seller.PGS_STORE_ID, "owner_id": admin_u["user_id"], "name": "PGS Official",
+                                    "name_lower": "pgs official", "description": "Toko resmi Pusat Grosir Sidoarjo",
+                                    "city": "Sidoarjo", "phone": os.environ.get("OWNER_WHATSAPP", ""), "logo": "",
+                                    "status": "active", "note": "", "created_at": datetime.now(timezone.utc)})
+    await db.products.update_many({"store_id": {"$exists": False}}, {"$set": {"store_id": seller.PGS_STORE_ID, "store_name": "PGS Official"}})
+    await db.users.update_many({"email_verified": {"$exists": False}, "auth_provider": "google"}, {"$set": {"email_verified": True}})
+    await db.users.update_many({"email": {"$in": ["demo@pgs.id", os.environ["ADMIN_EMAIL"]]}}, {"$set": {"email_verified": True}})
     # homepage promo sample content (editable in Admin > Promo & Beranda)
     if await db.banners.count_documents({}) == 0:
         await db.banners.insert_many([{**b, "banner_id": f"bn_{uuid.uuid4().hex[:10]}", "order": i, "active": True}
@@ -173,8 +194,8 @@ api = APIRouter(prefix="/api")
 
 class RegisterIn(BaseModel):
     email: EmailStr
-    password: str = Field(min_length=6)
-    name: str = Field(min_length=1)
+    password: str = Field(min_length=8, max_length=128)
+    name: str = Field(min_length=1, max_length=60)
 
 
 class LoginIn(BaseModel):
@@ -193,6 +214,12 @@ class User(BaseModel):
     role: str = "customer"
     customer_type: str = "langsung"
     picture: Optional[str] = None
+    email_verified: bool = False
+    phone: Optional[str] = None
+    phone_verified: bool = False
+    gender: str = ""
+    birthdate: str = ""
+    has_password: bool = True
 
 
 class AuthOut(BaseModel):
@@ -234,6 +261,8 @@ class Product(BaseModel):
     price_min: int = 0
     price_max: int = 0
     price_matrix: List[dict] = []
+    store_id: str = "pgs-official"
+    store_name: str = "PGS Official"
     flash_price: Optional[int] = None
     flash_ends_at: Optional[datetime] = None
 
@@ -337,9 +366,10 @@ def _verify(password: str, hashed: str) -> bool:
         return False
 
 
-def _make_token(user_id: str) -> str:
+def _make_token(user_id: str, av: int = 0) -> str:
     payload = {
         "sub": user_id,
+        "av": av,
         "iat": datetime.now(timezone.utc),
         "exp": datetime.now(timezone.utc) + timedelta(days=JWT_TTL_DAYS),
     }
@@ -349,25 +379,34 @@ def _make_token(user_id: str) -> str:
 def _user_out(u: dict) -> User:
     return User(user_id=u["user_id"], email=u["email"], name=u.get("name") or u["email"],
                 role=u.get("role", "customer"), customer_type=u.get("customer_type", "langsung"),
-                picture=u.get("picture"))
+                picture=u.get("picture"), email_verified=bool(u.get("email_verified")), phone=u.get("phone"),
+                phone_verified=bool(u.get("phone_verified")), gender=u.get("gender") or "",
+                birthdate=u.get("birthdate") or "", has_password=u["has_pw"] if "has_pw" in u else bool(u.get("password_hash", True)))
 
 
-def _decode(authorization: Optional[str]) -> Optional[str]:
+def _claims(authorization: Optional[str]) -> Optional[dict]:
     if not authorization or not authorization.lower().startswith("bearer "):
         return None
     try:
-        return jwt.decode(authorization.split(" ", 1)[1].strip(), JWT_SECRET, algorithms=[JWT_ALG]).get("sub")
+        return jwt.decode(authorization.split(" ", 1)[1].strip(), JWT_SECRET, algorithms=[JWT_ALG])
     except jwt.PyJWTError:
         return None
 
 
+def _decode(authorization: Optional[str]) -> Optional[str]:
+    return (_claims(authorization) or {}).get("sub")
+
+
 async def get_current_user(authorization: Optional[str] = Header(default=None)) -> dict:
-    uid = _decode(authorization)
-    if not uid:
+    c = _claims(authorization)
+    if not c or not c.get("sub"):
         raise HTTPException(status_code=401, detail="Not authenticated")
-    user = await db.users.find_one({"user_id": uid}, {"_id": 0, "password_hash": 0})
+    user = await db.users.find_one({"user_id": c["sub"]}, {"_id": 0})
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
+    if c.get("av", 0) != user.get("auth_version", 0):  # password changed -> old sessions revoked
+        raise HTTPException(status_code=401, detail="Sesi berakhir, silakan masuk lagi")
+    user["has_pw"] = bool(user.pop("password_hash", None))
     return user
 
 
@@ -438,20 +477,35 @@ async def register(body: RegisterIn, x_guest_id: Optional[str] = Header(default=
         "password_hash": _hash(body.password),
         "role": "customer",
         "customer_type": "langsung",
+        "email_verified": False,
         "created_at": datetime.now(timezone.utc),
     }
     await db.users.insert_one(user_doc)
     await _merge_guest(x_guest_id, user_doc["user_id"])
+    await ACCT["log_activity"](user_doc["user_id"], "auth", "Akun dibuat")
+    await ACCT["notify_user"](user_doc["user_id"], "security", "Selamat datang di Pusat Grosir Sidoarjo",
+                              "Verifikasi email & nomor HP Anda di menu Profil.", "/account/profile")
     return AuthOut(token=_make_token(user_doc["user_id"]), user=_user_out(user_doc))
 
 
 @api.post("/auth/login", response_model=AuthOut)
-async def login(body: LoginIn, x_guest_id: Optional[str] = Header(default=None)):
-    user = await db.users.find_one({"email": body.email.lower()})
+async def login(body: LoginIn, request: Request, x_guest_id: Optional[str] = Header(default=None)):
+    email = body.email.lower()
+    fails = await db.rate_limits.find_one({"_id": f"loginfail:{email}", "expires_at": {"$gt": datetime.now(timezone.utc)}})
+    if fails and fails.get("count", 0) >= 10:
+        raise HTTPException(status_code=429, detail="Terlalu banyak percobaan login, coba lagi 15 menit lagi")
+    user = await db.users.find_one({"email": email})
     if not user or not _verify(body.password, user.get("password_hash", "")):
+        await ACCT["rate_limit"](f"loginfail-ip", request.client.host if request.client else "x", 1000, 900)
+        if fails:
+            await db.rate_limits.update_one({"_id": f"loginfail:{email}"}, {"$inc": {"count": 1}})
+        else:
+            await db.rate_limits.replace_one({"_id": f"loginfail:{email}"}, {"count": 1, "expires_at": datetime.now(timezone.utc) + timedelta(minutes=15)}, upsert=True)
         raise HTTPException(status_code=401, detail="Email atau password salah")
+    await db.rate_limits.delete_one({"_id": f"loginfail:{email}"})
     await _merge_guest(x_guest_id, user["user_id"])
-    return AuthOut(token=_make_token(user["user_id"]), user=_user_out(user))
+    await ACCT["log_activity"](user["user_id"], "auth", "Masuk dengan email")
+    return AuthOut(token=_make_token(user["user_id"], user.get("auth_version", 0)), user=_user_out(user))
 
 
 @api.post("/auth/session", response_model=AuthOut)
@@ -474,11 +528,14 @@ async def google_session(body: SessionIn, x_guest_id: Optional[str] = Header(def
         user = {
             "user_id": f"user_{uuid.uuid4().hex[:12]}", "email": email, "name": data.get("name") or email,
             "picture": data.get("picture"), "role": "customer", "customer_type": "langsung",
-            "auth_provider": "google", "created_at": datetime.now(timezone.utc),
+            "auth_provider": "google", "email_verified": True, "created_at": datetime.now(timezone.utc),
         }
         await db.users.insert_one(user)
+    await db.users.update_one({"email": email}, {"$set": {"email_verified": True}})
+    user["email_verified"] = True
     await _merge_guest(x_guest_id, user["user_id"])
-    return AuthOut(token=_make_token(user["user_id"]), user=_user_out(user))
+    await ACCT["log_activity"](user["user_id"], "auth", "Masuk dengan Google")
+    return AuthOut(token=_make_token(user["user_id"], user.get("auth_version", 0)), user=_user_out(user))
 
 
 @api.get("/auth/me", response_model=User)
@@ -502,6 +559,11 @@ async def list_categories(parent: Optional[str] = None, all: bool = False):
     return [Category(**d) for d in docs]
 
 
+async def _hidden_stores() -> List[str]:
+    """Stores that are not active (pending/rejected/suspended): their products stay hidden from buyers."""
+    return [s["store_id"] for s in await db.stores.find({"status": {"$ne": "active"}}, {"store_id": 1}).to_list(5000)]
+
+
 def _product_out(d: dict, ctype: str, pricing: dict, flash: Optional[dict] = None) -> Product:
     tiers = price_tiers(d, ctype, pricing)
     matrix = price_matrix(d, pricing)
@@ -521,19 +583,22 @@ async def list_products(
     sort: str = Query("newest", pattern="^(popular|price_asc|price_desc|rating|newest)$"),
     limit: int = Query(40, ge=1, le=200),
     skip: int = Query(0, ge=0),
+    store: Optional[str] = None,
     user=Depends(get_optional_user),
 ):
-    query: dict = {}
+    query: dict = {"store_id": {"$nin": await _hidden_stores()}}
     if category:
         children = [c["category_id"] for c in await db.categories.find({"parent": category}, {"category_id": 1}).to_list(200)]
         query["categories"] = {"$in": [category, *children]}
     if q:
         query["name"] = {"$regex": re.escape(q), "$options": "i"}
+    if store:
+        query["store_id"] = store
     sort_map = {
-        "popular": [("in_stock", -1), ("sold", -1), ("updated_at", -1)],
-        "price_asc": [("price", 1)],
-        "price_desc": [("price", -1)],
-        "rating": [("rating", -1)],
+        "popular": [("in_stock", -1), ("sold", -1), ("updated_at", -1), ("product_id", -1)],
+        "price_asc": [("price", 1), ("product_id", 1)],
+        "price_desc": [("price", -1), ("product_id", -1)],
+        "rating": [("rating", -1), ("product_id", -1)],
         "newest": [("in_stock", -1), ("created_at", -1), ("product_id", -1)],
     }
     docs = await db.products.find(query, {"_id": 0}).sort(sort_map[sort]).skip(skip).limit(limit).to_list(limit)
@@ -544,7 +609,7 @@ async def list_products(
 
 @api.get("/products/{product_id}", response_model=Product)
 async def get_product(product_id: str, user=Depends(get_optional_user)):
-    doc = await db.products.find_one({"product_id": product_id}, {"_id": 0})
+    doc = await db.products.find_one({"product_id": product_id, "store_id": {"$nin": await _hidden_stores()}}, {"_id": 0})
     if not doc:
         raise HTTPException(status_code=404, detail="Produk tidak ditemukan")
     return _product_out(doc, (user or {}).get("customer_type", "langsung"), await get_pricing(db), await promo.active_flash(db))
@@ -730,6 +795,8 @@ async def checkout(body: CheckoutIn, background: BackgroundTasks, owner: str = D
             await db.products.update_one({"product_id": i.product_id}, {"$inc": {"stock": -i.quantity}})
     await db.carts.update_one({"owner": owner}, {"$set": {"items": []}}, upsert=True)
     background.add_task(notify.send_owner_order, order_doc)
+    await ACCT["notify_user"](user_id, "order", "Pesanan dibuat", f"Pesanan {order_doc['order_id']} berhasil dibuat.", f"/order/{order_doc['order_id']}")
+    await ACCT["log_activity"](user_id, "order", f"Membuat pesanan {order_doc['order_id']}")
     return _order_out(order_doc)
 
 
@@ -871,6 +938,8 @@ async def admin_order_status(order_id: str, body: OrderStatusIn, _=Depends(requi
         raise HTTPException(status_code=404, detail="Pesanan tidak ditemukan")
     if body.status == "cancelled":
         await _release_voucher(order_id)
+    label = {"processing": "sedang diproses", "shipped": "sedang dikirim", "completed": "selesai", "cancelled": "dibatalkan"}[body.status]
+    await ACCT["notify_user"](d.get("user_id"), "order", "Status pesanan diperbarui", f"Pesanan {order_id} {label}.", f"/order/{order_id}")
     return _order_out(d)
 
 
@@ -1109,7 +1178,7 @@ async def recommendations(
     owner: Optional[str] = Depends(get_optional_owner), user=Depends(get_optional_user),
 ):
     mode = (await promo.get_home(db))["recommend_mode"]
-    base = {"in_stock": {"$ne": False}}
+    base = {"in_stock": {"$ne": False}, "store_id": {"$nin": await _hidden_stores()}}
     docs: list = []
     if mode == "random":
         docs = await db.products.aggregate([{"$match": base}, {"$sample": {"size": limit}}, {"$project": {"_id": 0}}]).to_list(limit)
@@ -1226,6 +1295,8 @@ async def admin_create_voucher(body: VoucherIn, _=Depends(require_admin)):
     if await db.vouchers.find_one({"code": doc["code"]}):
         raise HTTPException(status_code=400, detail="Kode voucher sudah dipakai")
     await db.vouchers.insert_one({**doc, "used": 0, "created_at": datetime.now(timezone.utc)})
+    if doc["active"] and doc["show_on_home"]:
+        await ACCT["broadcast_promo"](f"Voucher baru: {doc['code']}", doc["title"], "/")
     return _voucher_out({**doc, "used": 0})
 
 
@@ -1253,6 +1324,13 @@ async def admin_set_home(body: HomeSettingsIn, _=Depends(require_admin)):
     await db.settings.update_one({"key": "home"}, {"$set": body.model_dump()}, upsert=True)
     return await promo.get_home(db)
 
+
+async def _product_out_for_user(d: dict, user: dict) -> Product:
+    return _product_out(d, user.get("customer_type", "langsung"), await get_pricing(db), await promo.active_flash(db))
+
+
+ACCT = account.register(api, db, get_current_user, _user_out, _make_token)
+seller.register(api, db, get_current_user, require_admin, _product_out_for_user, ACCT["notify_user"], ACCT["log_activity"])
 
 app.include_router(api)
 

@@ -137,6 +137,13 @@ export default function ProductDetail() {
             </Text>
           ) : null}
           <Text style={styles.name}>{product.name}</Text>
+          {product.store_name ? (
+            <Pressable testID="pd-store-link" style={styles.meta} onPress={() => router.push(`/shop/${product.store_id}` as any)}>
+              <Icon name="storefront-outline" size={14} color={colors.brandPrimary} />
+              <Text style={[styles.metaText, { color: colors.brandPrimary }]}>{product.store_name}</Text>
+              <Icon name="chevron-forward" size={14} color={colors.brandPrimary} />
+            </Pressable>
+          ) : null}
           <View style={styles.meta}>
             <Icon name="star" size={14} color={colors.warning} />
             <Text style={styles.metaText}>{product.rating.toFixed(1)}</Text>
