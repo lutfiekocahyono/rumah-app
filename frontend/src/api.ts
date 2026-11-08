@@ -93,6 +93,7 @@ export const api = {
 
   // catalog
   categories: (parent?: string) => req<Category[]>(`/categories${parent ? `?parent=${encodeURIComponent(parent)}` : ""}`),
+  productCount: () => req<{ count: number }>("/products/count"),
   products: (params: { category?: string; q?: string; sort?: string; skip?: number; limit?: number; store?: string } = {}) => {
     const qs = new URLSearchParams();
     if (params.store) qs.set("store", params.store);

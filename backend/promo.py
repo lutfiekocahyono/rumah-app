@@ -7,7 +7,7 @@ DEFAULT_HOME = {
     "free_shipping": {
         "enabled": True,
         "title": "Gratis Ongkir",
-        "subtitle": "Area Sidoarjo & sekitarnya, min. belanja Rp500.000",
+        "subtitle": "Area {kota} & sekitarnya, min. belanja Rp500.000",  # {kota} = city of the buyer's chosen branch
         "min_purchase": 500000,
     },
     "recommend_mode": "personal",  # personal | random
@@ -26,7 +26,9 @@ def now() -> datetime:
 
 async def get_home(db) -> dict:
     doc = await db.settings.find_one({"key": "home"}, {"_id": 0}) or {}
-    return {**DEFAULT_HOME, **doc, "free_shipping": {**DEFAULT_HOME["free_shipping"], **(doc.get("free_shipping") or {})}}
+    fs = {**DEFAULT_HOME["free_shipping"], **(doc.get("free_shipping") or {})}
+    fs["subtitle"] = fs["subtitle"].replace("Area Sidoarjo", "Area {kota}")  # older saved text named one branch only
+    return {**DEFAULT_HOME, **doc, "free_shipping": fs}
 
 
 async def active_flash(db) -> Optional[dict]:

@@ -683,6 +683,12 @@ async def list_products(
     return [_product_out(d, ctype, pricing, flash) for d in docs]
 
 
+@api.get("/products/count")
+async def count_products():
+    """Number of products buyers can browse (shared catalog + every branch), for the search placeholder."""
+    return {"count": await db.products.count_documents(await _visible(ALL_BRANCHES))}
+
+
 @api.get("/products/{product_id}", response_model=Product)
 async def get_product(product_id: str, user=Depends(get_optional_user), x_store_id: Optional[str] = Header(default=None)):
     ctx = _ctx(x_store_id)

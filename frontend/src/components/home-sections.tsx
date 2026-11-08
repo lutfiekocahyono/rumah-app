@@ -24,14 +24,16 @@ export function SectionHeader({ title, icon, right, testID }: { title: string; i
 export const voucherValue = (v: Voucher) =>
   v.mode === "percent" ? `${v.value}%` : v.value >= 1000 ? `Rp${Math.round(v.value / 1000)}rb` : formatIDR(v.value);
 
-export function FreeShippingBanner({ s }: { s: HomeSettings["free_shipping"] }) {
+/** `{kota}` in the subtitle becomes the city of the buyer's chosen branch. */
+export function FreeShippingBanner({ s, city }: { s: HomeSettings["free_shipping"]; city?: string }) {
   if (!s.enabled) return null;
+  const subtitle = s.subtitle.replace(/\{kota\}/gi, city || "cabang pilihan");
   return (
     <View style={styles.ongkir} testID="free-shipping-banner">
       <View style={styles.ongkirIcon}><Icon name="car-outline" size={22} color={colors.onSuccess} /></View>
       <View style={{ flex: 1 }}>
         <Text style={styles.ongkirTitle}>{s.title}</Text>
-        {s.subtitle ? <Text style={styles.ongkirSub}>{s.subtitle}</Text> : null}
+        {subtitle ? <Text style={styles.ongkirSub} testID="free-shipping-subtitle">{subtitle}</Text> : null}
       </View>
     </View>
   );

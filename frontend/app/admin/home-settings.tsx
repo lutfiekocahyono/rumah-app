@@ -40,7 +40,8 @@ export default function AdminHomeSettings() {
           <Card>
             <ToggleRow testID="fs-enabled" label="Tampilkan di beranda" value={s.free_shipping.enabled} onChange={(v) => setFs({ enabled: v })} />
             <Field testID="fs-title" label="Judul" value={s.free_shipping.title} onChangeText={(t) => setFs({ title: t })} />
-            <Field testID="fs-subtitle" label="Keterangan" value={s.free_shipping.subtitle} onChangeText={(t) => setFs({ subtitle: t })} placeholder="Contoh: Min. belanja Rp500.000 area Sidoarjo" />
+            <Field testID="fs-subtitle" label="Keterangan" value={s.free_shipping.subtitle} onChangeText={(t) => setFs({ subtitle: t })} placeholder="Contoh: Area {kota} & sekitarnya, min. belanja Rp500.000" />
+            <Text style={{ color: colors.muted, fontSize: 12 }}>Tulis {"{kota}"} agar otomatis diganti kota cabang yang dipilih pembeli.</Text>
             <Field testID="fs-min" label="Minimal belanja (Rp) — catatan" keyboardType="number-pad" value={String(s.free_shipping.min_purchase)} onChangeText={(t) => setFs({ min_purchase: digits(t) })} />
           </Card>
           <Text style={adminStyles.muted}>Pratinjau:</Text>

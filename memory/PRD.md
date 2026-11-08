@@ -80,3 +80,8 @@ Iteration 2: import all data from pusatgrosirsidoarjo.com; tiered pricing (pembe
 - backend/server.py split: marketing.py (banners, vouchers, flash sale, home settings, uploads/files) and order_tasks.py (release voucher/stock/saldo, COD 48h auto-cancel + reminder loop). Routes unchanged (138).
 - frontend/app/checkout.tsx split into src/components/checkout/ (styles, fields, voucher-section, payment-section, courier-list). testIDs unchanged.
 - Backlog: retire/update old test suites (iter2, iter4-14) written for previous rules.
+
+## Iteration 19
+- GET /api/products/count; home & admin search placeholder use real count.
+- Free-shipping subtitle supports {kota} placeholder → city of the chosen branch (old "Area Sidoarjo" text auto-converted).
+- Seller order list: COD pickup orders show auto-cancel chip; red border + red chip when ≤6h left (timezone-safe parse via parseDate).

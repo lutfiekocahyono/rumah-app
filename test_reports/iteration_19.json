@@ -1,0 +1,38 @@
+{
+  "summary": "Iteration 19 tested the product count, the {kota} free-shipping text and the COD auto-cancel chip. Backend, new suite tests/test_pgs_iter19_count_kota_cod_expiry.py: 6 of 7 pass. GET /api/products/count returns {count:6618}. That matches a Mongo count of products outside inactive stores, ignores X-Store-Id, and is not shadowed by /products/{id} (the detail route still works). GET /home-settings has subtitle 'Area {kota} & sekitarnya...'. Legacy text 'Area Sidoarjo ...' is rewritten to 'Area {kota} ...' on read, and custom text is kept; the original settings doc was restored. The one failure: expires_at (and the other datetimes) is serialized without a timezone, e.g. '2026-11-10T10:23:58.818000'. Frontend at 375x667, home as guest: home-search-placeholder shows 'Cari dari 6.618 produk…'. free-shipping-subtitle shows 'Area Sidoarjo ...' for PGS Sidoarjo, 'Area Jombang ...' after store-switch -> pick-store-pgs-jombang, and 'Area Jember ...' for Jember, and goes back to Sidoarjo. Admin (admin@pgs.id): the home-settings {kota} hint is visible, the preview reads 'Area cabang pilihan & sekitarnya...', and the admin products placeholder reads 'Cari produk dari 6.618 produk'. Seller orders (sidoarjo@pgs.id) with a browser in UTC: the urgent order (expires_at set to now+3h in Mongo) has a red border (rgb 239,68,68), a red chip and the text 'Hampir batal otomatis · sisa ±3 jam'. The normal order has a grey chip 'Batal otomatis 10 Nov 2026, 10.24' and the default border. BUG: with the browser timezone set to Asia/Jakarta (the real users' zone), the same urgent order shows 'sisa ±1 jam'. Its real time left is 3h; the code computes -4h and clamps it to 1. codHoursLeft uses new Date(expires_at) on a string with no timezone, so it is read as local time, while fmtDate appends 'Z'. In WIB every hours-left value is 7h too small, so orders with up to about 13h left are wrongly marked urgent. Regression: iter18 and iter15 suites pass 23/23 when run one at a time (-n0); under xdist 3 tests fail because the parallel tests share stock and server restarts, which is not a product bug. No console or page errors. No deprecated Expo packages in the files reviewed. Test orders were cancelled.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/seller/orders (and all Order datetimes)", "issue": "expires_at and created_at are returned as naive ISO strings without 'Z' or an offset (Mongo returns naive UTC datetimes). The frontend has to guess the timezone, which caused the frontend bug below."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "seller/orders.tsx codHoursLeft", "issue": "new Date(o.expires_at) reads the naive UTC string as device-local time. In Asia/Jakarta (UTC+7) the hours left are 7h too small: an order with 3h left shows 'sisa ±1 jam', and orders with 6–13h left are wrongly marked urgent with a red border. Verified in Playwright with timezone_id=Asia/Jakarta. Reference: /app/frontend/app/seller/orders.tsx:22", "testID": "so-expiry-{order_id}", "priority": "HIGH"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "seller/orders", "issues": ["The urgent chip has white 12px text on #EF4444, a contrast ratio of about 3.8:1, below WCAG AA 4.5:1. A darker red (e.g. #DC2626 or #B91C1C) would pass.", "Overdue orders (expires_at already passed but the auto-cancel task has not run yet) still show 'sisa ±1 jam' because of Math.max(1, ...). 'Segera dibatalkan' would be clearer."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_pgs_iter19_count_kota_cod_expiry.py", "/app/backend/tests/ui_iter19_helper.py", "/app/test_reports/pytest/pytest_iter19.xml"],
+  "action_items": [
+    "HIGH: Fix the timezone handling of COD hours-left. In seller/orders.tsx codHoursLeft, parse with the same normalisation as fmtDate: add 'Z' when the string has no offset. Better: add a shared parseDate() in src/utils/date.ts. Also consider having the backend serialize datetimes as tz-aware UTC (e.g. tz_aware=True on the Motor client, or a field serializer that adds +00:00).",
+    "Minor: use a darker red for the urgent chip background to meet contrast requirements, and handle negative hours left ('Segera dibatalkan').",
+    "Minor: on the home screen productCount is fetched once in useEffect([]) and is not refreshed on pull-to-refresh.",
+    "Design note: promo.get_home rewrites any saved 'Area Sidoarjo' to 'Area {kota}' on read, so an admin can no longer deliberately save text naming only Sidoarjo. Consider a one-time migration instead of rewriting on every read."
+  ],
+  "critical_code_review_comments": [
+    "seller/orders.tsx:22 uses new Date(iso) directly while src/utils/date.ts fmtDate normalises it. Two ways of parsing the same field is the root cause of the bug.",
+    "/products/count is declared before /products/{product_id} in server.py:686, so the routes are ordered correctly.",
+    "home-sections FreeShippingBanner replaces {kota} case-insensitively and falls back to 'cabang pilihan'. Correct."
+  ],
+  "updated_files": ["/app/backend/tests/test_pgs_iter19_count_kota_cod_expiry.py", "/app/backend/tests/ui_iter19_helper.py"],
+  "success_rate": {"backend": "86% (6/7; the failure is the naive datetime serialization)", "frontend": "90% (all requested flows pass in UTC; the urgency calculation is wrong in non-UTC timezones)"},
+  "seed_data_creation": "Created TEST_ users test_iter19_*/test_iter19ui_*@example.com, plus 3 pickup COD orders at pgs-official (2 UI orders: PGS-261108-863789 and PGS-261108-6758B6, and 1 pytest order). All were cancelled. The home settings doc was restored. Other COD orders by 'TEST_Buyer' from earlier runs were left untouched.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run pytest with -n0 for the order and stock suites (iter15, iter18); xdist parallelism causes false failures. To check the timezone fix in Playwright, use browser.new_context(timezone_id='Asia/Jakarta'), then run ui_iter19_helper.py setup and cleanup.",
+  "rca_of_issue": "The backend stores expires_at as a UTC datetime and Mongo returns it naive, so the response has no timezone ('2026-11-10T10:23:58'). ECMAScript reads date-time strings without an offset as local time. On a WIB device the expiry therefore lands 7h earlier and hours left = real - 7. Repro: create a pickup COD order, set expires_at to now+3h, then open /seller/orders in a Jakarta-timezone browser: the chip reads 'sisa ±1 jam'. Mitigation: normalise with 'Z' when there is no offset, or serialize tz-aware datetimes from the backend."
+}

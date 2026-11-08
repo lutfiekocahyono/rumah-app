@@ -15,6 +15,8 @@ export default function AdminProducts() {
   const [q, setQ] = useState("");
   const [items, setItems] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
+  const [count, setCount] = useState(0);
+  useEffect(() => { api.productCount().then((r) => setCount(r.count)).catch(() => {}); }, []);
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -30,7 +32,7 @@ export default function AdminProducts() {
       <View style={styles.searchWrap}>
         <View style={styles.search}>
           <Icon name="search" size={18} color={colors.muted} />
-          <TextInput testID="admin-product-search" placeholder="Cari produk dari 6.618 produk" placeholderTextColor={colors.muted}
+          <TextInput testID="admin-product-search" placeholder={count ? `Cari produk dari ${count.toLocaleString("id-ID")} produk` : "Cari produk"} placeholderTextColor={colors.muted}
             value={q} onChangeText={setQ} style={styles.searchInput} />
         </View>
       </View>

@@ -42,9 +42,11 @@ export default function Home() {
     api.unreadCount().then((r) => setUnread(r.count)).catch(() => {});
   }, [user]));
   const bannerRef = useRef<ScrollView>(null);
+  const [productCount, setProductCount] = useState(0);
 
   const load = useCallback(async () => {
     const safe = <T,>(p: Promise<T>, fb: T) => p.catch(() => fb);
+    api.productCount().then((r) => setProductCount(r.count)).catch(() => {});
     const [banners, cats, flash, vouchers, settings, popular, newest, recs] = await Promise.all([
       safe(api.banners(), []), safe(api.categories(), []), safe(api.flashSale(), EMPTY.flash), safe(api.vouchers(), []),
       safe(api.homeSettings(), null), safe(api.products({ sort: "popular", limit: 10 }), []),
@@ -116,7 +118,9 @@ export default function Home() {
         </View>
         <Pressable testID="search-input-open" style={styles.search} onPress={() => router.push("/search" as any)}>
           <Icon name="search" size={18} color={colors.muted} />
-          <Text style={styles.searchPlaceholder}>Cari dari 6.618 produk…</Text>
+          <Text style={styles.searchPlaceholder} testID="home-search-placeholder">
+            {productCount ? `Cari dari ${productCount.toLocaleString("id-ID")} produk…` : "Cari produk…"}
+          </Text>
         </Pressable>
       </View>
 
@@ -179,7 +183,7 @@ export default function Home() {
             ))}
           </ScrollView>
 
-          {data.settings ? <FreeShippingBanner s={data.settings.free_shipping} /> : null}
+          {data.settings ? <FreeShippingBanner s={data.settings.free_shipping} city={store?.city} /> : null}
 
           <FlashSaleSection flash={data.flash} onEnd={onFlashEnd} />
 
