@@ -1,0 +1,34 @@
+{
+  "summary": "Tested the 'Ongkir Lebih Aman' guard. Backend: 6/6 new pytest tests pass, and the 12 iteration 9 regression tests also pass. A mismatched expected_shipping_cost returns 409 with 'Ongkir SiCepat HALU berubah dari Rp5.000 menjadi Rp7.500. Tarif sudah dimuat ulang, periksa lalu buat pesanan lagi.' No order is created, stock does not change, the voucher 'used' count does not change and the cart is kept. A higher-than-real expected cost also returns 409. An unknown courier returns 409 'Kurir yang dipilih tidak tersedia lagi...'. A matching cost returns 200 with shipping_cost 7500, and leaving out expected_shipping_cost still returns 200. Pickup with expected 0 works. Frontend at 375x667 with Playwright route interception: (A) SiCepat rate faked to 5.000. Pay sent expected 5000 and got 409. The error appeared in checkout-error and checkout-error-bar. Exactly one new /api/shipping/rates request fired and the real Rp7.500 showed, with the total going 218.000 -> 220.500. The second tap made order PGS-261108-DDE10E with expected 7500. (B) JNE rate faked to 6.000, so JNE was auto-picked as cheapest. After the 409 and the reload, JNE stayed selected at 9.000 even though SiCepat at 7.500 was cheaper, so the buyer's choice is kept. The second submit made a JNE 9000 order. Iteration 9 behaviour still works: Kota autofills to Surabaya, COD is the default, the cheapest courier is auto-picked, ETA shows 'hari'. All test orders were cancelled by sidoarjo@pgs.id. Stock for pgs-9955 went back to 214, and the TEST_ users, orders and carts were deleted. No deprecated Expo packages found.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/checkout", "issue": "expected_shipping_cost has no ge=0 validation. Cosmetic: a negative value just gets a 409."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "checkout error", "issue": "The same 409 message shows twice: inline (checkout-error, above the footer) and in the sticky footer bar (checkout-error-bar). This repeats existing behaviour and is only a nice-to-have fix.", "testID": "checkout-error / checkout-error-bar", "priority": "low"}
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_pgs_iter10_shipping_guard.py", "/app/backend/tests/ui_iter10_helper.py", "/app/test_reports/pytest/pytest_iter10.xml"],
+  "action_items": [
+    "Optional: show the checkout error in one place only (inline or footer bar)",
+    "Optional: disable pay-now-btn while the rates reload after a 409 is in flight. Tapping during the reload sends the stale cost and gets another 409.",
+    "Optional: add Field(ge=0) to CheckoutIn.expected_shipping_cost"
+  ],
+  "critical_code_review_comments": [
+    "The guard runs before the voucher claim, the saldo debit, the stock change and the order insert, so a 409 has no side effects. Verified by test.",
+    "server.py is 1488 lines (over 700). It should be split further over time.",
+    "When the courier is gone, the frontend falls back to l[0] (usually pickup / 'Ambil di toko') without saying so. The 409 message does tell the buyer to pick a courier again."
+  ],
+  "updated_files": ["/app/backend/tests/test_pgs_iter10_shipping_guard.py", "/app/backend/tests/ui_iter10_helper.py"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "No seed data. TEST_ users and orders were created, then cancelled (stock restored) and deleted by id.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: pytest tests/test_pgs_iter10_shipping_guard.py -n 0 (it cleans up after itself). The SiCepat name is 'SiCepat HALU', so build the expected 409 text from the rates response. For UI: python tests/ui_iter10_helper.py setup creates a TEST user with pgs-9955 in the cart and writes /tmp/ui_iter10_state.json. In Playwright, wait about 3s after the first load before setting localStorage pgs_auth_token, otherwise the app init wipes it and the cart shows empty. Then route **/api/shipping/rates to fake a cost, go to /checkout?store=pgs-official, pick co-dest-result-69243 and tap pay-now-btn. Clean up with: python tests/ui_iter10_helper.py cleanup. Never read the RajaOngkir key or PUT shipping-settings."
+}

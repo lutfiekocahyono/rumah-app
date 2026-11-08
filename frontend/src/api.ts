@@ -75,7 +75,7 @@ async function req<T>(path: string, init: RequestInit = {}): Promise<T> {
       const d = data.detail;
       msg = Array.isArray(d) ? d.map((x: any) => x?.msg).filter(Boolean).join(", ") || msg : (typeof d === "string" ? d : data.message || msg);
     } catch {}
-    throw new Error(msg);
+    throw Object.assign(new Error(msg), { status: res.status });
   }
   return (await res.json()) as T;
 }
@@ -357,7 +357,7 @@ export type Product = {
 export type CartItem = { product_id: string; quantity: number; name: string; price: number; base_price: number; original_price: number; image: string; stock: number; next_tier?: PriceTier | null; store_id: string; store_name: string };
 export type Cart = { items: CartItem[]; subtotal: number; savings: number; item_count: number; customer_type: CustomerType };
 export type PaymentMethod = "midtrans" | "xendit" | "cod" | "saldo";
-export type CheckoutPayload = { full_name: string; phone: string; address: string; city: string; payment_method: PaymentMethod; use_balance?: boolean; voucher_code?: string; store_id: string; courier: string; destination_id?: number | null; destination_label?: string };
+export type CheckoutPayload = { full_name: string; phone: string; address: string; city: string; payment_method: PaymentMethod; use_balance?: boolean; voucher_code?: string; store_id: string; courier: string; destination_id?: number | null; expected_shipping_cost?: number; destination_label?: string };
 export type OrderItem = { product_id: string; name: string; price: number; quantity: number; image: string };
 export type Order = {
   order_id: string; user_id?: string | null; items: OrderItem[]; subtotal: number; shipping_cost: number; discount?: number; voucher_code?: string | null; total: number;

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { View, Text, StyleSheet, Pressable, TextInput, KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -72,22 +72,28 @@ export default function Checkout() {
   const [courier, setCourier] = useState("");
   const [dest, setDest] = useState<Destination | null>(null);
   const [autoShip, setAutoShip] = useState(false);
+  const [ratesKey, setRatesKey] = useState(0);
+  const [ratesLoading, setRatesLoading] = useState(false);
   const searchDest = useCallback(async (q: string) => { const r = await api.destinations(q); setAutoShip(r.auto); return r.data; }, []);
   useEffect(() => { api.shippingStatus().then((r) => setAutoShip(r.auto)).catch(() => {}); }, []);
+  const autoPickFor = useRef<number | null>(null); // destination we already auto-picked the cheapest courier for
   useEffect(() => {
     let stale = false; // ignore late responses after the destination changed again
+    setRatesLoading(true);
     api.shippingRates(storeId, dest?.id).then((l) => {
       if (stale) return;
       setCouriers(l);
       const shippable = l.filter((x) => x.code !== "pickup" && x.active !== false);
+      const freshDest = !!dest && autoPickFor.current !== dest.id;
+      if (dest) autoPickFor.current = dest.id;
       setCourier((c) => {
-        // After a destination is picked, choose the cheapest delivery courier automatically
-        if (dest && shippable.length) return shippable.reduce((a, b) => (b.cost < a.cost ? b : a)).code;
+        // After a new destination is picked, choose the cheapest delivery courier; on a reload keep the buyer's choice
+        if (freshDest && shippable.length) return shippable.reduce((a, b) => (b.cost < a.cost ? b : a)).code;
         return l.some((x) => x.code === c) ? c : l[0]?.code || "";
       });
-    }).catch(() => {});
+    }).catch(() => {}).finally(() => { if (!stale) setRatesLoading(false); });
     return () => { stale = true; };
-  }, [storeId, dest]);
+  }, [storeId, dest, ratesKey]);
   const pickDest = (d: Destination | null) => {
     setDest(d);
     const parts = d?.label.split(",").map((s) => s.trim()) ?? [];
@@ -117,12 +123,13 @@ export default function Checkout() {
     }
     setLoading(true);
     try {
-      const order = await api.checkout({ full_name: fullName, phone, address, city, payment_method: toPay === 0 && balanceUsed > 0 ? "saldo" : method, use_balance: useBalance, voucher_code: voucher?.code, store_id: storeId, courier, destination_id: dest?.id ?? null, destination_label: dest?.label ?? "" });
+      const order = await api.checkout({ full_name: fullName, phone, address, city, payment_method: toPay === 0 && balanceUsed > 0 ? "saldo" : method, use_balance: useBalance, voucher_code: voucher?.code, store_id: storeId, courier, expected_shipping_cost: shipCost, destination_id: dest?.id ?? null, destination_label: dest?.label ?? "" });
       await refresh();
       router.replace(`/order/${order.order_id}` as any);
       if (order.payment_url) await WebBrowser.openBrowserAsync(order.payment_url);
     } catch (e: any) {
       setErr(e?.message || "Gagal checkout");
+      if (e?.status === 409) setRatesKey((k) => k + 1); // shipping changed: reload rates so the buyer sees the new price
     } finally {
       setLoading(false);
     }
@@ -271,7 +278,6 @@ export default function Checkout() {
           <Row label="Total Pembayaran" value={formatIDR(toPay)} big />
         </View>
 
-        {err ? <Text style={styles.err} testID="checkout-error">{err}</Text> : null}
       </ScrollView>
 
       <View style={[styles.bottom, { paddingBottom: Math.max(spacing.md, insets.bottom + spacing.sm) }]}>
@@ -281,7 +287,7 @@ export default function Checkout() {
           <Text style={styles.smallLabel}>Total bayar</Text>
           <Text style={styles.totalValue}>{formatIDR(toPay)}</Text>
         </View>
-        <Pressable testID="pay-now-btn" style={styles.payBtn} onPress={submit} disabled={loading}>
+        <Pressable testID="pay-now-btn" style={[styles.payBtn, ratesLoading && { opacity: 0.6 }]} onPress={submit} disabled={loading || ratesLoading}>
           {loading ? <ActivityIndicator color={colors.onBrandPrimary} /> : <Text style={styles.payBtnText}>Bayar Sekarang</Text>}
         </Pressable>
         </View>

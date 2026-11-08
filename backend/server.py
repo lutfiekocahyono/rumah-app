@@ -320,6 +320,7 @@ class CheckoutIn(BaseModel):
     store_id: Optional[str] = None
     courier: str = "pickup"
     destination_id: Optional[int] = None
+    expected_shipping_cost: Optional[int] = Field(default=None, ge=0)  # cost the buyer saw; order is refused if the fresh quote differs
     destination_label: str = Field(default="", max_length=200)
 
 
@@ -820,8 +821,11 @@ async def checkout(body: CheckoutIn, background: BackgroundTasks, owner: str = D
     options = await SHIP_QUOTE(store, body.destination_id, cart.item_count)
     courier = next((c for c in options if c["code"] == body.courier), None)
     if not courier:
-        raise HTTPException(status_code=400, detail="Pilih kurir pengiriman")
+        raise HTTPException(status_code=409, detail="Kurir yang dipilih tidak tersedia lagi. Tarif ongkir sudah dimuat ulang, silakan pilih kurir lagi.")
     SHIPPING_COST = int(courier["cost"])
+    if body.expected_shipping_cost is not None and body.expected_shipping_cost != SHIPPING_COST:
+        rp = lambda n: f"Rp{n:,}".replace(",", ".")
+        raise HTTPException(status_code=409, detail=f"Ongkir {courier['name']} berubah dari {rp(body.expected_shipping_cost)} menjadi {rp(SHIPPING_COST)}. Tarif sudah dimuat ulang, periksa lalu buat pesanan lagi.")
     user_id = owner[5:] if owner.startswith("user:") else None
     user = await db.users.find_one({"user_id": user_id}, {"email": 1}) if user_id else None
     discount, vcode = 0, None
@@ -859,7 +863,7 @@ async def checkout(body: CheckoutIn, background: BackgroundTasks, owner: str = D
         "voucher_code": vcode,
         "total": total,
         "balance_used": balance_used,
-        "shipping": body.model_dump(exclude={"payment_method", "store_id", "courier", "voucher_code", "destination_id", "use_balance"}),
+        "shipping": body.model_dump(exclude={"payment_method", "store_id", "courier", "voucher_code", "destination_id", "use_balance", "expected_shipping_cost"}),
         "store_id": store_id,
         "store_name": store["name"],
         "courier": {k: courier.get(k) for k in ("code", "name", "cost", "eta", "source")},
