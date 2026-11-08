@@ -19,6 +19,7 @@ function menu(admin: boolean): (Item | Group)[] {
       i("Daftar Produk", "list-outline", "/product-editor/list"),
       i("Kategori Produk", "pricetags-outline", "/(tabs)/kategori"),
       ...(admin ? [] : [i("Manajemen Stok", "layers-outline", "/seller/stock")]),
+      i("Riwayat Harga & Stok", "time-outline", "/product-editor/history"),
     ] },
     i("Pesanan", "receipt-outline", admin ? "/admin/orders" : "/seller/orders"),
     i("Pengiriman", "car-outline", admin ? "/admin/shipping" : "/seller/couriers"),
@@ -33,7 +34,7 @@ function Nav({ admin, onGo }: { admin: boolean; onGo: () => void }) {
   const path = usePathname();
   const [open, setOpen] = useState(true);
   const row = (it: Item, sub = false) => {
-    const on = path === it.to || (it.to === "/product-editor/new" && path.startsWith("/product-editor") && path !== "/product-editor/list");
+    const on = path === it.to || (it.to === "/product-editor/new" && path.startsWith("/product-editor") && path !== "/product-editor/list" && path !== "/product-editor/history");
     return (
       <Pressable key={it.testID} testID={it.testID} style={[styles.item, sub && styles.sub, on && styles.itemOn]}
         onPress={() => { onGo(); if (!on) router.push(it.to as any); }}>

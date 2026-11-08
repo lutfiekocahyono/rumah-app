@@ -69,6 +69,7 @@ def tok():
         t[k] = r.json()["token"]
     yield t
     for pid in PRODUCTS:
+        DB.price_history.delete_many({"product_id": pid, "product_name": {"$regex": "^TEST_"}})  # iter29: history logs of test products
         DB.products.delete_one({"product_id": pid, "name": {"$regex": "^TEST_"}})
     for did in DRAFTS:
         DB.product_drafts.delete_one({"draft_id": did})

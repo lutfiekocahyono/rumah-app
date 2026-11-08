@@ -12,6 +12,7 @@ from fastapi import Depends, File, HTTPException, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field, field_validator
 
+import history
 import seller
 import storage
 from shipping import is_cargo
@@ -380,6 +381,7 @@ def register(api, db, *, get_current_user, log_activity, origin_label):
         if body.product_id:
             doc = to_product(f, store)
             await db.products.update_one({"product_id": body.product_id}, {"$set": doc})
+            await history.record(db, ctx["user"], old["store_id"], old, history.snap(old), history.snap({**old, **doc}), "editor")
             pid, action = body.product_id, "Mengubah"
         else:
             pid = f"sp_{uuid.uuid4().hex[:10]}"

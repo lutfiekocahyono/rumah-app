@@ -122,3 +122,4 @@ Iteration 2: import all data from pusatgrosirsidoarjo.com; tiered pricing (pembe
 - Daftar Produk (/product-editor/list): cari, filter, pilih banyak, Edit Massal harga/stok/status, Duplikat, Ekspor/Impor Excel (template, preview sebelum terapkan, baris belum lengkap -> draft).
 - Editor: simpan otomatis draft 4 detik setelah perubahan, tombol Duplikat, banner lanjutkan draft autosave untuk produk yang diedit.
 - Iter 28: impor menerima .csv/.xlsx ekspor website (WooCommerce), pencocokan kolom tampil sebelum simpan, template berisi 2 contoh produk asli + sheet Petunjuk Kolom, kolom Link Website di ekspor.
+- Iter 29: Riwayat Harga & Stok (/product-editor/history), Super Admin semua toko, admin cabang hanya tokonya.

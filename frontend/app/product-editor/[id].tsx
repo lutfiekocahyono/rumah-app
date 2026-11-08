@@ -236,6 +236,12 @@ export default function ProductEditor() {
                   : auto.state === "saved" && auto.at ? "✓ Tersimpan otomatis" : ""}
               </Text>
               {productId ? (
+                <Pressable testID="pe-history" style={styles.ghost} onPress={() => router.push(`/product-editor/history?product=${productId}` as any)}>
+                  <Icon name="time-outline" size={16} color={colors.brandPrimary} />
+                  <Text style={[styles.ghostText, { color: colors.brandPrimary }]}>Riwayat</Text>
+                </Pressable>
+              ) : null}
+              {productId ? (
                 <Pressable testID="pe-duplicate" style={styles.ghost} onPress={duplicate} disabled={duping || !!busy}>
                   {duping ? <ActivityIndicator size="small" color={colors.brandPrimary} /> : <Icon name="copy-outline" size={16} color={colors.brandPrimary} />}
                   <Text style={[styles.ghostText, { color: colors.brandPrimary }]}>Duplikat</Text>

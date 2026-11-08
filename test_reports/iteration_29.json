@@ -1,0 +1,42 @@
+{
+  "summary": "Iteration 29: price/stock change history (Riwayat Harga & Stok) and import recognition of 'URL Foto' / 'Maks. Beli'. Backend: 13/13 new pytest tests passed, plus the iter27/28 regression suites (38/38 total, run with -n0 because the shared module state does not work under xdist). Access checks: unauthenticated -> 401, customer demo -> 403, jombang with store_id=pgs-official -> 403, acct1 sees only its own store and gets 403 for other stores, admin sees everything and can filter by store. Logs are written with the correct before/after values, user_name and source for: editor edits (price 15000->18000, stock 10->7; creating a product writes no log; republishing unchanged writes no log), bulk edit (simple product plus variant rows labeled Merah/Biru; repeating the same bulk writes no log), import commit=true (Produk row plus Variasi sheet row with the variant label; commit=false writes no log), PUT /seller/inventory by jombang on shared pgs-9957 (store_id=pgs-jombang, same value writes no log, restored to 0), and admin tiers (text '12+ Rp9.000', store pgs-official, restored). kind/q/product_id filters, skip/limit pagination, sort by newest first, and limit>100 -> 422 all work. A CSV with headers 'URL Foto' and 'Maks. Beli' maps them to images/max_order, missing=[], create=1. Frontend at 390x844, all working: as admin the cards show product, date, user, source, store and before->after with green/red colouring, and the store pills (6), Harga/Stok filters, search, tapping a product name (sets ?product=, shows the chip and hides search) and clearing the chip all work. The sidebar item nav-riwayat-harga-&-stok navigates correctly. pe-history in the editor of an existing product (44px high) opens the history filtered to that product and is not shown on /new. Jombang sees no store pills and only its own branch logs, and the empty state works. A customer deep link shows the 403 text. One bug found: saving unchanged tiers on a product without tier_prices writes a bogus log. Deprecated packages detected: none.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "PUT /api/admin/products/{id}/tiers", "issue": "Saving unchanged (empty) tiers writes a bogus log 'Harga grosir manual (kosong) -> (kosong)'. 6615 of 6618 products have no tier_prices field, so old={} is compared with clean={langsung:[],pengecer:[],reseller:[]} and they look different. The same happens when old is missing some keys, e.g. 'langsung: 5+ Rp100' -> 'langsung: 5+ Rp100'. Reproduced via the API on a fresh TEST_ product. Fix: normalise old to {t: (old.get('tier_prices') or {}).get(t, []) for t in CUSTOMER_TYPES} in server.py:1231, or in history.diff compare tiers_text(before) != tiers_text(after)."},
+      {"endpoint": "history.diff (history.py:32-40)", "issue": "Edge case: when variants are turned off (before has variants, after has none) or a variant is removed, nothing is logged. The 'not (bv or av)' check skips the simple price/stock fields and the loop only goes over the after-variants. The product's new price/stock is lost from the history."},
+      {"endpoint": "history.tiers_text", "issue": "Cosmetic: tier text uses the internal keys 'langsung/pengecer/reseller' in lowercase. Use the display labels (Langsung/Pengecer/Reseller)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/product-editor/history", "issues": [
+        "For a product without a discount, one edit shows two identical rows ('Harga normal Rp20.000 -> Rp26.000' and 'Harga jual Rp20.000 -> Rp26.000'). Consider merging them when original_price == price on both sides.",
+        "The tappable product name (Pressable in LogCard) has no testID and no visual cue that it can be tapped (no colour or chevron). Add testID e.g. ph-product-{log_id} and link styling.",
+        "When the product filter is active the search box is hidden, but any q typed earlier is still sent with the request. This is harmless today but confusing. Consider clearing q when product is set.",
+        "A customer opening the deep link sees the 403 error and 'Belum ada perubahan...' at the same time. Hide the empty text when err is set.",
+        "Web only: the focused search TextInput shows a black rectangular focus outline inside the rounded pill (add outlineStyle:'none' on web)."
+      ]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_pgs_iter29_price_history.py", "/app/backend/tests/ui_iter29_helper.py", "/app/test_reports/pytest/pytest_iter29.xml"],
+  "action_items": [
+    "Fix the bogus tier history log: normalise old tier_prices to all CUSTOMER_TYPES keys before history.record (server.py ~1231), or compare the tiers_text values in history.diff.",
+    "Optional: log changes when variants are removed or turned off (history.diff edge case).",
+    "Optional UI polish: merge the duplicate Harga normal/Harga jual rows, add a testID and link styling to the product name, hide the empty text when there is an error."
+  ],
+  "critical_code_review_comments": [
+    "history.py is clean: _id is excluded, limit is capped at 100, regex is escaped, store scope is enforced server-side for non-admins.",
+    "admin_set_tiers computes old before the update and only checks for 404 after update_one. This is safe today because of the matched_count check, but find_one + 404 first would be clearer.",
+    "Iter27/28 tests left orphan price_history logs for their TEST_ products. Their teardowns now also delete those logs."
+  ],
+  "updated_files": ["/app/backend/tests/test_pgs_iter29_price_history.py", "/app/backend/tests/ui_iter29_helper.py", "/app/backend/tests/test_pgs_iter27_product_bulk.py (teardown deletes price_history)", "/app/backend/tests/test_pgs_iter28_import_mapping.py (teardown deletes price_history)"],
+  "success_rate": {"backend": "100% (38/38; 1 minor bug found outside the asserted paths)", "frontend": "100%"},
+  "seed_data_creation": "None left behind. TEST_Hist/TEST_UI29 products and their logs were deleted. Jombang stock for pgs-9957 was restored to 0 and tiers to the original value. price_history count is 0 and the catalogue is at 6618.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run the backend tests with -n0 (pytest.ini enables xdist and the module-level TAG/PRODUCTS state breaks across workers). Export EXPO_PUBLIC_BACKEND_URL from /app/frontend/.env. For UI, set localStorage 'pgs_auth_token'. ui_iter29_helper.py create/clean seeds history logs. Sidebar testID: nav-riwayat-harga-&-stok; history testIDs: price-history-screen, ph-log-{id}, ph-store-{id}/ph-store-all, ph-kind-all/price/stock, ph-search, ph-clear-product, ph-empty, ph-error; editor: pe-history."
+}

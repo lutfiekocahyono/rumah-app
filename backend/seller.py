@@ -10,6 +10,7 @@ from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 from pymongo import ReturnDocument
 
+import history
 import storage
 
 log = logging.getLogger("seller")
@@ -299,7 +300,7 @@ def register(api, db, get_current_user, require_admin, product_out_for_user, not
     @api.put("/seller/inventory/{product_id}")
     async def seller_set_stock(product_id: str, body: StockIn, ctx=Depends(require_seller)):
         sid = ctx["store"]["store_id"]
-        p = await db.products.find_one({"product_id": product_id}, {"store_id": 1, "stock": 1, "variants": 1})
+        p = await db.products.find_one({"product_id": product_id}, {"product_id": 1, "name": 1, "store_id": 1, "stock": 1, "variants": 1})
         if not p or (p["store_id"] != sid and not (sid in OFFICIAL_IDS and p["store_id"] == PGS_STORE_ID)):
             raise HTTPException(status_code=404, detail="Produk tidak ditemukan")
         if p.get("variants"):
@@ -313,6 +314,7 @@ def register(api, db, get_current_user, require_admin, product_out_for_user, not
             await db.store_stock.update_one({"store_id": sid, "product_id": product_id}, {"$set": {"stock": body.stock}}, upsert=True)
         if body.stock > old:  # restock -> may appear in "Produk Terbaru"
             await db.products.update_one({"product_id": product_id}, {"$set": {"restocked_at": _now()}})
+        await history.record(db, ctx["user"], sid, p, {"stock": old}, {"stock": body.stock}, "stock")
         return {"product_id": product_id, "stock": body.stock}
 
     # ---------------- couriers ----------------

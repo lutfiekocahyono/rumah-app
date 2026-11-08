@@ -245,6 +245,8 @@ export const api = {
     return data as ImportReport;
   },
   editorExportUrl: (storeId: string | null, template = false) => `${BASE}/api/product-editor/export?${qs({ store_id: storeId, template })}`,
+  priceHistory: (p: { store_id?: string | null; product_id?: string | null; q?: string; kind?: string; skip?: number }) =>
+    req<{ total: number; items: PriceLog[] }>(`/history/price-stock?${qs({ ...p, limit: 30 })}`),
   adminStores: (status?: string) => req<Store[]>(`/admin/stores${status ? `?status=${status}` : ""}`),
   adminSetStoreStatus: (id: string, status: "active" | "rejected" | "suspended", note = "") =>
     req<Store>(`/admin/stores/${id}/status`, { method: "PUT", body: JSON.stringify({ status, note }) }),
@@ -429,6 +431,11 @@ export type ProductForm = {
   seo_title: string; meta_description: string; keywords: string[];
 };
 export type SpecKey = "material" | "color" | "size" | "dimensions" | "weight" | "origin_country" | "warranty" | "extra";
+export type PriceLog = {
+  log_id: string; product_id: string; product_name: string; store_id: string; store_name: string; user_name: string; user_role: string;
+  source: string; source_label: string; at: string;
+  changes: { field: string; label: string; kind: "price" | "stock"; variant: string; before: number | string | null; after: number | string }[];
+};
 export type EditorListItem = { product_id: string; name: string; image: string; sku: string; price: number; original_price: number; stock: number; status: "active" | "inactive"; variants: number; sold: number; store_id: string };
 export type BulkEdit = { store_id?: string | null; product_ids: string[]; price_mode?: "" | "set" | "up_pct" | "down_pct" | "up" | "down"; price_value?: number; stock_mode?: "" | "set" | "add" | "sub"; stock_value?: number; status?: "" | "active" | "inactive" };
 export type ImportRow = { row: number; name: string; action: "update" | "same" | "create" | "draft" | "skip"; message: string };

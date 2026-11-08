@@ -14,6 +14,7 @@ from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from pydantic import BaseModel, Field, ValidationError
 
+import history
 from product_editor import ProductForm, to_form, to_product, validate
 
 MAX_ROWS = 10000
@@ -209,6 +210,7 @@ def register(api, db, *, actor: Callable, target_store: Callable, editable: Call
             if upd["stock"] > p.get("stock", 0):
                 upd["restocked_at"] = _now()
             await db.products.update_one({"product_id": pid}, {"$set": upd})
+            await history.record(db, ctx["user"], store["store_id"], p, history.snap(p), history.snap({**p, **upd}), "bulk")
             updated += 1
         if updated:
             await log_activity(ctx["user"]["user_id"], "store", f"Edit massal {updated} produk")
@@ -485,6 +487,7 @@ def register(api, db, *, actor: Callable, target_store: Callable, editable: Call
                     if doc["stock"] > p.get("stock", 0):
                         doc["restocked_at"] = _now()
                     await db.products.update_one({"product_id": pid}, {"$set": doc})
+                    await history.record(db, ctx["user"], store["store_id"], p, history.snap(p), history.snap({**p, **doc}), "import")
                 add(n, form.name, "update")
             elif not name:
                 add(n, "(tanpa nama)", "skip", "Nama produk kosong, baris dilewati")
@@ -552,6 +555,7 @@ def register(api, db, *, actor: Callable, target_store: Callable, editable: Call
                 if upd["stock"] > p.get("stock", 0):
                     upd["restocked_at"] = _now()
                 await db.products.update_one({"product_id": pid}, {"$set": upd})
+                await history.record(db, ctx["user"], store["store_id"], p, history.snap(p), history.snap({**p, **upd}), "import")
             for n, label in ok:
                 add(n, label, "update")  # variant rows: counted as update even when equal
         if commit and (counts["update"] or counts["create"] or counts["draft"]):

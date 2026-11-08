@@ -20,6 +20,7 @@ import account
 import marketing
 import home_feed
 import product_editor
+import history
 import order_tasks
 from order_tasks import COD_PICKUP_HOURS, RELEASE_STATUSES
 import promo
@@ -1218,14 +1219,17 @@ async def admin_get_tiers(product_id: str, _=Depends(require_admin)):
 
 
 @api.put("/admin/products/{product_id}/tiers")
-async def admin_set_tiers(product_id: str, body: ProductTiersIn, _=Depends(require_admin)):
+async def admin_set_tiers(product_id: str, body: ProductTiersIn, admin=Depends(require_admin)):
     clean = {}
     for t in CUSTOMER_TYPES:
         rows = {r.min_qty: r for r in body.tier_prices.get(t, []) if r.price > 0}
         clean[t] = [r.model_dump() for r in sorted(rows.values(), key=lambda r: r.min_qty)]
+    old = await db.products.find_one({"product_id": product_id}, {"_id": 0, "product_id": 1, "name": 1, "store_id": 1, "tier_prices": 1})
     res = await db.products.update_one({"product_id": product_id}, {"$set": {"tier_prices": clean}})
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Produk tidak ditemukan")
+    await history.record(db, admin, old.get("store_id") or seller.PGS_STORE_ID, old, {"tier_prices": old.get("tier_prices") or {}},
+                         {"tier_prices": {k: v for k, v in clean.items()}}, "tiers")
     return {"product_id": product_id, "tier_prices": clean}
 
 
@@ -1313,6 +1317,7 @@ branches.register(api, db, get_owner, seller)
 
 SHIP_QUOTE, SHIP_ORIGIN = shipping.register(api, db, require_admin, get_owner, seller.OFFICIAL_IDS, seller.couriers_of)
 product_editor.register(api, db, get_current_user=get_current_user, log_activity=ACCT["log_activity"], origin_label=SHIP_ORIGIN)
+history.register(api, db, get_current_user)
 
 app.include_router(api)
 

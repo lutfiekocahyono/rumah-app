@@ -115,3 +115,9 @@
 - product_bulk.py: import accepts .xlsx and .csv; WooCommerce/website column aliases (ID, Type, SKU, Name, Published, Short description, Description, Stock, Sale price, Regular price, Categories "A > B", Images, Weight (kg)->gram, Length/Width/Height (cm)); website numeric ID 9849 -> pgs-9849; HTML descriptions cleaned; Type=variation rows skipped; template rows with SKU "CONTOH-..." skipped. Response adds columns[{sheet,header,field,label}], missing[], format.
 - Template: 2 example rows taken from real catalogue (orange), new sheet "Petunjuk Kolom" (wajib/format/contoh), export adds "Link Produk di Website (info)" column (permalink, not imported).
 - Frontend import dialog: accepts .csv, shows "Pencocokan kolom" (import-columns, import-col-ok/unknown, import-missing) before Terapkan.
+
+## Iteration 29 — Riwayat Harga & Stok
+- backend/history.py: collection price_history {log_id, product_id, product_name, store_id, user_id, user_name, user_role, source(editor|bulk|import|stock|tiers), changes[{field,label,kind,variant,before,after}], kinds, at}. GET /api/history/price-stock?store_id&product_id&q&kind=price|stock&skip&limit — admin all stores (store filter optional); store owner/branch admin only own store (other store_id -> 403); customers 403.
+- Recorded from: product-editor publish (edit), /product-editor/bulk, /product-editor/import (product + Variasi rows), PUT /seller/inventory/{id} (branch stock under the branch store_id), PUT /admin/products/{id}/tiers.
+- Frontend: /product-editor/history (sidebar "Riwayat Harga & Stok", filters, admin store pills, ?product= filter), editor button pe-history.
+- "URL Foto"/"Maks. Beli" headers recognized (fixed iter 28).
