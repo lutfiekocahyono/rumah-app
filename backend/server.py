@@ -705,6 +705,15 @@ async def count_products():
     return {"count": await db.products.count_documents(await _visible(ALL_BRANCHES))}
 
 
+async def _unique_pickup_code() -> str:
+    """6-digit pickup code not used by any open order (so a cashier scan always finds one order)."""
+    for _ in range(20):
+        code = f"{secrets.randbelow(900000) + 100000}"
+        if not await db.orders.find_one({"pickup_code": code, "status": {"$nin": ["completed", "cancelled", "expired", "failed"]}}, {"_id": 1}):
+            return code
+    return code
+
+
 @api.get("/products/by-code")
 async def product_by_code_query(code: str = ""):
     """Same lookup with the code as query param (safe for scanned links containing slashes)."""
@@ -996,7 +1005,7 @@ async def checkout(body: CheckoutIn, background: BackgroundTasks, owner: str = D
         "store_id": store_id,
         "store_name": store["name"],
         "courier": {k: courier.get(k) for k in ("code", "name", "cost", "eta", "source")},
-        **({"pickup_code": f"{secrets.randbelow(900000) + 100000}"} if courier["code"] == "pickup" else {}),
+        **({"pickup_code": await _unique_pickup_code()} if courier["code"] == "pickup" else {}),
         "tracking_number": "",
         "status_history": [{"status": status0, "at": datetime.now(timezone.utc), "note": "Pesanan dibuat" + (" (dibayar dengan saldo)" if pay_method == "saldo" else "")}],
         "payment_method": pay_method,

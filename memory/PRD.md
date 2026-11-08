@@ -126,3 +126,4 @@ Iteration 2: import all data from pusatgrosirsidoarjo.com; tiered pricing (pembe
 - Iter 30: Harga grosir Rupiah per tingkat per produk di Tambah/Ubah Produk; Pengaturan Harga global dihapus setelah potongan lama disalin ke semua produk.
 - Iter 31: Ekspor riwayat Excel per toko & periode; menu bar bawah global (Beranda, Kategori, Scan, Keranjang, Akun) + pencarian atas di semua halaman kecuali login & checkout; Scan barcode produk & kode ambil pesanan; field Barcode di editor.
 - Iter 32: Fix QR link 404; Accurate Online Tahap 1 (kunci API terenkripsi, uji koneksi, gudang, pratinjau barang baca-saja).
+- Iter 34: QR kode ambil di halaman pesanan pembeli (PGSAMBIL-<kode>), dikenali Scan kasir dari mode mana pun.

@@ -140,3 +140,7 @@
 - Scan used by buyers (barcode mode only) and cashiers (mode switch). Manual input fallback when camera denied.
 - backend/accurate.py (admin only): GET/PUT/DELETE /api/admin/accurate/settings (api_token & signature_secret encrypted with Fernet; response only hints ••••last4, never secrets; blank fields keep saved keys), POST /api/admin/accurate/test (real call to https://account.accurate.id/api/api-token.do; fake keys -> 400 'Kunci API ditolak Accurate'), GET /api/admin/accurate/warehouses, PUT /api/admin/accurate/warehouse-map, GET /api/admin/accurate/items (read-only). Client blocks any save/delete endpoint (phase 1 read-only).
 - Frontend /admin/accurate (menu "Integrasi Accurate Online" in Admin): masked inputs, Simpan Kunci, Uji Koneksi, status, gudang mapping, item preview.
+
+## Iteration 34 — QR Kode Ambil
+- app/order/[id].tsx: pickup card shows QR (react-native-qrcode-svg, value "PGSAMBIL-<pickup_code>", testID order-pickup-qr) above the 6-digit code, only while order is open (not cancelled/expired/failed/completed).
+- app/scan.tsx: scanned/typed "PGSAMBIL-<digits>" -> cashier: auto switches to pickup mode and looks up the order; buyer (no store): message "Ini kode ambil pesanan — tunjukkan ke kasir toko." Backend lookup strips non-digits.

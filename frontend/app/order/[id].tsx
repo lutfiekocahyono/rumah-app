@@ -5,6 +5,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Icon from "@react-native-vector-icons/ionicons";
 import * as WebBrowser from "expo-web-browser";
+import QRCode from "react-native-qrcode-svg";
 
 import { colors, fontSize, radius, spacing, formatIDR } from "@/src/theme";
 import { api, ORDER_STATUS_LABEL, type Order } from "@/src/api";
@@ -169,7 +170,10 @@ export default function OrderDetail() {
             <Text style={styles.cardTitle}>Ambil di toko</Text>
             {order.pickup_code && !["cancelled", "expired", "failed", "completed"].includes(order.status) ? (
               <View style={styles.codeBox} testID="order-pickup-code">
-                <Text style={styles.muted}>Kode ambil — tunjukkan ke kasir</Text>
+                <Text style={styles.muted}>Kode ambil — tunjukkan QR atau 6 angka ini ke kasir</Text>
+                <View style={styles.qr} testID="order-pickup-qr">
+                  <QRCode value={`PGSAMBIL-${order.pickup_code}`} size={168} color="#000000" backgroundColor="#FFFFFF" />
+                </View>
                 <Text style={styles.code} selectable>{order.pickup_code}</Text>
               </View>
             ) : null}
@@ -249,6 +253,7 @@ const styles = StyleSheet.create({
   sep: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border },
   actions: { flexDirection: "row", gap: spacing.sm },
   codeBox: { alignItems: "center", backgroundColor: colors.brandTertiary, borderRadius: radius.md, padding: spacing.md, gap: 2 },
+  qr: { padding: spacing.md, marginVertical: spacing.sm, backgroundColor: "#FFFFFF", borderRadius: radius.md }, // QR needs a white quiet zone in any theme
   code: { fontSize: 28, fontWeight: "800", letterSpacing: 6, color: colors.brandPrimary },
   bottom: { position: "absolute", left: 0, right: 0, bottom: 0, flexDirection: "row", gap: spacing.sm, padding: spacing.lg, backgroundColor: colors.surface, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
   outlineBtn: { flex: 1, minHeight: 48, borderWidth: 1, borderColor: colors.border, borderRadius: radius.pill, alignItems: "center", justifyContent: "center" },

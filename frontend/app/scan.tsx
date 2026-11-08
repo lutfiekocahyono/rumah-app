@@ -87,23 +87,29 @@ export default function Scan() {
   const lookup = async (raw: string) => {
     const c = raw.trim();
     if (!c || lock.current) return;
+    // pickup QR from the buyer's order page: "PGSAMBIL-<6 digit>"
+    const pick = c.match(/^PGSAMBIL-(\d{4,8})$/i);
+    if (pick && !cashier) { setMsg({ ok: false, text: "Ini kode ambil pesanan — tunjukkan ke kasir toko." }); return; }
+    if (pick && mode !== "pickup") setMode("pickup");
+    const pickupMode = mode === "pickup" || !!pick;
     // a scanned product link (QR) opens the product directly, no lookup needed
-    const link = mode === "product" ? c.match(/\/product\/(pgs-\d+)\/?$/i) : null;
+    const link = !pickupMode ? c.match(/\/product\/(pgs-\d+)\/?$/i) : null;
     if (link) { router.push(`/product/${link[1].toLowerCase()}` as any); return; }
-    if (mode === "pickup" && !/^[\d\s-]{4,12}$/.test(c)) { setMsg({ ok: false, text: "Kode ambil berupa 6 digit angka. Untuk produk, pilih mode Barcode Produk." }); return; }
+    const pickCode = pick ? pick[1] : c;
+    if (pickupMode && !/^[\d\s-]{4,12}$/.test(pickCode)) { setMsg({ ok: false, text: "Kode ambil berupa 6 digit angka. Untuk produk, pilih mode Barcode Produk." }); return; }
     lock.current = true;
     setBusy(true);
     setMsg(null);
     try {
-      if (mode === "product") {
+      if (!pickupMode) {
         const p = await api.productByCode(c);
         setMsg({ ok: true, text: `Membuka ${p.name}` });
         router.push(`/product/${p.product_id}` as any);
         setTimeout(() => { lock.current = false; }, 1500);
       } else {
-        setOrder(await api.pickupLookup(c));
+        setOrder(await api.pickupLookup(pickCode));
         setDone(false);
-        setCode(c);
+        setCode(pickCode);
       }
     } catch (e: any) {
       setMsg({ ok: false, text: e.message });

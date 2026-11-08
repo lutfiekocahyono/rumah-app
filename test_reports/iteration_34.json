@@ -1,0 +1,21 @@
+{
+  "summary": "Iteration 34: pickup-code QR. Backend: new test_pgs_iter34_pickup_qr.py (10 tests) plus regression test_pgs_iter31_scan_export.py: 37/37 passed. POST /api/seller/pickup/lookup accepts 'PGSAMBIL-<code>', lowercase, padded and plain codes (non-digits are stripped). Branch scoping still holds (other branch gets 404, customer gets 403). The lookup does not change the order. Frontend (375x667): an open COD pickup order on /order/{id} shows order-pickup-qr (SVG, 168px on a white box) above the 6-digit code. The QR was screenshotted and decoded with zxing-cpp to exactly 'PGSAMBIL-954265', which matches the order's pickup_code. After the order was completed, both the QR and the code box are hidden. /scan as admin: typing PGSAMBIL-<code> in Barcode Produk mode switches to Kode Ambil mode (the toggle highlight moves) and shows pickup-result with the correct order and the COD amount due. After 'Scan lagi' the mode stays pickup. A plain 6-digit code and a lowercase prefix both work in pickup mode. An unknown code shows 'Kode ambil tidak ditemukan di toko ini'. SKU DBLP32HC and a /product/pgs-9849 link still open the product. Handover through the UI worked on the TEST order. /scan as demo buyer: no mode toggles are shown, and PGSAMBIL-123456 shows 'Ini kode ambil pesanan — tunjukkan ke kasir toko.' with no lookup. All TEST orders were deleted. Stock and sold for pgs-9955 were restored and demo's cart was restored. No deprecated Expo packages found.",
+  "backend_issues": {"critical": [], "minor": [
+    {"endpoint": "checkout (server.py:999)", "issue": "Pre-existing: pickup_code is random (secrets.randbelow) and nothing checks that it is unique. Two open orders could get the same code, and Super Admin lookup has no store filter, so it would silently return the newest one. Very unlikely, but a uniqueness check among open orders would make it safe."}
+  ]},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [{"screen": "order/[id] (pickup card)", "issues": ["Pre-existing and out of scope: the pgs-official pickup card shows 'Alamat toko akan diinformasikan toko.' (no address). After completion the card still says 'Bayar tunai (COD) saat mengambil pesanan.', which is stale wording."]}],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_pgs_iter34_pickup_qr.py", "/app/backend/tests/ui_iter34_helper.py", "/app/test_reports/pytest/pytest_iter34.xml"],
+  "action_items": ["Optional: make pickup_code unique among open orders (paid/cod/processing)", "Optional: hide the COD 'bayar tunai saat mengambil' hint on completed pickup orders"],
+  "critical_code_review_comments": ["scan.tsx lookup(): the PGSAMBIL regex is applied before mode routing. For PGSAMBIL input, code is set to the digits only, so pickupComplete gets the plain code. Correct.", "Non-cashier PGSAMBIL handling returns early, so buyers never call the 403 endpoint. Good.", "order/[id].tsx: the QR value is built from order.pickup_code. The white padding gives a quiet zone in every theme. Good."],
+  "updated_files": ["/app/backend/tests/test_pgs_iter34_pickup_qr.py", "/app/backend/tests/ui_iter34_helper.py"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "Temporary TEST_ COD pickup orders were created for demo@pgs.id at pgs-official. All were deleted by order_id, and stock, sold and cart were restored.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Run: export EXPO_PUBLIC_BACKEND_URL=... && pytest -n0 backend/tests/test_pgs_iter34_pickup_qr.py. For a UI order use ui_iter34_helper.py create|complete|clean. To decode QRs: pip install --target /tmp/qrlib zxing-cpp pillow, then read an element screenshot with PYTHONPATH=/tmp/qrlib."
+}
