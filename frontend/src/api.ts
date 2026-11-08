@@ -326,7 +326,7 @@ export type User = {
   user_id: string; email: string; name: string; role: "admin" | "customer" | "store_admin"; customer_type: CustomerType; picture?: string | null;
   email_verified: boolean; phone?: string | null; phone_verified: boolean; gender: string; birthdate: string; has_password: boolean;
 };
-export type Address = { address_id: string; label: string; recipient: string; phone: string; address: string; city: string; postal_code: string; is_default: boolean };
+export type Address = { address_id: string; label: string; recipient: string; phone: string; address: string; city: string; postal_code: string; destination_id?: number | null; destination_label?: string; is_default: boolean };
 export type AddressInput = Omit<Address, "address_id">;
 export type AppNotification = { notif_id: string; kind: "order" | "promo" | "security"; title: string; body: string; link: string; read: boolean; created_at: string };
 export type ActivityLog = { log_id: string; action: string; detail: string; created_at: string };

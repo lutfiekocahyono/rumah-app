@@ -93,6 +93,8 @@ class AddressIn(BaseModel):
     address: str = Field(min_length=5, max_length=300)
     city: str = Field(min_length=2, max_length=60)
     postal_code: str = Field(default="", max_length=10)
+    destination_id: Optional[int] = None  # RajaOngkir area, so checkout can quote shipping right away
+    destination_label: str = Field(default="", max_length=200)
     is_default: bool = False
 
 

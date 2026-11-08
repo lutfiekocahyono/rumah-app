@@ -38,6 +38,9 @@ export default function Checkout() {
     setPhone(a.phone);
     setAddress(`${a.address}${a.postal_code ? `, ${a.postal_code}` : ""}`);
     setCity(a.city);
+    // Saved shipping area -> rates appear immediately, no search needed
+    if (a.destination_id) setDest({ id: a.destination_id, label: a.destination_label ?? "" });
+    else setDest(null);
   };
 
   useEffect(() => {
@@ -125,6 +128,17 @@ export default function Checkout() {
     try {
       const order = await api.checkout({ full_name: fullName, phone, address, city, payment_method: toPay === 0 && balanceUsed > 0 ? "saldo" : method, use_balance: useBalance, voucher_code: voucher?.code, store_id: storeId, courier, expected_shipping_cost: shipCost, destination_id: dest?.id ?? null, destination_label: dest?.label ?? "" });
       await refresh();
+      // Remember the shipping area on the saved address so next checkout quotes instantly
+      const picked = addresses.find((a) => a.address_id === addrId);
+      if (picked && dest && picked.destination_id !== dest.id) {
+        const parts = dest.label.split(",").map((s) => s.trim());
+        const areaCity = parts.length >= 3 ? parts[2].toLowerCase().replace(/\b\w/g, (ch) => ch.toUpperCase()) : picked.city;
+        const areaPostal = parts.length >= 5 && /^\d{5}$/.test(parts[4]) ? parts[4] : picked.postal_code;
+        api.saveAddress({
+          label: picked.label, recipient: picked.recipient, phone: picked.phone, address: picked.address, is_default: picked.is_default,
+          city: areaCity, postal_code: areaPostal, destination_id: dest.id, destination_label: dest.label,
+        }, picked.address_id).catch(() => {});
+      }
       router.replace(`/order/${order.order_id}` as any);
       if (order.payment_url) await WebBrowser.openBrowserAsync(order.payment_url);
     } catch (e: any) {

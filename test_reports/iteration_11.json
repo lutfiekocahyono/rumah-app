@@ -1,0 +1,40 @@
+{
+  "summary": "Tested 'Alamat Tersimpan Pintar'. Backend: 7/7 pytest tests pass. POST and PUT on /api/me/addresses accept and return destination_id (an int) and destination_label. Addresses without these fields still work (destination_id is null, label is ''). A PUT can set or clear the area. Bad input gets 422 (destination_id 'abc', label over 200 characters). No _id is leaked. POST /api/shipping/rates with 69243 returns auto JNE 9000, J&T 8000 and SiCepat 7500. Frontend at 375x667: on /account/addresses the old address shows the warning 'Belum ada area ongkir — ketuk Ubah untuk menambahkan'. The add form shows addr-dest. Searching 'gubeng' and picking 69243 fills Kota Sidoarjo->Surabaya and Kode pos 60281. The saved card shows addr-area-<id> 'Area ongkir: GUBENG, ...'. Edit opens with the area already filled in. On /checkout the default address with an area shows co-dest-picked GUBENG right away, with no destination search calls. Auto rates load and SiCepat HALU 7.500 (the cheapest) is auto-selected, total Rp220.500. Switching to the address without an area clears the destination, shows the hint and standard rates (25k/24k/22k), and sets Kota back to Sidoarjo. Switching back brings back GUBENG and the auto rates. On the address without an area, searching gubeng and placing a COD order (PGS-261108-B8F14F, sicepat 7500, destination_id 69243 sent) then sent PUT /me/addresses/<id>. GET shows destination_id 69243 saved on that address, and the address screen now shows its area row. Cleanup: the order was cancelled via sidoarjo@pgs.id and pgs-9955 stock is back to 214. The TEST user, addresses, orders, carts and notifications were deleted by id. demo@pgs.id had no addresses before or after, so it was untouched. RajaOngkir key and settings were not touched. No deprecated Expo packages found.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "PUT /api/me/addresses/{id}", "issue": "The frontend sends the whole address object back, including user_id and created_at. Pydantic ignores these extra fields so it is harmless, but the client should strip them."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "checkout save-area-to-address", "issue": "After the order, checkout saves only destination_id and destination_label on the address. The address's city (and postal_code) stay stale. Verified: TEST_Kantor still has city 'Sidoarjo' with area 'GUBENG, ..., SURABAYA'. On the next checkout, pickAddress sets Kota to the stale 'Sidoarjo' while the destination is Surabaya, so order.city does not match the shipping area. Fix: also send the city derived from the label (same title-case logic as pickDest), and the postal code if empty. In pickAddress, prefer the city from destination_label.", "testID": "co-addr-<id> / co-city", "priority": "medium"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/account/addresses", "issues": [
+        "The warning hint (colors.warning #F59E0B on white, about 2.1:1) and the 'Area ongkir' row (colors.success #10B981, about 2.5:1) at 12-13px fail WCAG AA contrast. Use darker shades (e.g. #B45309 and #047857).",
+        "The Ubah, Hapus and Jadikan utama actions are 32px tall. hitSlop=8 helps on native but the visual target is under 44px."
+      ]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_pgs_iter11_smart_address.py", "/app/backend/tests/ui_iter11_helper.py", "/app/test_reports/pytest/pytest_iter11.xml"],
+  "action_items": [
+    "Medium: when checkout saves the area onto a saved address, also update city (and postal_code if empty) from destination_label. Optionally, in pickAddress, derive city from destination_label so order.city matches the area.",
+    "Low: strip user_id and created_at from the address payload in addresses.tsx and checkout.tsx before calling saveAddress.",
+    "Low: darken the warning and success text colours on the address cards for contrast."
+  ],
+  "critical_code_review_comments": [
+    "checkout.tsx: autoPickFor is keyed only by destination id. Going A(area X) -> C(area Y) -> A keeps C's courier choice instead of picking A's cheapest again. Acceptable, but worth knowing.",
+    "checkout.tsx: the rates effect fires once with destination null before the addresses load, then again with the saved area. The stale guard handles it and it only costs one extra standard-rates call, no RajaOngkir call.",
+    "checkout.tsx: the address-area save after the order is fire-and-forget (.catch(()=>{})). That is fine for UX, but failures are invisible.",
+    "account.py edit_address: model_dump(exclude={'is_default'}) when is_default is false correctly keeps the current default. Verified."
+  ],
+  "updated_files": ["/app/backend/tests/test_pgs_iter11_smart_address.py", "/app/backend/tests/ui_iter11_helper.py"],
+  "success_rate": {"backend": "100% (7/7)", "frontend": "100% of requested flows pass; 1 medium data-consistency issue (stale city)"},
+  "seed_data_creation": "No seed data. TEST_ users, addresses and one COD order were created, then the order was cancelled (stock restored to 214) and everything was deleted by id.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: pytest tests/test_pgs_iter11_smart_address.py -n 0 (it cleans up after itself). For UI: python tests/ui_iter11_helper.py setup creates a TEST user with pgs-9955 in the cart and one default address without an area, then writes /tmp/ui_iter11_state.json (token, b=address_id). Use 'check' to print addresses and orders and 'cleanup' to cancel and delete. In Playwright, wait 3s before setting localStorage pgs_auth_token. Destination 69243 = GUBENG. Rates with it: jne 9000, jnt 8000, sicepat 7500 (cheapest). Never read the RajaOngkir key or PUT shipping-settings."
+}

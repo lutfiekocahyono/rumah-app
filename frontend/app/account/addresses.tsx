@@ -8,6 +8,7 @@ import { api, type Address, type AddressInput } from "@/src/api";
 import { ScreenHeader } from "@/src/components/screen-header";
 import { ConfirmDialog } from "@/src/components/confirm-dialog";
 import { adminStyles, Card, Field, PrimaryButton, ToggleRow } from "@/src/components/admin-form";
+import { DestinationSearch } from "@/src/components/destination-search";
 
 const EMPTY: AddressInput = { label: "Rumah", recipient: "", phone: "", address: "", city: "Sidoarjo", postal_code: "", is_default: false };
 
@@ -27,6 +28,9 @@ export default function Addresses() {
   useEffect(() => { void load(); }, [load]);
 
   const set = (p: Partial<AddressInput>) => setForm((f) => (f ? { ...f, ...p } : f));
+  const [autoShip, setAutoShip] = useState(false);
+  useEffect(() => { api.shippingStatus().then((r) => setAutoShip(r.auto)).catch(() => {}); }, []);
+  const searchDest = useCallback(async (q: string) => (await api.destinations(q)).data, []);
 
   const save = async () => {
     if (!form) return;
@@ -63,6 +67,22 @@ export default function Addresses() {
             <Field testID="addr-phone" label="No. HP penerima" value={form.phone} onChangeText={(t) => set({ phone: t })} keyboardType="phone-pad" />
             <Field testID="addr-address" label="Alamat lengkap" value={form.address} onChangeText={(t) => set({ address: t })} multiline />
             <Field testID="addr-city" label="Kota / Kabupaten" value={form.city} onChangeText={(t) => set({ city: t })} />
+            {autoShip ? (
+              <View style={{ gap: 4 }}>
+                <Text style={styles.fieldLabel}>Area tujuan ongkir (kelurahan / kecamatan)</Text>
+                <DestinationSearch testID="addr-dest" search={searchDest}
+                  value={form.destination_id ? { id: form.destination_id, label: form.destination_label ?? "" } : null}
+                  onPick={(d) => {
+                    const parts = d?.label.split(",").map((s) => s.trim()) ?? [];
+                    set({
+                      destination_id: d?.id ?? null, destination_label: d?.label ?? "",
+                      ...(parts.length >= 3 ? { city: parts[2].toLowerCase().replace(/\b\w/g, (ch) => ch.toUpperCase()) } : {}),
+                      ...(parts.length >= 5 && /^\d{5}$/.test(parts[4]) ? { postal_code: parts[4] } : {}),
+                    });
+                  }} />
+                <Text style={adminStyles.muted}>Disimpan supaya ongkir langsung muncul saat checkout.</Text>
+              </View>
+            ) : null}
             <Field testID="addr-postal" label="Kode pos (opsional)" value={form.postal_code} onChangeText={(t) => set({ postal_code: t })} keyboardType="number-pad" />
             <ToggleRow testID="addr-default" label="Jadikan alamat utama" value={form.is_default} onChange={(v) => set({ is_default: v })} />
             <PrimaryButton testID="addr-save" label="Simpan Alamat" onPress={save} loading={busy} />
@@ -81,16 +101,24 @@ export default function Addresses() {
             </View>
             <Text style={styles.name}>{a.recipient} · {a.phone}</Text>
             <Text style={adminStyles.muted}>{a.address}, {a.city} {a.postal_code}</Text>
+            {a.destination_id ? (
+              <View style={styles.areaRow} testID={`addr-area-${a.address_id}`}>
+                <Icon name="navigate-outline" size={14} color={colors.success} />
+                <Text style={styles.areaText} numberOfLines={1}>Area ongkir: {a.destination_label}</Text>
+              </View>
+            ) : autoShip ? (
+              <Text style={adminStyles.muted}>⚠ Belum ada area ongkir — ketuk Ubah untuk menambahkan</Text>
+            ) : null}
             <View style={styles.actions}>
               <Pressable testID={`addr-edit-${a.address_id}`} hitSlop={8} style={styles.action} onPress={() => {
-                const { address_id: _id, ...rest } = a;
+                const { address_id: _id, user_id: _u, created_at: _c, ...rest } = a as Address & { user_id?: string; created_at?: string };
                 setEditId(a.address_id); setErr(""); setForm(rest);
               }}>
                 <Icon name="create-outline" size={16} color={colors.brandPrimary} /><Text style={styles.actionText}>Ubah</Text>
               </Pressable>
               {!a.is_default ? (
                 <Pressable testID={`addr-default-${a.address_id}`} hitSlop={8} style={styles.action} onPress={async () => {
-                  const { address_id: _id, ...rest } = a;
+                  const { address_id: _id, user_id: _u, created_at: _c, ...rest } = a as Address & { user_id?: string; created_at?: string };
                   try { setList(await api.saveAddress({ ...rest, is_default: true }, a.address_id)); } catch (e: any) { setErr(e.message); }
                 }}>
                   <Icon name="star-outline" size={16} color={colors.brandPrimary} /><Text style={styles.actionText}>Jadikan utama</Text>
@@ -118,6 +146,9 @@ const styles = StyleSheet.create({
   tagText: { color: colors.brandPrimary, fontSize: 11, fontWeight: "600" },
   name: { fontSize: fontSize.sm, color: colors.onSurface },
   actions: { flexDirection: "row", gap: spacing.lg, marginTop: spacing.sm },
-  action: { flexDirection: "row", alignItems: "center", gap: 4, minHeight: 32 },
+  action: { flexDirection: "row", alignItems: "center", gap: 4, minHeight: 44 },
   actionText: { color: colors.brandPrimary, fontSize: 13, fontWeight: "500" },
+  fieldLabel: { fontSize: 13, color: colors.onSurfaceSecondary, fontWeight: "500" },
+  areaRow: { flexDirection: "row", alignItems: "center", gap: 4 },
+  areaText: { flex: 1, fontSize: 12, color: colors.onSurface },
 });
