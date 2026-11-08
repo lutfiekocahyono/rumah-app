@@ -10,14 +10,16 @@ import { useAuth } from "@/src/auth-context";
 import { CUSTOMER_TYPE_LABEL, imgUrl } from "@/src/api";
 import { Image } from "expo-image";
 import { GoogleButton } from "@/src/components/google-button";
+import { UnreadBadge, useChatUnread } from "@/src/components/unread-badge";
 
-type MenuItem = { icon: string; label: string; to?: string; onPress?: () => void; danger?: boolean };
+type MenuItem = { icon: string; label: string; to?: string; onPress?: () => void; danger?: boolean; badge?: number };
 
 export default function Akun() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { user, logout } = useAuth();
   const [askLogout, setAskLogout] = useState(false);
+  const unread = useChatUnread(!!user);
 
   const menuGroups: { title: string; items: MenuItem[] }[] = [
     ...(user?.role === "admin"
@@ -53,7 +55,7 @@ export default function Akun() {
         { icon: "receipt-outline", label: "Daftar Pesanan", to: "/orders" },
         { icon: "heart-outline", label: "Wishlist", to: "/wishlist" },
         ...(user ? [
-          { icon: "chatbubbles-outline", label: "Chat Toko", to: "/chat" },
+          { icon: "chatbubbles-outline", label: "Chat Toko", to: "/chat", badge: unread.buyer },
           { icon: "alert-circle-outline", label: "Komplain Saya", to: "/complaint" },
         ] : []),
       ],
@@ -61,7 +63,7 @@ export default function Akun() {
     {
       title: "Toko",
       items: [
-        { icon: "storefront-outline", label: user?.role === "admin" ? "Toko PGS Sidoarjo" : user?.role === "store_admin" ? "Kelola Toko" : "Toko Saya / Buka Toko", to: user?.role === "admin" ? "/shop/pgs-official" : "/seller" },
+        { icon: "storefront-outline", label: user?.role === "admin" ? "Toko PGS Sidoarjo" : user?.role === "store_admin" ? "Kelola Toko" : "Toko Saya / Buka Toko", to: user?.role === "admin" ? "/shop/pgs-official" : "/seller", badge: user?.role === "admin" ? 0 : unread.store },
         { icon: "location-outline", label: "Alamat & Kontak Toko", to: "/store" },
       ],
     },
@@ -136,6 +138,7 @@ export default function Akun() {
                 >
                   <Icon name={m.icon as any} size={20} color={colors.onSurface} />
                   <Text style={styles.rowLabel}>{m.label}</Text>
+                  <UnreadBadge count={m.badge ?? 0} testID={`menu-badge-${m.label.toLowerCase().replace(/\s+/g, "-")}`} />
                   <Icon name="chevron-forward" size={18} color={colors.muted} />
                 </Pressable>
               ))}

@@ -9,6 +9,7 @@ import { colors, fontSize, radius, spacing, formatIDR } from "@/src/theme";
 import { api, type Product, type Report, type Store, type StoreInput } from "@/src/api";
 import { useAuth } from "@/src/auth-context";
 import { ScreenHeader } from "@/src/components/screen-header";
+import { UnreadBadge, useChatUnread } from "@/src/components/unread-badge";
 import { adminStyles, Card, Field, PrimaryButton } from "@/src/components/admin-form";
 
 const STATUS = {
@@ -28,6 +29,7 @@ export default function SellerHome() {
   const [form, setForm] = useState<StoreInput | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const unread = useChatUnread(store?.status === "active");
 
   const load = useCallback(async () => {
     if (!user) return setStore(null);
@@ -133,12 +135,15 @@ export default function SellerHome() {
                   { icon: "receipt-outline", label: "Pesanan", to: "/seller/orders" },
                   { icon: "cube-outline", label: "Stok", to: "/seller/stock" },
                   { icon: "car-outline", label: "Tarif Kurir", to: "/seller/couriers" },
-                  { icon: "chatbubbles-outline", label: "Chat", to: "/chat?side=store" },
+                  { icon: "chatbubbles-outline", label: "Chat", to: "/chat?side=store", badge: unread.store },
                   { icon: "alert-circle-outline", label: "Komplain", to: "/complaint?scope=store" },
-                ].map((n) => (
+                ].map((n: { icon: string; label: string; to: string; badge?: number }) => (
                   <Pressable key={n.to} testID={`seller-nav-${n.to.split("/").pop()!.replace(/\?.*/, "")}`} style={styles.navItem} onPress={() => router.push(n.to as any)}>
                     <Icon name={n.icon as any} size={24} color={colors.brandPrimary} />
                     <Text style={styles.navText}>{n.label}</Text>
+                    {n.badge ? (
+                      <View style={styles.navBadge}><UnreadBadge count={n.badge} testID="seller-nav-chat-badge" /></View>
+                    ) : null}
                   </Pressable>
                 ))}
               </View>
@@ -183,6 +188,7 @@ const styles = StyleSheet.create({
   statVal: { fontSize: fontSize.base, fontWeight: "700", color: colors.brandPrimary },
   nav: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   navItem: { width: "31%", flexGrow: 1, alignItems: "center", gap: 6, backgroundColor: colors.surface, borderRadius: radius.md, paddingVertical: spacing.md, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, minHeight: 72 },
+  navBadge: { position: "absolute", top: 6, right: 6 },
   navText: { fontSize: 13, color: colors.onSurface, fontWeight: "500" },
   between: { flexDirection: "row", alignItems: "center", gap: spacing.sm, justifyContent: "space-between" },
   status: { flexDirection: "row", alignItems: "center", gap: 6, borderWidth: 1, borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: 6, alignSelf: "flex-start" },
