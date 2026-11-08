@@ -249,6 +249,7 @@ class TestSharedCatalogue:
         assert (DB.store_stock.find_one({"store_id": "pgs-jombang", "product_id": SHARED}) or {}).get("stock", 0) == orig
 
     def test_tiers_logged_and_restored(self, tok):
+        pytest.skip("/admin/products/{id}/tiers removed in iter30; tier history covered by editor publish tests (iter30)")
         orig = requests.get(f"{API}/admin/products/{SHARED}/tiers", headers=H(tok["admin"])).json()["tier_prices"]
         new = {**orig, "reseller": [{"min_qty": 12, "price": 9000}]}
         try:
@@ -265,6 +266,7 @@ class TestSharedCatalogue:
         assert DB.products.find_one({"product_id": SHARED})["tier_prices"] == orig
 
     def test_tiers_unchanged_no_log(self, tok):
+        pytest.skip("/admin/products/{id}/tiers removed in iter30")
         orig = requests.get(f"{API}/admin/products/{SHARED}/tiers", headers=H(tok["admin"])).json()["tier_prices"]
         n = DB.price_history.count_documents({"product_id": SHARED})
         requests.put(f"{API}/admin/products/{SHARED}/tiers", headers=H(tok["admin"]), json={"tier_prices": orig})

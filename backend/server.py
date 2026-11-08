@@ -29,7 +29,7 @@ import shipping
 import support
 import branches
 import storage
-from pricing import CUSTOMER_TYPES, DEFAULT_PRICING, get_pricing, price_matrix, price_tiers, unit_price
+from pricing import migrate_global, price_matrix, price_tiers, unit_price
 from pymongo import ReturnDocument
 from dotenv import load_dotenv
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -170,8 +170,7 @@ async def seed_data() -> None:
                 "role": role, "password_hash": bcrypt.hashpw(pw.encode(), bcrypt.gensalt()).decode()}})
     await db.users.update_many({"customer_type": {"$exists": False}}, {"$set": {"customer_type": "langsung"}})
     await db.users.update_many({"role": {"$exists": False}}, {"$set": {"role": "customer"}})
-    if not await db.settings.find_one({"key": "pricing"}):
-        await db.settings.insert_one({**DEFAULT_PRICING})
+    await migrate_global(db)  # former global discounts -> per-product rupiah tiers (once)
     admin_u = await db.users.find_one({"email": os.environ["ADMIN_EMAIL"]}, {"user_id": 1})
     if admin_u and not await db.stores.find_one({"store_id": seller.PGS_STORE_ID}):
         await db.stores.insert_one({"store_id": seller.PGS_STORE_ID, "owner_id": admin_u["user_id"], "name": "PGS Official",
@@ -393,24 +392,9 @@ class Order(BaseModel):
     created_at: datetime
 
 
-class QtyTier(BaseModel):
-    min_qty: int = Field(ge=2)
-    mode: str = Field(default="percent", pattern="^(percent|rupiah)$")
-    value: float = Field(ge=0)
-
-
-class PricingIn(BaseModel):
-    type_discounts: dict[str, float]
-    type_discount_modes: dict[str, str] = {}
-    qty_tiers: List[QtyTier] = []
-
-
 class CustomerTypeIn(BaseModel):
     customer_type: str = Field(pattern="^(langsung|pengecer|reseller)$")
 
-
-class ProductTiersIn(BaseModel):
-    tier_prices: dict[str, List[PriceTier]]
 
 
 def _hash(password: str) -> str:
@@ -662,10 +646,10 @@ async def _hidden_stores() -> List[str]:
     return [s["store_id"] for s in await db.stores.find({"status": {"$ne": "active"}}, {"store_id": 1}).to_list(5000)]
 
 
-def _product_out(d: dict, ctype: str, pricing: dict, flash: Optional[dict] = None) -> Product:
-    tiers = price_tiers(d, ctype, pricing)
-    matrix = price_matrix(d, pricing)
-    all_prices = [r[c] for r in matrix for c in CUSTOMER_TYPES] or [d.get("price", 0)]
+def _product_out(d: dict, ctype: str, flash: Optional[dict] = None) -> Product:
+    tiers = price_tiers(d, ctype)
+    matrix = price_matrix(d)
+    all_prices = [t["price"] for t in tiers] or [d.get("price", 0)]  # range for this buyer's own category only
     fp = (flash or {}).get("prices", {}).get(d["product_id"])
     d = {**d, "variants": [{k: v.get(k) for k in ("variant_id", "values", "name", "price", "stock", "sku", "image")}
                            for v in d.get("variants") or [] if v.get("active", True)]}
@@ -709,9 +693,9 @@ async def list_products(
     docs = await _apply_stock(await db.products.find(query, {"_id": 0}).sort(sort_map[sort]).skip(skip).limit(limit).to_list(limit), ctx)
     if ctx == ALL_BRANCHES and sort in ("popular", "newest"):
         docs.sort(key=lambda d: not d.get("in_stock", True))  # stable: in-stock (any branch) first within the page
-    pricing, flash = await get_pricing(db), await promo.active_flash(db)
+    flash = await promo.active_flash(db)
     ctype = (user or {}).get("customer_type", "langsung")
-    return [_product_out(d, ctype, pricing, flash) for d in docs]
+    return [_product_out(d, ctype, flash) for d in docs]
 
 
 @api.get("/products/count")
@@ -727,7 +711,7 @@ async def get_product(product_id: str, user=Depends(get_optional_user), x_store_
     if not doc:
         raise HTTPException(status_code=404, detail="Produk tidak ditemukan")
     await _apply_stock([doc], ctx)
-    return _product_out(doc, (user or {}).get("customer_type", "langsung"), await get_pricing(db), await promo.active_flash(db))
+    return _product_out(doc, (user or {}).get("customer_type", "langsung"), await promo.active_flash(db))
 
 
 # ---------------------------------------------------------------------------
@@ -752,7 +736,7 @@ async def _load_cart_detailed(owner: str, only_store: Optional[str] = None) -> C
     items = [i for i in cart.get("items", []) if not only_store or i.get("store_id", seller.PGS_STORE_ID) == only_store]
     if not items:
         return CartOut(items=[], subtotal=0, item_count=0, customer_type=ctype)
-    pricing, flash = await get_pricing(db), await promo.active_flash(db)
+    flash = await promo.active_flash(db)
     flash_prices = (flash or {}).get("prices", {})
     ids = [i["product_id"] for i in items]
     prods = {p["product_id"]: p for p in await db.products.find({"product_id": {"$in": ids}}, {"_id": 0}).to_list(500)}
@@ -775,10 +759,10 @@ async def _load_cart_detailed(owner: str, only_store: Optional[str] = None) -> C
             p = {**p, "price": v["price"], "original_price": v["price"], "tier_prices": {}, "image": v.get("image") or p["image"]}
             stock = v["stock"]
         qty = it["quantity"]
-        price = unit_price(p, ctype, qty, pricing)
+        price = unit_price(p, ctype, qty)
         if flash_prices.get(p["product_id"]) and not v:
             price = min(price, flash_prices[p["product_id"]])
-        nxt = next((t for t in price_tiers(p, ctype, pricing) if t["min_qty"] > qty), None)
+        nxt = next((t for t in price_tiers(p, ctype) if t["min_qty"] > qty), None)
         detailed.append(CartItemDetailed(
             product_id=it["product_id"], quantity=qty, name=p["name"], price=price, base_price=p["price"],
             original_price=p["original_price"], image=p["image"], stock=stock,
@@ -876,9 +860,9 @@ async def get_wishlist(owner: str = Depends(get_owner)):
     ids = doc.get("items", [])
     if not ids:
         return WishlistOut(items=[])
-    ctype, pricing, flash = await _ctype_for_owner(owner), await get_pricing(db), await promo.active_flash(db)
+    ctype, flash = await _ctype_for_owner(owner), await promo.active_flash(db)
     prods = await db.products.find({"product_id": {"$in": ids}}, {"_id": 0}).to_list(500)
-    return WishlistOut(items=[_product_out(p, ctype, pricing, flash) for p in prods])
+    return WishlistOut(items=[_product_out(p, ctype, flash) for p in prods])
 
 
 @api.post("/wishlist/{product_id}", response_model=WishlistOut)
@@ -1167,29 +1151,6 @@ async def admin_order_status(order_id: str, body: OrderStatusIn, _=Depends(requi
     return _order_out(d)
 
 
-@api.get("/admin/pricing")
-async def admin_get_pricing(_=Depends(require_admin)):
-    return await get_pricing(db)
-
-
-@api.put("/admin/pricing")
-async def admin_set_pricing(body: PricingIn, _=Depends(require_admin)):
-    modes = {t: ("rupiah" if body.type_discount_modes.get(t) == "rupiah" else "percent") for t in CUSTOMER_TYPES}
-    td = {}
-    for t in CUSTOMER_TYPES:
-        v = max(0.0, float(body.type_discounts.get(t, 0)))
-        if modes[t] == "percent" and v > 100:
-            raise HTTPException(status_code=400, detail="Potongan persen maksimal 100%")
-        td[t] = v
-    for t in body.qty_tiers:
-        if t.mode == "percent" and t.value > 100:
-            raise HTTPException(status_code=400, detail="Potongan persen maksimal 100%")
-    tiers = sorted({t.min_qty: t for t in body.qty_tiers}.values(), key=lambda t: t.min_qty)
-    doc = {"key": "pricing", "type_discounts": td, "type_discount_modes": modes, "qty_tiers": [t.model_dump() for t in tiers]}
-    await db.settings.update_one({"key": "pricing"}, {"$set": doc}, upsert=True)
-    return doc
-
-
 @api.get("/admin/customers", response_model=List[User])
 async def admin_customers(q: Optional[str] = None, _=Depends(require_admin)):
     query: dict = {}
@@ -1209,28 +1170,6 @@ async def admin_set_customer_type(user_id: str, body: CustomerTypeIn, _=Depends(
     return _user_out(res)
 
 
-@api.get("/admin/products/{product_id}/tiers")
-async def admin_get_tiers(product_id: str, _=Depends(require_admin)):
-    d = await db.products.find_one({"product_id": product_id}, {"_id": 0, "product_id": 1, "name": 1, "price": 1, "image": 1, "tier_prices": 1})
-    if not d:
-        raise HTTPException(status_code=404, detail="Produk tidak ditemukan")
-    d["tier_prices"] = {t: (d.get("tier_prices") or {}).get(t, []) for t in CUSTOMER_TYPES}
-    return d
-
-
-@api.put("/admin/products/{product_id}/tiers")
-async def admin_set_tiers(product_id: str, body: ProductTiersIn, admin=Depends(require_admin)):
-    clean = {}
-    for t in CUSTOMER_TYPES:
-        rows = {r.min_qty: r for r in body.tier_prices.get(t, []) if r.price > 0}
-        clean[t] = [r.model_dump() for r in sorted(rows.values(), key=lambda r: r.min_qty)]
-    old = await db.products.find_one({"product_id": product_id}, {"_id": 0, "product_id": 1, "name": 1, "store_id": 1, "tier_prices": 1})
-    res = await db.products.update_one({"product_id": product_id}, {"$set": {"tier_prices": clean}})
-    if res.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Produk tidak ditemukan")
-    await history.record(db, admin, old.get("store_id") or seller.PGS_STORE_ID, old, {"tier_prices": old.get("tier_prices") or {}},
-                         {"tier_prices": {k: v for k, v in clean.items()}}, "tiers")
-    return {"product_id": product_id, "tier_prices": clean}
 
 
 # ---------------------------------------------------------------------------
@@ -1291,12 +1230,12 @@ async def recommendations(
         ]).to_list(limit)
     await _apply_stock(docs, ALL_BRANCHES)
     docs = [d for d in docs if d.get("in_stock", True) and d.get("stock", 0) > 0]
-    pricing, flash = await get_pricing(db), await promo.active_flash(db)
+    flash = await promo.active_flash(db)
     ctype = (user or {}).get("customer_type", "langsung")
-    return [_product_out(d, ctype, pricing, flash) for d in docs]
+    return [_product_out(d, ctype, flash) for d in docs]
 
 async def _product_out_for_user(d: dict, user: dict) -> Product:
-    return _product_out(d, user.get("customer_type", "langsung"), await get_pricing(db), await promo.active_flash(db))
+    return _product_out(d, user.get("customer_type", "langsung"), await promo.active_flash(db))
 
 
 ACCT = account.register(api, db, get_current_user, _user_out, _make_token)

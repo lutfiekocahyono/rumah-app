@@ -30,11 +30,11 @@ export function FieldError({ msg, testID }: { msg?: string; testID?: string }) {
   ) : null;
 }
 
-export function Input({ label, required, error, hint, counter, prefix, testID, ...p }: TextInputProps & {
-  label: string; required?: boolean; error?: string; hint?: string; counter?: string; prefix?: string; testID: string;
+export function Input({ label, required, error, hint, counter, prefix, testID, compact, ...p }: TextInputProps & {
+  label: string; required?: boolean; error?: string; hint?: string; counter?: string; prefix?: string; testID: string; compact?: boolean;
 }) {
   return (
-    <View style={{ gap: 4, flex: 1, minWidth: 140 }}>
+    <View style={{ gap: 4, flex: 1, minWidth: compact ? 0 : 140 }}>
       <View style={{ flexDirection: "row" }}>
         <Text style={[ui.label, { flex: 1 }]}>{label}{required ? <Text style={{ color: colors.error }}> *</Text> : null}</Text>
         {counter ? <Text style={ui.hint}>{counter}</Text> : null}

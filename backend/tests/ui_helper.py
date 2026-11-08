@@ -1,4 +1,4 @@
-# Helper for UI tests: setup (pricing + reseller + COD order) and reset
+# Helper for UI tests: setup (reseller + COD order) and reset. NOTE: "pricing" cmd is OBSOLETE since iter30 (global /admin/pricing removed -> 404)
 import os, sys, json, requests
 API = os.environ["EXPO_PUBLIC_BACKEND_URL"].rstrip("/") + "/api"
 

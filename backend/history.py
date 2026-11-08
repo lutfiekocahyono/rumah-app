@@ -17,6 +17,7 @@ KIND = {"price": "price", "original_price": "price", "tier_prices": "price", "st
 def snap(p: dict) -> dict:
     """The price/stock part of a product document."""
     return {"price": p.get("price", 0), "original_price": p.get("original_price") or p.get("price", 0), "stock": p.get("stock", 0),
+            "tier_prices": p.get("tier_prices") or {},
             "variants": {v.get("variant_id"): {"name": v.get("name") or " / ".join(v.get("values", [])), "price": v.get("price", 0),
                                                "stock": v.get("stock", 0)} for v in p.get("variants") or []}}
 

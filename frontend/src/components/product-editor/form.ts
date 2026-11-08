@@ -1,4 +1,4 @@
-import type { Category, ProductForm, VariantOption, VariantRow } from "@/src/api";
+import { CUSTOMER_TYPE_LABEL, type Category, type CustomerType, type ProductForm, type VariantOption, type VariantRow } from "@/src/api";
 
 export const EMPTY_FORM: ProductForm = {
   name: "", category: "", subcategory: "", brand: "", sku: "", condition: "new", showcase: "", status: "active",
@@ -6,7 +6,7 @@ export const EMPTY_FORM: ProductForm = {
   variants_enabled: false, variant_options: [], variants: [],
   specs: {}, weight_grams: 0, length_cm: 0, width_cm: 0, height_cm: 0,
   couriers: [], ship_regular: true, ship_cargo: false, preorder: false, preorder_days: 0, processing_days: 1,
-  seo_title: "", meta_description: "", keywords: [],
+  seo_title: "", meta_description: "", keywords: [], tier_prices: {},
 };
 export type Errors = Record<string, string>;
 export const MIN_DESC = 30;
@@ -61,6 +61,23 @@ export function validateForm(f: ProductForm, cats: Category[]): Errors {
   if (dims.some(Boolean) && !dims.every(Boolean)) e.dimensions = "Isi panjang, lebar, dan tinggi (atau kosongkan semuanya)";
   if (!f.ship_regular && !f.ship_cargo) e.shipping = "Pilih minimal satu jenis pengiriman (reguler atau kargo)";
   if (f.preorder && (f.preorder_days < 1 || f.preorder_days > 90)) e.preorder_days = "Lama pre-order 1–90 hari";
+  if (!f.variants_enabled) {
+    const base = f.discount_price || f.price;
+    (Object.keys(f.tier_prices) as CustomerType[]).forEach((t) => {
+      const rows = f.tier_prices[t] ?? [];
+      const label = CUSTOMER_TYPE_LABEL[t];
+      const qs = rows.map((r) => r.min_qty);
+      if (rows.some((r) => r.min_qty < 1)) e[`tiers.${t}`] = `${label}: jumlah beli minimal 1`;
+      else if (new Set(qs).size !== qs.length) e[`tiers.${t}`] = `${label}: jumlah beli tiap tingkat tidak boleh sama`;
+      else if (rows.some((r) => r.price < 100)) e[`tiers.${t}`] = `${label}: harga tiap tingkat minimal Rp100`;
+      else {
+        const srt = [...rows].sort((a, b) => a.min_qty - b.min_qty);
+        const one = srt.filter((r) => r.min_qty === 1).map((r) => r.price);
+        const prices = [...(one.length ? one : t === "langsung" ? [base] : []), ...srt.filter((r) => r.min_qty > 1).map((r) => r.price)];
+        if (prices.some((p, i) => i > 0 && p > prices[i - 1])) e[`tiers.${t}`] = `${label}: harga tingkat dengan jumlah lebih banyak tidak boleh lebih mahal`;
+      }
+    });
+  }
   return e;
 }
 

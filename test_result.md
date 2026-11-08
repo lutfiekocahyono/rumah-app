@@ -121,3 +121,9 @@
 - Recorded from: product-editor publish (edit), /product-editor/bulk, /product-editor/import (product + Variasi rows), PUT /seller/inventory/{id} (branch stock under the branch store_id), PUT /admin/products/{id}/tiers.
 - Frontend: /product-editor/history (sidebar "Riwayat Harga & Stok", filters, admin store pills, ?product= filter), editor button pe-history.
 - "URL Foto"/"Maks. Beli" headers recognized (fixed iter 28).
+
+## Iteration 30 — Harga grosir per produk (global dihapus)
+- pricing.py rewritten: product.tier_prices {langsung|pengecer|reseller: [{min_qty, price (Rupiah)}]}; langsung without qty-1 row = product price; pengecer/reseller without rows fall back to langsung table. No global discounts, no store restriction.
+- One-time migration (settings key pricing_per_product): owner's former global (Pengecer 3%, Reseller 5%, qty 6 -2%, qty 12 -4%) copied to all 6618 pgs-official products as rupiah tiers; settings 'pricing' deleted. /api/admin/pricing GET/PUT removed; Admin menu "Pengaturan Harga" removed (admin index + akun tab); screen app/admin/pricing.tsx deleted.
+- Product editor: ProductForm.tier_prices + validation (unique qty, price>=100, larger qty not more expensive; only non-variant); new section WholesaleSection (testIDs pe-wholesale, pe-tier-type-{t}, pe-tier-row-i, pe-tier-qty-i, pe-tier-price-i, pe-tier-range-i, pe-tier-del-i, pe-tier-add, pe-tier-copy, pe-tier-fallback, pe-tier-implicit, pe-tier-error). to_product saves tier_prices (variants -> {}).
+- Bulk edit price (pct/up/down) also scales tiers; history snap includes tier_prices.

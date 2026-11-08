@@ -15,7 +15,8 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from pydantic import BaseModel, Field, ValidationError
 
 import history
-from product_editor import ProductForm, to_form, to_product, validate
+from pricing import scale_tiers
+from product_editor import ProductForm, TierRow, to_form, to_product, validate
 
 MAX_ROWS = 10000
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -165,11 +166,15 @@ def register(api, db, *, actor: Callable, target_store: Callable, editable: Call
             for r in f.variants:
                 r.price = max(0, fn(r.price, v))
             return "Harga variasi jadi kurang dari Rp100" if any(r.active and r.price < 100 for r in f.variants) else None
+        old_sell = f.discount_price or f.price
         normal = max(0, fn(f.price, v))
         disc = f.discount_price if mode == "set" else (max(0, fn(f.discount_price, v)) if f.discount_price else 0)
         if normal < 100:
             return "Harga jadi kurang dari Rp100"
         f.price, f.discount_price = normal, disc if 0 < disc < normal else 0
+        # wholesale tiers move in proportion to the selling price, so buying more never costs more
+        scaled = scale_tiers({k: [r.model_dump() for r in rows] for k, rows in f.tier_prices.items()}, old_sell, f.discount_price or f.price)
+        f.tier_prices = {k: [TierRow(**r) for r in rows] for k, rows in scaled.items()}
         return None
 
     def new_stock(f: ProductForm, mode: str, v: int) -> None:
@@ -204,7 +209,7 @@ def register(api, db, *, actor: Callable, target_store: Callable, editable: Call
             if body.stock_mode:
                 new_stock(f, body.stock_mode, body.stock_value)
             doc = to_product(f, store)
-            upd = {k: doc[k] for k in ("price", "original_price", "discount", "stock", "in_stock", "variants", "updated_at")}
+            upd = {k: doc[k] for k in ("price", "original_price", "discount", "stock", "in_stock", "variants", "tier_prices", "updated_at")}
             if body.status:
                 upd["status"] = body.status
             if upd["stock"] > p.get("stock", 0):
@@ -466,6 +471,8 @@ def register(api, db, *, actor: Callable, target_store: Callable, editable: Call
                 if base["variants_enabled"]:
                     d = {k: v for k, v in d.items() if k not in ("price", "discount_price", "stock")}
                 f, errs = apply_patch(base, d, cats, by_id)
+                if f.get("tier_prices") and (f["discount_price"] or f["price"]) != (base["discount_price"] or base["price"]):
+                    f["tier_prices"] = scale_tiers(f["tier_prices"], base["discount_price"] or base["price"], f["discount_price"] or f["price"])
                 try:
                     form = ProductForm(**f)
                 except ValidationError as e:

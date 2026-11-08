@@ -220,8 +220,8 @@ export default function ProductDetail() {
               <Text style={styles.sectionTitle}>Harga Grosir</Text>
               <View style={styles.gTable} testID="price-matrix-table">
                 <View style={styles.gRow}>
-                  <Text style={[styles.gQty, styles.gHead]}>QUANTITY</Text>
-                  <Text style={[styles.gDisc, styles.gHead]}>DISCOUNT (%)</Text>
+                  <Text style={[styles.gQty, styles.gHead]}>JUMLAH BELI</Text>
+                  <Text style={[styles.gDisc, styles.gHead]}>HEMAT (%)</Text>
                   <Text style={[styles.gPrice, styles.gHead]}>HARGA</Text>
                 </View>
                 {tiers.map((t, i) => {

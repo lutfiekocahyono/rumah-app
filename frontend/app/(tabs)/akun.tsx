@@ -28,9 +28,8 @@ export default function Akun() {
           items: [
             { icon: "speedometer-outline", label: "Admin Panel", to: "/admin" },
             { icon: "receipt-outline", label: "Pesanan Masuk", to: "/admin/orders" },
-            { icon: "pricetags-outline", label: "Pengaturan Harga", to: "/admin/pricing" },
             { icon: "people-outline", label: "Kategori Pelanggan", to: "/admin/customers" },
-            { icon: "cube-outline", label: "Harga Manual per Produk", to: "/admin/products" },
+            { icon: "cube-outline", label: "Harga Grosir per Produk", to: "/admin/products" },
             { icon: "storefront-outline", label: "Verifikasi Toko", to: "/admin/stores" },
             { icon: "alert-circle-outline", label: "Komplain & Refund", to: "/complaint?scope=admin" },
           ],

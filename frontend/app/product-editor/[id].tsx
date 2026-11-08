@@ -17,6 +17,7 @@ import { VariantsSection } from "@/src/components/product-editor/variants-sectio
 import { Completeness, PriceStock } from "@/src/components/product-editor/price-stock";
 import { ShippingSection, SpecsSection } from "@/src/components/product-editor/specs-shipping";
 import { SeoSection } from "@/src/components/product-editor/seo-section";
+import { WholesaleSection } from "@/src/components/product-editor/wholesale-section";
 import { ProductPreview } from "@/src/components/product-editor/product-preview";
 
 export default function ProductEditor() {
@@ -216,6 +217,7 @@ export default function ProductEditor() {
                   maxImages={ctx.limits.images} imageMb={ctx.limits.image_mb} videoMb={ctx.limits.video_mb} />
                 <VariantsSection form={form} set={set} errors={errors} maxCombos={ctx.limits.combos} />
                 <PriceStock form={form} set={set} errors={errors} />
+                <WholesaleSection form={form} set={set} errors={errors} />
                 <SpecsSection form={form} set={set} cats={cats} />
                 <ShippingSection form={form} set={set} errors={errors} ctx={ctx} storeId={storeId} />
                 <SeoSection form={form} set={set} cats={cats} storeName={storeName} />

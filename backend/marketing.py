@@ -11,7 +11,7 @@ from pymongo import ReturnDocument
 
 import promo
 import storage
-from pricing import get_pricing
+
 
 logger = logging.getLogger(__name__)
 
@@ -116,8 +116,8 @@ def register(api, db, *, require_admin, get_owner, get_optional_owner, get_optio
             return {"active": False, "items": []}
         ids = list(flash["prices"].keys())
         docs = {d["product_id"]: d for d in await db.products.find({"product_id": {"$in": ids}}, {"_id": 0}).to_list(100)}
-        pricing, ctype = await get_pricing(db), (user or {}).get("customer_type", "langsung")
-        items = [product_out(docs[i], ctype, pricing, flash) for i in ids if i in docs]
+        ctype = (user or {}).get("customer_type", "langsung")
+        items = [product_out(docs[i], ctype, flash) for i in ids if i in docs]
         return {"active": True, "title": flash["title"], "ends_at": flash["ends_at"], "items": items}
 
     @api.get("/vouchers")

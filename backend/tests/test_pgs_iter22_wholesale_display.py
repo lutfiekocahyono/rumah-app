@@ -1,5 +1,5 @@
 # Iter22: wholesale price display (price_min/max range + price_tiers) when admin pricing is configured.
-# Requires admin pricing to be set to: pengecer 3%, reseller 5%, qty tiers 6->2%, 12->4% (set via UI before run).
+# Since iter30 the former global settings (pengecer 3%, reseller 5%, 6->2%, 12->4%) live as per-product rupiah tiers (migrated).
 import os
 import pytest
 import requests
@@ -25,10 +25,7 @@ def demo():
 
 @pytest.fixture(scope="module", autouse=True)
 def require_pricing(admin):
-    p = requests.get(f"{API}/admin/pricing", headers=admin).json()
-    if not p.get("qty_tiers"):
-        pytest.skip("temporary pricing not configured")
-    return p
+    return None  # global /admin/pricing removed in iter30; values come from migrated per-product tier_prices
 
 
 @pytest.fixture(scope="module")
@@ -46,7 +43,7 @@ class TestListDisplay:
         assert off and all(p["price_max"] > p["price_min"] for p in off)
         p = off[0]
         assert p["price_max"] == p["price"]
-        assert abs(p["price_min"] - round(round(p["price"] * 0.95) * 0.96)) <= 1
+        assert abs(p["price_min"] - round(p["price"] * 0.96)) <= 1  # guest = Pembeli Langsung range (12 pcs -4%)
         assert [t["min_qty"] for t in p["price_tiers"]] == [1, 6, 12]
 
     def test_home_feed_has_range(self):

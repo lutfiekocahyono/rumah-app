@@ -39,11 +39,9 @@ def prods():
 @pytest.fixture(scope="module", autouse=True)
 def reset_after(admin, demo, prods):
     # snapshot the shop's real pricing and restore it afterwards (never wipe it to zero)
-    saved = requests.get(f"{API}/admin/pricing", headers=admin).json()
     saved_tiers = {p["product_id"]: requests.get(f"{API}/admin/products/{p['product_id']}/tiers", headers=admin).json().get("tier_prices") for p in prods[:2]}
     yield
     h, u = demo
-    requests.put(f"{API}/admin/pricing", headers=admin, json={k: saved[k] for k in ("type_discounts", "type_discount_modes", "qty_tiers") if k in saved})
     requests.put(f"{API}/admin/customers/{u['user_id']}", headers=admin, json={"customer_type": "langsung"})
     for p in prods[:2]:
         requests.put(f"{API}/admin/products/{p['product_id']}/tiers", headers=admin,
@@ -100,7 +98,7 @@ class TestAuthGuards:
         r = requests.get(f"{API}/cart", headers={"Authorization": "Bearer invalid.token.x"})
         assert r.status_code == 401
 
-    @pytest.mark.parametrize("path", ["/admin/stats", "/admin/orders", "/admin/pricing", "/admin/customers"])
+    @pytest.mark.parametrize("path", ["/admin/stats", "/admin/orders", "/admin/customers"])
     def test_non_admin_403(self, demo, path):
         r = requests.get(f"{API}{path}", headers=demo[0])
         assert r.status_code == 403
@@ -109,7 +107,8 @@ class TestAuthGuards:
         assert requests.get(f"{API}/admin/stats").status_code in (401, 403)
 
 
-# Tiered pricing
+# Tiered pricing - OBSOLETE since iter30: global /admin/pricing removed (per-product tiers, see test_pgs_iter30_product_wholesale.py)
+@pytest.mark.skip(reason="global /admin/pricing removed in iter30")
 class TestPricing:
     def test_global_pricing_reseller(self, admin, demo, prods):
         h, u = demo

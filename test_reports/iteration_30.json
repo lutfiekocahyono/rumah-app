@@ -1,0 +1,50 @@
+{
+  "summary": "Iter30 per-product wholesale (Harga Grosir) tested end-to-end. Backend 14/14 new tests pass (migration of all 6618 pgs-official simple products verified = exact legacy values, pgs-9849 tiers correct, /admin/pricing GET/PUT 404/405, no-tier product single row, per-type tiers + pengecer fallback, cart unit price by qty for demo (langsung), 422 validations, variant products save {}, editor GET returns tiers, bulk up_pct scales tiers + history). Frontend: editor (new & existing) Harga Grosir section works (pills w/ counts, implicit first row, range labels 1–5/6–11/12+, fallback note + Salin, add/delete, inline error on publish, publish saves + history), detail page table only when tiers exist, product card range only then, admin index/Akun no 'Pengaturan Harga', /admin/pricing route unmatched. Found 1 real bug: bulk 'set' price mode leaves tiers untouched/unvalidated (qty 6 becomes more expensive than qty 1 and product becomes un-publishable). Plus stale text on legacy admin manual-tier page and mobile overflow in tier rows. No deprecated expo packages detected.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/product-editor/bulk (price_mode=set)", "issue": "Reproduced: product price 10000 with langsung tiers 6:9000/12:8500, reseller 1:9500 -> bulk set 8000 returns 200 updated=1, but tiers unchanged: price_tiers become [1:8000, 6:9000, 12:8500] (buying 6 costs MORE than 1), reseller 9500 > langsung 8000, price range 8000-9500. Subsequent editor re-publish of the unchanged form fails 422 'harga tingkat dengan jumlah lebih banyak tidak boleh lebih mahal'. RCA: product_bulk.py:173 'if mode != \"set\"' skips tiers and new_price() never runs the tier validation. Same risk for Excel import price updates. Fix: in set mode scale tiers proportionally (new/old) or skip product with reason when any tier > new base price.", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "PUT /api/admin/products/{id}/tiers", "issue": "Legacy admin manual-tier endpoint still active and only uses clean_tiers (no duplicate/monotonic/min Rp100 validation, unlike editor). Either remove (editor now owns tiers) or reuse product_editor.validate tier rules."},
+      {"endpoint": "GET /api/products/{id} price_min/price_max", "issue": "Range is computed over ALL customer types (price_matrix). A Pembeli Langsung viewer of a product that only has reseller tiers sees 'Rentang harga' including the reseller price but gets no wholesale table (tiers.length==1). Consider range from the viewer's own price_tiers."},
+      {"endpoint": "pricing.price_tiers", "issue": "Once a type has its own table it fully replaces langsung table: reseller with only 1:9500 pays 9500 at qty 12 while langsung pays 8500. By design per docstring, but editor gives no warning; consider hint in UI."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Admin 'Harga Manual per Produk' page", "issue": "Stale copy references removed global settings: 'Jika satu kategori pelanggan dikosongkan, harga mengikuti Pengaturan Harga umum' and 'Mengikuti pengaturan umum'. Reference: /app/frontend/app/admin/product/[id].tsx:70,75. Menu entries still in admin/index.tsx:18 and (tabs)/akun.tsx:32 — duplicate of editor Harga Grosir; consider removing or retexting ('mengikuti Pembeli Langsung').", "testID": "tiers-langsung", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Product editor > Harga Grosir (390px)", "issues": ["Tier row overflows: 'Harga / pcs' input extends beyond the card's right edge (clipped) because inner View has minWidth 220 + range label width 90 + delete 44 (wholesale-section.tsx:74,101); delete icon wraps onto its own line making each tier ~140px tall. Stack range label above inputs on narrow screens or drop minWidth."]},
+      {"screen": "Product detail > Harga Grosir table", "issues": ["Table header is English ('QUANTITY', 'DISCOUNT (%)') in a Bahasa Indonesia app — use 'JUMLAH', 'HEMAT (%)'."]},
+      {"screen": "Product editor > Harga Grosir", "issues": ["Inline tier errors only appear after pressing Simpan/Publikasikan (duplicate qty typed live shows no error until submit) — acceptable but could validate live."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_pgs_iter30_product_wholesale.py", "/app/backend/tests/ui_iter30_helper.py", "/app/test_reports/pytest/pytest_iter30.xml"],
+  "action_items": [
+    "HIGH: product_bulk.py new_price(): handle tier_prices in 'set' mode (scale proportionally or skip with reason) and validate tiers after any bulk/import price change so qty tiers never exceed the base price.",
+    "Update/remove legacy admin manual tiers page text 'Pengaturan Harga umum' / 'Mengikuti pengaturan umum' (app/admin/product/[id].tsx:70,75); consider removing menu 'Harga Manual per Produk' since editor owns tiers; add validation to PUT /admin/products/{id}/tiers if kept.",
+    "Fix tier row overflow on mobile in wholesale-section.tsx (minWidth 220 / range width 90).",
+    "Optional: compute price range from viewer's own tiers; localize detail table header."
+  ],
+  "critical_code_review_comments": [
+    "pricing.legacy_tiers/migrate_global: idempotent via settings key 'pricing_per_product'; verified all 6618 products equal legacy_tiers({price}) exactly.",
+    "product_editor.validate and form.ts validateForm are consistent (dup qty, <Rp100, monotonic incl. implicit harga jual for langsung). Frontend additionally checks min_qty<1.",
+    "server.py is 1314 lines (>700) — should be split further."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_pgs_iter30_product_wholesale.py (new)",
+    "/app/backend/tests/ui_iter30_helper.py (new)",
+    "/app/backend/tests/test_pgs_iter2.py (removed /admin/pricing calls & parametrize; TestPricing skipped as obsolete)",
+    "/app/backend/tests/test_pgs_iter22_wholesale_display.py (dropped /admin/pricing guard; now passes 6/6 on migrated per-product tiers)",
+    "/app/backend/tests/ui_helper.py (header note: 'pricing' cmd obsolete)"
+  ],
+  "success_rate": {"backend": "100% of new iter30 tests (14/14); 1 HIGH bug found by extra edge test (bulk set)", "frontend": "~90% (all requested flows work; overflow + stale text issues)"},
+  "seed_data_creation": "TEST_Grosir* products created via acct1 and deleted by id; one autosave draft for the test product deleted by draft_id. Catalog and demo customer_type (langsung) unchanged. Note: an earlier run of old test_pgs_iter2.py executed DELETE /api/cart for demo@pgs.id (demo cart cleared) and admin tiers PUT/restore on 2 catalog products — verified afterwards all 6618 catalog tiers equal migrated values.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run pytest with -n0 and export EXPO_PUBLIC_BACKEND_URL from /app/frontend/.env. test_pgs_iter2.py still has pre-existing unrelated failures (gateway_503 midtrans/xendit, cod_and_admin_flow shipping fee) — env/config drift, not iter30. UI: set localStorage 'pgs_auth_token'; editor publish opens confirm modal (testID confirm-ok); avoid force=True clicks in editor (bottom bar overlays). Wholesale testIDs: pe-wholesale, pe-tier-type-{t}, pe-tier-implicit, pe-tier-row-{i}, pe-tier-qty-{i}, pe-tier-price-{i}, pe-tier-range-{i}, pe-tier-del-{i}, pe-tier-add, pe-tier-fallback, pe-tier-copy, pe-tier-error; detail: price-matrix-table, matrix-row-{q}, pd-price-range; card: price-range-{pid}.",
+  "rca_of_issue": "Bulk set bug: product_bulk.py:173 only moves tiers for relative modes; 'set' leaves absolute rupiah tiers that may exceed the new base price and no validation runs -> inverted pricing for buyers and editor 422 on next save."
+}

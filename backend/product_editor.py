@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field, field_validator
 import history
 import seller
 import storage
+from pricing import CUSTOMER_TYPE_LABELS, CUSTOMER_TYPES, MAX_TIERS, clean_tiers
 from shipping import is_cargo
 
 log = logging.getLogger(__name__)
@@ -42,6 +43,11 @@ class VariantRow(BaseModel):
     sku: str = Field(default="", max_length=40)
     image: str = ""
     active: bool = True
+
+
+class TierRow(BaseModel):
+    min_qty: int = Field(default=1, ge=1, le=99999)
+    price: int = Field(default=0, ge=0)
 
 
 class ProductForm(BaseModel):
@@ -82,6 +88,13 @@ class ProductForm(BaseModel):
     seo_title: str = Field(default="", max_length=70)
     meta_description: str = Field(default="", max_length=160)
     keywords: List[str] = Field(default=[], max_length=10)
+    # harga grosir: rupiah per tingkat jumlah beli, per kategori pelanggan
+    tier_prices: Dict[str, List[TierRow]] = {}
+
+    @field_validator("tier_prices")
+    @classmethod
+    def _tiers(cls, v: Dict[str, List["TierRow"]]) -> Dict[str, List["TierRow"]]:
+        return {k: rows[:MAX_TIERS] for k, rows in v.items() if k in CUSTOMER_TYPES}
 
     @field_validator("specs")
     @classmethod
@@ -159,6 +172,21 @@ async def validate(db, f: ProductForm) -> dict:
         e["shipping"] = "Pilih minimal satu jenis pengiriman (reguler atau kargo)"
     if f.preorder and not 1 <= f.preorder_days <= 90:
         e["preorder_days"] = "Lama pre-order 1–90 hari"
+    if not f.variants_enabled:
+        base = f.discount_price or f.price
+        for t, rows in f.tier_prices.items():
+            qs = [r.min_qty for r in rows]
+            label = CUSTOMER_TYPE_LABELS[t]
+            if len(set(qs)) != len(qs):
+                e[f"tiers.{t}"] = f"{label}: jumlah beli tiap tingkat tidak boleh sama"
+            elif any(r.price < 100 for r in rows):
+                e[f"tiers.{t}"] = f"{label}: harga tiap tingkat minimal Rp100"
+            else:
+                srt = sorted(rows, key=lambda r: r.min_qty)
+                start = [r.price for r in srt if r.min_qty == 1] or ([base] if t == "langsung" else [])
+                prices = start + [r.price for r in srt if r.min_qty > 1]
+                if any(b > a for a, b in zip(prices, prices[1:])):
+                    e[f"tiers.{t}"] = f"{label}: harga tingkat dengan jumlah lebih banyak tidak boleh lebih mahal"
     return e
 
 
@@ -191,6 +219,7 @@ def to_product(f: ProductForm, store: dict) -> dict:
         "preorder": f.preorder, "preorder_days": f.preorder_days if f.preorder else 0, "processing_days": f.processing_days,
         "seo_title": f.seo_title.strip(), "meta_description": f.meta_description.strip(),
         "keywords": list(dict.fromkeys(k.strip().lower()[:40] for k in f.keywords if k.strip())),
+        "tier_prices": {} if rows else clean_tiers({t: [r.model_dump() for r in v] for t, v in f.tier_prices.items()}),
         "store_id": store["store_id"], "store_name": store["name"], "updated_at": _now(),
     }
 
@@ -214,6 +243,7 @@ def to_form(p: dict) -> dict:
         couriers=p.get("couriers") or [], ship_regular=p.get("ship_regular", True), ship_cargo=p.get("ship_cargo", False),
         preorder=p.get("preorder", False), preorder_days=p.get("preorder_days") or 0, processing_days=p.get("processing_days") or 1,
         seo_title=(p.get("seo_title") or "")[:70], meta_description=(p.get("meta_description") or "")[:160], keywords=(p.get("keywords") or [])[:10],
+        tier_prices=clean_tiers(p.get("tier_prices") or {}),
     ).model_dump()
 
 

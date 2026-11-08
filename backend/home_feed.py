@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 
 import promo
 import seller
-from pricing import get_pricing
+
 
 SECTION_KEYS = ("popular", "newest", "recommended")
 SORTS = {"best_selling", "rating", "most_viewed", "newest", "random", "personal"}
@@ -117,9 +117,9 @@ def register(api, db, *, get_current_user, require_admin, get_optional_owner, ge
             await apply_stock(auto, all_branches)
             auto = [d for d in auto if d.get("in_stock", True) and d.get("stock", 0) > 0]
         page = (pinned_docs + auto)[skip:want]
-        pricing, flash = await get_pricing(db), await promo.active_flash(db)
+        flash = await promo.active_flash(db)
         ctype = (user or {}).get("customer_type", "langsung")
-        return [product_out(d, ctype, pricing, flash) for d in page]
+        return [product_out(d, ctype, flash) for d in page]
 
     def branch_of(x_store_id: Optional[str]) -> str:
         return x_store_id if x_store_id in seller.OFFICIAL_IDS else seller.PGS_STORE_ID

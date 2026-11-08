@@ -44,7 +44,7 @@ export default function AdminProducts() {
           contentContainerStyle={{ padding: spacing.lg, gap: spacing.sm, paddingBottom: insets.bottom + spacing.xl }}
           ListEmptyComponent={<Text style={styles.empty}>Produk tidak ditemukan</Text>}
           renderItem={({ item }) => (
-            <Pressable style={styles.row} testID={`admin-product-${item.product_id}`} onPress={() => router.push(`/admin/product/${item.product_id}` as any)}>
+            <Pressable style={styles.row} testID={`admin-product-${item.product_id}`} onPress={() => router.push(`/product-editor/${item.product_id}` as any)}>
               <Image source={item.image} style={styles.img} contentFit="cover" />
               <View style={{ flex: 1 }}>
                 <Text style={styles.name} numberOfLines={2}>{item.name}</Text>

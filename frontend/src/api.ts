@@ -137,12 +137,9 @@ export const api = {
   refreshOrder: (id: string) => req<Order>(`/orders/${id}/refresh`, { method: "POST" }),
 
   // admin
-  adminPricing: () => req<Pricing>("/admin/pricing"),
-  adminSavePricing: (p: Pricing) => req<Pricing>("/admin/pricing", { method: "PUT", body: JSON.stringify(p) }),
   adminCustomers: (q = "") => req<User[]>(`/admin/customers${q ? `?q=${encodeURIComponent(q)}` : ""}`),
   adminSetCustomerType: (user_id: string, customer_type: CustomerType) =>
     req<User>(`/admin/customers/${user_id}`, { method: "PUT", body: JSON.stringify({ customer_type }) }),
-  adminProductTiers: (id: string) => req<ProductTiers>(`/admin/products/${id}/tiers`),
   adminStats: () => req<AdminStats>("/admin/stats"),
   adminOrders: (status?: string, q?: string) => {
     const qs = new URLSearchParams();
@@ -154,8 +151,6 @@ export const api = {
   adminOrder: (id: string) => req<Order>(`/admin/orders/${id}`),
   adminSetOrderStatus: (id: string, status: Order["status"]) =>
     req<Order>(`/admin/orders/${id}/status`, { method: "PUT", body: JSON.stringify({ status }) }),
-  adminSaveProductTiers: (id: string, tier_prices: ProductTiers["tier_prices"]) =>
-    req<ProductTiers>(`/admin/products/${id}/tiers`, { method: "PUT", body: JSON.stringify({ tier_prices }) }),
 
   // homepage promo
   banners: () => req<Banner[]>("/banners"),
@@ -364,12 +359,6 @@ export const CUSTOMER_TYPE_LABEL: Record<CustomerType, string> = {
 };
 export type PriceTier = { min_qty: number; price: number };
 export type DiscountMode = "percent" | "rupiah";
-export type Pricing = {
-  type_discounts: Record<CustomerType, number>;
-  type_discount_modes: Record<CustomerType, DiscountMode>;
-  qty_tiers: { min_qty: number; mode: DiscountMode; value: number; discount_percent?: number }[];
-};
-export type ProductTiers = { product_id: string; name: string; price: number; image: string; tier_prices: Record<CustomerType, PriceTier[]> };
 export type StoreInfo = {
   name: string; tagline: string; phone: string; whatsapp: string; website: string;
   hours: { day: string; time: string }[];
@@ -429,6 +418,7 @@ export type ProductForm = {
   specs: Partial<Record<SpecKey, string>>; weight_grams: number; length_cm: number; width_cm: number; height_cm: number;
   couriers: string[]; ship_regular: boolean; ship_cargo: boolean; preorder: boolean; preorder_days: number; processing_days: number;
   seo_title: string; meta_description: string; keywords: string[];
+  tier_prices: Partial<Record<CustomerType, PriceTier[]>>;
 };
 export type SpecKey = "material" | "color" | "size" | "dimensions" | "weight" | "origin_country" | "warranty" | "extra";
 export type PriceLog = {
