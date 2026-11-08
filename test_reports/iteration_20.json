@@ -1,0 +1,41 @@
+{
+  "summary": "Iteration 20 tested the homepage sections Populer / Terbaru / Rekomendasi with per-branch rules. Backend, new suite tests/test_pgs_iter20_home_sections.py (run with -n0): 15 of 16 pass. Passing: GET /home/sections has the right shape for every branch, for no header and for an unknown X-Store-Id. Seller GET/PUT /seller/home-sections works for sidoarjo, jombang and jember; acct1 gets 403 and a request with no token gets 401. Admin GET/PUT /admin/home-sections/{id} works; an unknown branch gets 404 and a store admin gets 403. Validation: 'personal' sort on popular or newest -> 400; limit 31, an empty title or days 0 -> 422. Title and limit are respected. A disabled section returns enabled false with items [] and does not affect other branches. Pins: unknown ids are dropped; pins are merged and de-duplicated with the buyer's branch first (jombang [A,B] + sidoarjo [C,A] gives jombang A,B,C and sidoarjo/jember C,A,B); a removed pin disappears; pins only affect their own section. The category filter includes child categories. Sort by rating is descending; random returns the full limit; most_viewed puts the TEST product first after 2 views (POST /activity/view increments views). Newest: a TEST product created 30 days ago is excluded with days=7 and included with days=31. Lowering its stock does not set restocked_at; raising it through PUT /seller/inventory does, and the product then appears. The days window does not apply to popular. Sold: seller completing a pickup order adds the quantity; a repeated admin 'completed' does not count twice; admin cancel takes it off once. Buyer confirm after shipped adds 1, and a second confirm returns 400. Admin 'completed' adds the quantity, the product becomes #1 in best_selling popular with the correct sold value, and cancelling takes it off. The one failure: GET /home/sections/recommended pages overlap. skip=0 and skip=10 both contain pgs-9879, because $skip counts raw DB rows before out-of-stock items are filtered out. Regression: iter18 suite 12/12. Frontend at 375x667, no page errors. Seller sidoarjo: Seller dashboard nav 'Beranda' opens /seller/home-sections. All hs-* testIDs are present. Personal sort shows only on the Rekomendasi tab and hs-days only on the Terbaru tab. The picker search 'piring' returns 8 results; I added 2 pins, used move-down to reorder them, saved (hs-ok), and the order persisted. After a pin was removed and saved, it was gone. The home screen shows the custom popular title with the pinned product first. Admin: the 'Produk di Beranda' menu item and the home-settings link (home-settings-sections) both open /admin/home-sections. There are 3 branch chips; switching to the Jombang branch loads its rules; I disabled Terbaru and set a recommended title and category, and saved. As a guest with Jombang selected, newest-section is hidden and the recommended title shows. Load more went from 20 to 39 cards: one duplicate was removed client-side, which shows the paging bug in the UI. Deprecated packages: none found (no expo-av, expo-barcode-scanner or expo-background-fetch).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/home/sections/recommended?skip=&limit=", "issue": "Pages overlap or skip items. auto_skip is applied as a Mongo $skip before out-of-stock items are dropped in Python (home_feed.py:83-112). Reproduced: skip=0 and skip=10 both return pgs-9879. In the UI, load more added 19 instead of 20 cards. Also, pinned_docs is sliced after stock filtering ([skip:skip+limit]) but auto_skip = skip - len(pins) uses the raw pin count, so an out-of-stock pin makes the next page lose one item."},
+      {"endpoint": "GET /api/home/sections/recommended (sort=random)", "issue": "$sample on every page returns a full random page each time, so 'Lihat lebih banyak' never ends (recDone is never set) and pages repeat many items, which the client then filters out."},
+      {"endpoint": "PUT /api/admin/orders/{id}/status", "issue": "Pre-existing: there is no status-transition guard. Completed -> cancelled -> completed counts sold again, and setting a cancelled order to completed adds to sold even though its stock was already returned."},
+      {"endpoint": "PUT /api/seller/inventory/{id}", "issue": "Design note: restocked_at is a global field on the product. A restock at one branch makes the product 'new' in Produk Terbaru for buyers of every branch, even if stock at their branch is unchanged. Confirm this is intended."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Home load more (Rekomendasi)", "issue": "Load more showed 19 new items instead of 20 (overlap from the backend paging bug, removed client-side). With sort=random the button never goes away.", "affected_testIDs": ["home-load-more"]}
+    ],
+    "design_issues": [
+      {"screen": "Home sections editor", "issues": ["Category chips (hs-cat-*) are only 36px high and have no hitSlop, below the 44px minimum (home-sections-editor.tsx:166)", "If the title is left empty, the fallback for recommended is 'Rekomendasi', but the backend default is 'Rekomendasi untukmu' (home-sections-editor.tsx:74)"]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_pgs_iter20_home_sections.py", "/app/test_reports/pytest/pytest_iter20.xml"],
+  "action_items": [
+    "home_feed.section_items: make paging stable. Either filter by stock inside the aggregation (e.g. $lookup on store_stock or the summed stock) before $skip, or keep fetching until `need` in-stock items are found, and compute the auto offset from the in-stock pin count.",
+    "For sort=random in recommended paging: use a seeded or stable order (e.g. $sample only on the first page, or sort by a hash of product_id with a per-day seed) so that load more ends.",
+    "Optional: add a transition guard to admin order status (no completed after cancelled) to keep sold accurate.",
+    "Raise the hs-cat-* chip touch target to 44px (minHeight 44 or hitSlop)."
+  ],
+  "critical_code_review_comments": [
+    "home_feed.py: merged_pins reads all official docs on every section call, so 3x per /home/sections request. That is fine at this scale.",
+    "count_sold_once/uncount_sold_once are atomic via find_one_and_update on the sold_counted flag, and the once-only semantics were verified.",
+    "release_order (order_tasks) is used by admin and seller cancel and by COD expiry, so sold is taken off in all cancel paths."
+  ],
+  "updated_files": ["/app/backend/tests/test_pgs_iter20_home_sections.py"],
+  "success_rate": {"backend": "94% (15/16)", "frontend": "100% of tested flows work (1 minor paging dup visible)"},
+  "seed_data_creation": "A temporary TEST_hs_* product was inserted and deleted afterwards. Three TEST COD pickup orders were created and are all cancelled (sold_counted false, product sold restored). test_hs20_* buyer accounts were registered. The home_sections settings were restored: pgs-jombang has the defaults, and pgs-official and pgs-jember have no doc, as before.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run with: cd /app/backend && set -a && . /app/frontend/.env && set +a && python -m pytest tests/test_pgs_iter20_home_sections.py -n0. The suite snapshots and restores home_sections and inserts and removes its own TEST product. All catalog products have sold=0 and views=0 and were created on 2026-11-07, so every product is 'fresh' with days=7; use a TEST product with an old created_at to test the newest window. For UI, log in through /login (email-input/password-input/login-submit); injecting a token into localStorage did not work in my run (the seller page still showed 'Masuk').",
+  "rca_of_issue": "Paging overlap: section_items runs $sort, then $skip(auto_skip), then $limit(need+10) in Mongo, and only then drops stock<=0 rows in Python and keeps [:need]. If page 1 skipped k out-of-stock rows, it actually used raw rows 0..need+k-1, but the client sends skip=need for page 2, so page 2 starts at raw row need and repeats k items. Reproduce: GET /api/home/sections/recommended?skip=0&limit=10, then skip=10: pgs-9879 is in both. Fix: filter by stock before $skip, or return a cursor or offset based on raw rows."
+}

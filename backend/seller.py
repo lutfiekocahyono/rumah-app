@@ -125,6 +125,21 @@ async def restock_once(db, order_id: str) -> None:
         await adjust_stock(db, o, +1)
 
 
+async def count_sold_once(db, order_id: str) -> None:
+    """Completed order: add its quantities to each product's 'terjual' counter (once)."""
+    o = await db.orders.find_one_and_update({"order_id": order_id, "status": "completed", "sold_counted": {"$ne": True}},
+                                            {"$set": {"sold_counted": True}})
+    for i in (o or {}).get("items", []):
+        await db.products.update_one({"product_id": i["product_id"]}, {"$inc": {"sold": i["quantity"]}})
+
+
+async def uncount_sold_once(db, order_id: str) -> None:
+    """A counted order was cancelled/refunded afterwards: take its quantities back off (once)."""
+    o = await db.orders.find_one_and_update({"order_id": order_id, "sold_counted": True}, {"$set": {"sold_counted": False}})
+    for i in (o or {}).get("items", []):
+        await db.products.update_one({"product_id": i["product_id"], "sold": {"$gte": i["quantity"]}}, {"$inc": {"sold": -i["quantity"]}})
+
+
 async def seed_branches(db, hash_pw) -> None:
     for o in OFFICIAL:
         u = await db.users.find_one({"email": o["email"]})
@@ -278,13 +293,18 @@ def register(api, db, get_current_user, require_admin, product_out_for_user, not
     @api.put("/seller/inventory/{product_id}")
     async def seller_set_stock(product_id: str, body: StockIn, ctx=Depends(require_seller)):
         sid = ctx["store"]["store_id"]
-        p = await db.products.find_one({"product_id": product_id}, {"store_id": 1})
+        p = await db.products.find_one({"product_id": product_id}, {"store_id": 1, "stock": 1})
         if not p or (p["store_id"] != sid and not (sid in OFFICIAL_IDS and p["store_id"] == PGS_STORE_ID)):
             raise HTTPException(status_code=404, detail="Produk tidak ditemukan")
         if p["store_id"] == sid:
+            old = p.get("stock", 0)
             await db.products.update_one({"product_id": product_id}, {"$set": {"stock": body.stock, "in_stock": body.stock > 0, "updated_at": _now()}})
         else:
+            row = await db.store_stock.find_one({"store_id": sid, "product_id": product_id}, {"stock": 1})
+            old = (row or {}).get("stock", 0)
             await db.store_stock.update_one({"store_id": sid, "product_id": product_id}, {"$set": {"stock": body.stock}}, upsert=True)
+        if body.stock > old:  # restock -> may appear in "Produk Terbaru"
+            await db.products.update_one({"product_id": product_id}, {"$set": {"restocked_at": _now()}})
         return {"product_id": product_id, "stock": body.stock}
 
     # ---------------- couriers ----------------
@@ -410,6 +430,8 @@ def register(api, db, get_current_user, require_admin, product_out_for_user, not
         if body.status == "cancelled":
             await release_voucher(order_id)
             await restock_once(db, order_id)
+        if body.status == "completed":
+            await count_sold_once(db, order_id)
         label = {"processing": "sedang diproses", "shipped": "sedang dikirim", "completed": "selesai", "cancelled": "dibatalkan"}[body.status]
         extra = f" No. resi: {upd['tracking_number']}" if body.status == "shipped" and upd.get("tracking_number") else ""
         await notify_user(d.get("user_id"), "order", "Status pesanan diperbarui", f"Pesanan {order_id} {label}.{extra}", f"/order/{order_id}")

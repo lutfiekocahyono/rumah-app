@@ -158,6 +158,12 @@ export const api = {
   applyVoucher: (code: string) => req<{ code: string; title: string; discount: number }>("/vouchers/apply", { method: "POST", body: JSON.stringify({ code }) }),
   trackView: (product_id: string) => req<{ ok: boolean }>(`/activity/view/${product_id}`, { method: "POST" }),
   recommendations: (skip = 0, limit = 20) => req<Product[]>(`/recommendations?skip=${skip}&limit=${limit}`),
+  homeSections: () => req<HomeFeed>("/home/sections"),
+  moreRecommended: (skip: number, limit = 20) => req<Product[]>(`/home/sections/recommended?skip=${skip}&limit=${limit}`),
+  sellerHomeSections: () => req<HomeSectionsSettings>("/seller/home-sections"),
+  saveSellerHomeSections: (s: HomeSectionsInput) => req<HomeSectionsSettings>("/seller/home-sections", { method: "PUT", body: JSON.stringify(s) }),
+  adminHomeSections: (storeId: string) => req<HomeSectionsSettings>(`/admin/home-sections/${storeId}`),
+  saveAdminHomeSections: (storeId: string, s: HomeSectionsInput) => req<HomeSectionsSettings>(`/admin/home-sections/${storeId}`, { method: "PUT", body: JSON.stringify(s) }),
 
   // admin promo
   adminBanners: () => req<Banner[]>("/admin/banners"),
@@ -345,6 +351,12 @@ export type AddressInput = Omit<Address, "address_id">;
 export type AppNotification = { notif_id: string; kind: "order" | "promo" | "security"; title: string; body: string; link: string; read: boolean; created_at: string };
 export type ActivityLog = { log_id: string; action: string; detail: string; created_at: string };
 export type AccountSettings = { notif_order: boolean; notif_promo: boolean; notif_security: boolean };
+export type HomeSectionKey = "popular" | "newest" | "recommended";
+export type HomeSort = "best_selling" | "rating" | "most_viewed" | "newest" | "random" | "personal";
+export type HomeSectionCfg = { enabled: boolean; title: string; limit: number; sort: HomeSort; pinned: string[]; categories: string[]; days: number };
+export type HomeSectionsInput = Record<HomeSectionKey, HomeSectionCfg>;
+export type HomeSectionsSettings = { store_id: string; store_name: string; sections: Record<HomeSectionKey, HomeSectionCfg & { pinned_products: { product_id: string; name: string; image: string; price: number }[] }> };
+export type HomeFeed = Record<HomeSectionKey, { enabled: boolean; title: string; limit: number; items: Product[]; more?: boolean }>;
 export type Store = { official?: boolean; store_id: string; owner_id: string; name: string; description: string; city: string; phone?: string; logo: string; status: "pending" | "active" | "rejected" | "suspended"; note: string; created_at: string; product_count?: number; owner_name?: string; owner_email?: string; address?: string; pickup_hours?: string };
 export type StoreInput = { name: string; description: string; city: string; phone: string; logo: string; address?: string; pickup_hours?: string };
 export type SellerProductInput = { name: string; description: string; category: string; price: number; original_price: number; stock: number; images: string[] };

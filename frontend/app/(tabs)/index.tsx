@@ -9,7 +9,7 @@ import Icon from "@react-native-vector-icons/ionicons";
 import { LinearGradient } from "expo-linear-gradient";
 
 import { colors, fontSize, radius, spacing } from "@/src/theme";
-import { api, imgUrl, type Banner, type Category, type FlashSale, type HomeSettings, type Product, type Voucher } from "@/src/api";
+import { api, imgUrl, type Banner, type Category, type FlashSale, type HomeFeed, type HomeSettings, type Product, type Voucher } from "@/src/api";
 import { ProductCard } from "@/src/components/product-card";
 import { FlashSaleSection, FreeShippingBanner, ProductRail, SectionHeader, VoucherStrip } from "@/src/components/home-sections";
 
@@ -19,9 +19,9 @@ const CARD_WIDTH = (screenW - spacing.lg * 2 - CARD_GAP) / 2;
 
 type HomeData = {
   banners: Banner[]; cats: Category[]; flash: FlashSale; vouchers: Voucher[]; settings: HomeSettings | null;
-  popular: Product[]; newest: Product[]; recs: Product[];
+  feed: HomeFeed | null; recs: Product[];
 };
-const EMPTY: HomeData = { banners: [], cats: [], flash: { active: false, items: [] }, vouchers: [], settings: null, popular: [], newest: [], recs: [] };
+const EMPTY: HomeData = { banners: [], cats: [], flash: { active: false, items: [] }, vouchers: [], settings: null, feed: null, recs: [] };
 
 export default function Home() {
   const insets = useSafeAreaInsets();
@@ -34,6 +34,7 @@ export default function Home() {
   const [recMore, setRecMore] = useState(false);
   const [recDone, setRecDone] = useState(false);
   const recSkip = useRef(0); // server-side offset (dedupe on screen may hide some items)
+  const recPage = useRef(20); // page size set by the branch admin
   const { user } = useAuth();
   const { storeId, store } = useStore();
   const [unread, setUnread] = useState(0);
@@ -47,14 +48,15 @@ export default function Home() {
   const load = useCallback(async () => {
     const safe = <T,>(p: Promise<T>, fb: T) => p.catch(() => fb);
     api.productCount().then((r) => setProductCount(r.count)).catch(() => {});
-    const [banners, cats, flash, vouchers, settings, popular, newest, recs] = await Promise.all([
+    const [banners, cats, flash, vouchers, settings, feed] = await Promise.all([
       safe(api.banners(), []), safe(api.categories(), []), safe(api.flashSale(), EMPTY.flash), safe(api.vouchers(), []),
-      safe(api.homeSettings(), null), safe(api.products({ sort: "popular", limit: 10 }), []),
-      safe(api.products({ sort: "newest", limit: 10 }), []), safe(api.recommendations(0, 20), []),
+      safe(api.homeSettings(), null), safe(api.homeSections(), null),
     ]);
-    setData({ banners, cats, flash, vouchers, settings, popular, newest, recs });
+    const recs = feed?.recommended.items ?? [];
+    setData({ banners, cats, flash, vouchers, settings, feed, recs });
     recSkip.current = recs.length;
-    setRecDone(recs.length < 20);
+    recPage.current = feed?.recommended.limit ?? 20;
+    setRecDone(!feed?.recommended.more || recs.length < recPage.current);
   }, []);
 
   useEffect(() => { setLoading(true); load().finally(() => setLoading(false)); }, [load, storeId]);
@@ -62,13 +64,13 @@ export default function Home() {
   const loadMoreRecs = async () => {
     setRecMore(true);
     try {
-      const more = await api.recommendations(recSkip.current, 20);
+      const more = await api.moreRecommended(recSkip.current, recPage.current);
       recSkip.current += more.length;
       setData((d) => {
         const have = new Set(d.recs.map((p) => p.product_id));
         return { ...d, recs: [...d.recs, ...more.filter((p) => !have.has(p.product_id))] };
       });
-      if (more.length < 20) setRecDone(true);
+      if (more.length < recPage.current) setRecDone(true);
     } finally {
       setRecMore(false);
     }
@@ -192,13 +194,13 @@ export default function Home() {
             onChange={(v) => setData((d) => ({ ...d, vouchers: d.vouchers.map((x) => (x.code === v.code ? v : x)) }))}
           />
 
-          <ProductRail title="Produk Populer" icon="flame-outline" items={data.popular} testID="popular-section" />
-          <ProductRail title="Produk Terbaru" icon="sparkles-outline" items={data.newest} testID="newest-section" />
+          {data.feed?.popular.enabled ? <ProductRail title={data.feed.popular.title} icon="flame-outline" items={data.feed.popular.items} testID="popular-section" /> : null}
+          {data.feed?.newest.enabled ? <ProductRail title={data.feed.newest.title} icon="sparkles-outline" items={data.feed.newest.items} testID="newest-section" /> : null}
 
           {/* Rekomendasi */}
           {data.recs.length ? (
             <View testID="recommend-section">
-              <SectionHeader title="Rekomendasi untukmu" icon="thumbs-up-outline" />
+              <SectionHeader title={data.feed?.recommended.title ?? "Rekomendasi untukmu"} icon="thumbs-up-outline" />
               <FlatList
                 data={data.recs}
                 keyExtractor={(p) => p.product_id}

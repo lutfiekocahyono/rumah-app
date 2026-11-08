@@ -1,15 +1,17 @@
 import React, { useEffect, useState } from "react";
 import { Text, ScrollView, KeyboardAvoidingView, Platform, ActivityIndicator } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useRouter } from "expo-router";
 
 import { colors, spacing } from "@/src/theme";
 import { api, type HomeSettings } from "@/src/api";
 import { ScreenHeader } from "@/src/components/screen-header";
 import { FreeShippingBanner } from "@/src/components/home-sections";
-import { adminStyles, Card, Chips, digits, Field, PrimaryButton, ToggleRow } from "@/src/components/admin-form";
+import { adminStyles, Card, digits, Field, PrimaryButton, ToggleRow } from "@/src/components/admin-form";
 
 export default function AdminHomeSettings() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const [s, setS] = useState<HomeSettings | null>(null);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState({ err: "", ok: "" });
@@ -33,7 +35,7 @@ export default function AdminHomeSettings() {
 
   return (
     <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={[adminStyles.root, { paddingTop: insets.top }]} testID="admin-home-settings-screen">
-      <ScreenHeader title="Gratis Ongkir & Rekomendasi" />
+      <ScreenHeader title="Gratis Ongkir" />
       {!s ? <ActivityIndicator color={colors.brandPrimary} style={{ marginTop: spacing.xl }} /> : (
         <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.md, paddingBottom: insets.bottom + spacing["2xl"] }} keyboardShouldPersistTaps="handled">
           <Text style={adminStyles.section}>Banner Gratis Ongkir (informasi saja, ongkir tetap dihitung)</Text>
@@ -47,15 +49,10 @@ export default function AdminHomeSettings() {
           <Text style={adminStyles.muted}>Pratinjau:</Text>
           <FreeShippingBanner s={{ ...s.free_shipping, enabled: true }} />
 
-          <Text style={[adminStyles.section, { marginTop: spacing.lg }]}>Rekomendasi Produk di beranda</Text>
+          <Text style={[adminStyles.section, { marginTop: spacing.lg }]}>Produk Populer, Terbaru & Rekomendasi</Text>
           <Card>
-            <Chips testID="rec-mode" value={s.recommend_mode} onChange={(v) => setS({ ...s, recommend_mode: v })}
-              options={[{ id: "personal", label: "Sesuai aktivitas pembeli" }, { id: "random", label: "Acak dari semua produk" }]} />
-            <Text style={adminStyles.muted}>
-              {s.recommend_mode === "personal"
-                ? "Menampilkan produk dari kategori yang sering dilihat & dibeli pembeli. Pembeli baru melihat produk terlaris."
-                : "Menampilkan produk acak dari seluruh katalog setiap kali beranda dibuka."}
-            </Text>
+            <Text style={adminStyles.muted}>Aturan bagian produk di beranda sekarang diatur per cabang.</Text>
+            <PrimaryButton testID="home-settings-sections" label="Buka Produk di Beranda" variant="outline" onPress={() => router.push("/admin/home-sections" as any)} />
           </Card>
           {msg.err ? <Text style={adminStyles.err}>{msg.err}</Text> : null}
           {msg.ok ? <Text style={adminStyles.ok} testID="home-settings-ok">{msg.ok}</Text> : null}

@@ -18,6 +18,7 @@ import notify
 import payments
 import account
 import marketing
+import home_feed
 import order_tasks
 from order_tasks import COD_PICKUP_HOURS, RELEASE_STATUSES
 import promo
@@ -87,6 +88,7 @@ INDEXES: dict[str, list[IndexModel]] = {
     "one_time_codes": [IndexModel([("expires_at", ASCENDING)], name="ttl", expireAfterSeconds=0),
                        IndexModel([("user_id", ASCENDING), ("purpose", ASCENDING)], name="user_purpose")],
     "store_stock": [IndexModel([("store_id", ASCENDING), ("product_id", ASCENDING)], name="store_product", unique=True)],
+    "home_sections": [IndexModel([("store_id", ASCENDING)], name="store_id", unique=True)],
     "rate_limits": [IndexModel([("expires_at", ASCENDING)], name="ttl", expireAfterSeconds=0)],
     "addresses": [IndexModel([("user_id", ASCENDING), ("address_id", ASCENDING)], name="user_addr", unique=True)],
     "activity_logs": [IndexModel([("user_id", ASCENDING), ("created_at", DESCENDING)], name="user_time")],
@@ -967,6 +969,7 @@ async def confirm_received(order_id: str, owner: str = Depends(get_owner)):
     if not d:
         raise HTTPException(status_code=400, detail="Pesanan belum dikirim atau tidak ditemukan")
     await ACCT["log_activity"](d.get("user_id"), "order", f"Mengonfirmasi pesanan {order_id} diterima")
+    await seller.count_sold_once(db, order_id)
     return _order_out(d)
 
 
@@ -1083,6 +1086,8 @@ async def admin_order_status(order_id: str, body: OrderStatusIn, _=Depends(requi
     if body.status == "cancelled":
         await _release_voucher(order_id)
         await seller.restock_once(db, order_id)
+    if body.status == "completed":
+        await seller.count_sold_once(db, order_id)
     await db.orders.update_one({"order_id": order_id}, {"$push": {"status_history": {"status": body.status, "at": datetime.now(timezone.utc), "note": "Admin"}}})
     label = {"processing": "sedang diproses", "shipped": "sedang dikirim", "completed": "selesai", "cancelled": "dibatalkan"}[body.status]
     await ACCT["notify_user"](d.get("user_id"), "order", "Status pesanan diperbarui", f"Pesanan {order_id} {label}.", f"/order/{order_id}")
@@ -1182,6 +1187,7 @@ async def track_view(product_id: str, owner: Optional[str] = Depends(get_optiona
     p = await db.products.find_one({"product_id": product_id}, {"category": 1, "categories": 1})
     if p:
         await _track(owner, [p.get("category", "")], 1, product_id)
+        await db.products.update_one({"product_id": product_id}, {"$inc": {"views": 1}})  # for "Paling sering dilihat"
     return {"ok": True}
 
 
@@ -1222,6 +1228,9 @@ _release_voucher, expire_cod_orders, remind_expiring_cod, _expire_loop = order_t
 marketing.register(api, db, require_admin=require_admin, get_owner=get_owner, get_optional_owner=get_optional_owner,
                    get_optional_user=get_optional_user, product_out=_product_out, load_cart_detailed=_load_cart_detailed,
                    broadcast_promo=ACCT["broadcast_promo"])
+home_feed.register(api, db, get_current_user=get_current_user, require_admin=require_admin, get_optional_owner=get_optional_owner,
+                   get_optional_user=get_optional_user, visible=_visible, apply_stock=_apply_stock, product_out=_product_out,
+                   all_branches=ALL_BRANCHES)
 seller.register(api, db, get_current_user, require_admin, _product_out_for_user, ACCT["notify_user"], ACCT["log_activity"],
                 _release_voucher, _order_out)
 

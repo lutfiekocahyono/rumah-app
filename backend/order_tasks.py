@@ -24,6 +24,7 @@ def register(db, notify_user):
         if o:
             await db.vouchers.update_one({"code": o["voucher_code"], "used": {"$gt": 0}}, {"$inc": {"used": -1}})
         await seller.restock_once(db, order_id)
+        await seller.uncount_sold_once(db, order_id)
         await support.return_balance_once(db, order_id)
 
     async def expire_cod_orders() -> int:
