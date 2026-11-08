@@ -3,6 +3,7 @@ import { View, Text, ScrollView, StyleSheet, Pressable, ActivityIndicator, FlatL
 import { Image } from "expo-image";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useAuth } from "@/src/auth-context";
+import { useStore } from "@/src/store-context";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Icon from "@react-native-vector-icons/ionicons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -34,6 +35,7 @@ export default function Home() {
   const [recDone, setRecDone] = useState(false);
   const recSkip = useRef(0); // server-side offset (dedupe on screen may hide some items)
   const { user } = useAuth();
+  const { storeId, store } = useStore();
   const [unread, setUnread] = useState(0);
   useFocusEffect(useCallback(() => {
     if (!user) { setUnread(0); return; }
@@ -53,7 +55,7 @@ export default function Home() {
     setRecDone(recs.length < 20);
   }, []);
 
-  useEffect(() => { load().finally(() => setLoading(false)); }, [load]);
+  useEffect(() => { setLoading(true); load().finally(() => setLoading(false)); }, [load, storeId]);
 
   const loadMoreRecs = async () => {
     setRecMore(true);
@@ -97,10 +99,13 @@ export default function Home() {
       <View style={styles.header}>
         <View style={styles.headerBrand}>
           <Image source={require("../../assets/images/pgs-logo-small.png")} style={styles.logoImg} contentFit="contain" testID="home-logo" />
-          <View style={{ flex: 1 }}>
-            <Text style={styles.brandLabel}>Pusat Grosir</Text>
-            <Text style={styles.brandCity}>Sidoarjo</Text>
-          </View>
+          <Pressable style={{ flex: 1, minHeight: 44, justifyContent: "center" }} testID="store-switch" onPress={() => router.push("/pilih-toko" as any)}>
+            <Text style={styles.brandLabel}>Belanja di</Text>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+              <Text style={styles.brandCity} numberOfLines={1}>{store?.name ?? "PGS Sidoarjo"}</Text>
+              <Icon name="chevron-down" size={16} color={colors.brandPrimary} />
+            </View>
+          </Pressable>
           <Pressable testID="notif-bell" hitSlop={8} onPress={() => router.push("/notifications" as any)} style={styles.iconBtn}>
             <Icon name="notifications-outline" size={22} color={colors.onSurface} />
             {unread > 0 ? <View style={styles.badge}><Text style={styles.badgeText}>{unread > 99 ? "99+" : unread}</Text></View> : null}

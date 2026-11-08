@@ -43,3 +43,11 @@ Iteration 2: import all data from pusatgrosirsidoarjo.com; tiered pricing (pembe
 - Confirm dialogs on delete banner/voucher/address/product + logout.
 - Backend modules: account.py, seller.py, mailer.py (registered from server.py).
 - NEXT Phase 2: multi-store transaksi (split order per toko, ekspedisi/ongkir RajaOngkir, resi, konfirmasi terima, komisi, saldo, penarikan), chat, review. Phase 3: super admin dashboard (users, komisi, refund, komplain, roles, laporan).
+
+## Iteration 5 — 3 toko resmi + transaksi per toko (DONE)
+- Official stores: PGS Sidoarjo (store_id pgs-official, renamed from PGS Official, owns shared catalog), Mitra PGS Jombang (pgs-jombang), Mitra PGS Jember (pgs-jember). Each has own store_admin account (see test_credentials).
+- Shared catalog; branch stock in `store_stock` (Jombang/Jember seeded with copy of Sidoarjo stock as sample). Buyer picks store once (/pilih-toko, AsyncStorage, header X-Store-Id). Branch own products visible only in that branch.
+- Cart items carry store_id; cart page groups by store; checkout per store with courier (manual tariffs per store: Ambil di toko, JNE, J&T, SiCepat; edit via /seller/couriers or admin /admin/store-couriers/[id]).
+- Order: store_id/name, courier, tracking_number, status_history. Store admin: /seller/orders → process → ship (resi required unless pickup) → buyer "Pesanan Sudah Diterima" → completed. Cancel restores stock + voucher.
+- No commission: revenue report /seller/report and /admin/report (per store).
+- Backlog: super admin dashboard (users, refunds, complaints, roles), chat, reviews, RajaOngkir optional, admin acting as any store.

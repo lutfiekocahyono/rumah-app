@@ -1,5 +1,6 @@
-import React from "react";
+import React, { useState } from "react";
 import { View, Text, StyleSheet, Pressable, FlatList, Linking } from "react-native";
+import { useStore } from "@/src/store-context";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -14,6 +15,8 @@ export default function Keranjang() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { cart, updateQty, removeItem } = useCart();
+  const { storeId } = useStore();
+  const [pick, setPick] = useState<string | undefined>();
 
   const orderViaWhatsApp = () => {
     const lines = [
@@ -28,6 +31,12 @@ export default function Keranjang() {
   };
 
   const empty = cart.items.length === 0;
+  const groups = Array.from(new Map(cart.items.map((i) => [i.store_id, i.store_name])).entries());
+  const activeStore = groups.some(([id]) => id === pick) ? pick : groups.some(([id]) => id === storeId) ? storeId : groups[0]?.[0];
+  const items = cart.items.filter((i) => i.store_id === activeStore);
+  const subtotal = items.reduce((t, i) => t + i.price * i.quantity, 0);
+  const savings = items.reduce((t, i) => t + Math.max(0, i.base_price - i.price) * i.quantity, 0);
+  const count = items.reduce((t, i) => t + i.quantity, 0);
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]} testID="keranjang-screen">
@@ -49,8 +58,18 @@ export default function Keranjang() {
         </View>
       ) : (
         <>
+          {groups.length > 1 ? (
+            <View style={styles.groups}>
+              {groups.map(([id, name]) => (
+                <Pressable key={id} testID={`cart-store-${id}`} onPress={() => setPick(id)} style={[styles.groupChip, id === activeStore && styles.groupChipOn]}>
+                  <Text style={[styles.groupText, id === activeStore && styles.groupTextOn]}>{name} ({cart.items.filter((i) => i.store_id === id).length})</Text>
+                </Pressable>
+              ))}
+            </View>
+          ) : null}
+          <Text style={styles.storeLine} testID="cart-store-name">Toko: {groups.find(([id]) => id === activeStore)?.[1]}</Text>
           <FlatList
-            data={cart.items}
+            data={items}
             keyExtractor={(it) => it.product_id}
             contentContainerStyle={{ padding: spacing.lg, gap: spacing.md, paddingBottom: 240 }}
             renderItem={({ item }) => (
@@ -95,24 +114,20 @@ export default function Keranjang() {
           <View style={[styles.summary, { paddingBottom: Math.max(spacing.lg, insets.bottom + spacing.sm) }]}>
             <View style={styles.sumRow}>
               <Text style={styles.sumLabel}>Subtotal</Text>
-              <Text style={styles.sumValue}>{formatIDR(cart.subtotal)}</Text>
+              <Text style={styles.sumValue}>{formatIDR(subtotal)}</Text>
             </View>
-            {cart.savings > 0 ? (
+            {savings > 0 ? (
               <View style={styles.sumRow}>
                 <Text style={[styles.sumLabel, { color: colors.success }]}>Sudah termasuk hemat harga bertingkat</Text>
-                <Text style={[styles.sumValue, { color: colors.success }]} testID="cart-savings">{formatIDR(cart.savings)}</Text>
+                <Text style={[styles.sumValue, { color: colors.success }]} testID="cart-savings">{formatIDR(savings)}</Text>
               </View>
             ) : null}
             <View style={styles.sumRow}>
               <Text style={styles.sumLabel}>Ongkos kirim</Text>
-              <Text style={styles.sumValue}>{formatIDR(25000)}</Text>
+              <Text style={styles.sumValue}>Pilih kurir saat checkout</Text>
             </View>
-            <View style={[styles.sumRow, { marginTop: 4 }]}>
-              <Text style={styles.totalLabel}>Total</Text>
-              <Text style={styles.totalValue}>{formatIDR(cart.subtotal + 25000)}</Text>
-            </View>
-            <Pressable testID="checkout-btn" style={styles.checkoutBtn} onPress={() => router.push("/checkout" as any)}>
-              <Text style={styles.checkoutText}>Checkout ({cart.item_count})</Text>
+            <Pressable testID="checkout-btn" style={styles.checkoutBtn} onPress={() => router.push({ pathname: "/checkout", params: { store: activeStore } } as any)}>
+              <Text style={styles.checkoutText}>Checkout ({count})</Text>
             </Pressable>
             <Pressable testID="whatsapp-order-btn" style={styles.waBtn} onPress={orderViaWhatsApp}>
               <Icon name="logo-whatsapp" size={18} color={colors.success} />
@@ -126,6 +141,12 @@ export default function Keranjang() {
 }
 
 const styles = StyleSheet.create({
+  groups: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, paddingHorizontal: spacing.lg, paddingTop: spacing.md },
+  groupChip: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.pill, paddingHorizontal: spacing.md, minHeight: 36, justifyContent: "center" },
+  groupChipOn: { backgroundColor: colors.brandPrimary, borderColor: colors.brandPrimary },
+  groupText: { fontSize: 12, color: colors.onSurface },
+  groupTextOn: { color: colors.onBrandPrimary, fontWeight: "600" },
+  storeLine: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, fontSize: fontSize.sm, color: colors.brandPrimary, fontWeight: "600" },
   root: { flex: 1, backgroundColor: colors.surface },
   header: {
     paddingHorizontal: spacing.lg, paddingVertical: spacing.md,

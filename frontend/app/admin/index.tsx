@@ -20,6 +20,7 @@ const MENU = [
   { icon: "ticket-outline", label: "Voucher Diskon", sub: "Kode kupon % atau Rp untuk checkout", to: "/admin/vouchers" },
   { icon: "car-outline", label: "Gratis Ongkir & Rekomendasi", sub: "Banner ongkir & mode rekomendasi", to: "/admin/home-settings" },
   { icon: "storefront-outline", label: "Verifikasi Toko", sub: "Setujui / tolak toko penjual baru", to: "/admin/stores" },
+  { icon: "bar-chart-outline", label: "Laporan Pendapatan", sub: "Pendapatan & tarif kurir per toko", to: "/admin/report" },
 ];
 
 export default function AdminHome() {

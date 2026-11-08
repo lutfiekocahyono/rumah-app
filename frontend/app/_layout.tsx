@@ -11,6 +11,7 @@ import { ErrorBoundary } from "@/src/components/error-boundary";
 import { queryClient } from "@/src/query-client";
 import { AuthProvider } from "@/src/auth-context";
 import { CartProvider } from "@/src/cart-context";
+import { StoreProvider } from "@/src/store-context";
 import { colors } from "@/src/theme";
 
 LogBox.ignoreAllLogs(true);
@@ -24,6 +25,7 @@ export default function RootLayout() {
             <KeyboardProvider>
               <BottomSheetModalProvider>
                 <AuthProvider>
+                  <StoreProvider>
                   <CartProvider>
                     <StatusBar style="dark" />
                     <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.surface } }}>
@@ -39,6 +41,7 @@ export default function RootLayout() {
                       <Stack.Screen name="orders" />
                     </Stack>
                   </CartProvider>
+                  </StoreProvider>
                 </AuthProvider>
               </BottomSheetModalProvider>
             </KeyboardProvider>

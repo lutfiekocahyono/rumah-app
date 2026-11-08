@@ -55,7 +55,7 @@ export default function Akun() {
     {
       title: "Toko",
       items: [
-        { icon: "storefront-outline", label: user?.role === "admin" ? "Toko PGS Official" : "Toko Saya / Buka Toko", to: user?.role === "admin" ? "/shop/pgs-official" : "/seller" },
+        { icon: "storefront-outline", label: user?.role === "admin" ? "Toko PGS Sidoarjo" : user?.role === "store_admin" ? "Kelola Toko" : "Toko Saya / Buka Toko", to: user?.role === "admin" ? "/shop/pgs-official" : "/seller" },
         { icon: "location-outline", label: "Alamat & Kontak Toko", to: "/store" },
       ],
     },
@@ -81,7 +81,7 @@ export default function Akun() {
               <Text style={styles.email}>{user.email}</Text>
               <View style={styles.badgeRow}>
                 <View style={styles.typeBadge} testID="customer-type-badge">
-                  <Text style={styles.typeBadgeText}>{CUSTOMER_TYPE_LABEL[user.customer_type]}</Text>
+                  <Text style={styles.typeBadgeText}>{user.role === "store_admin" ? "Pengelola Toko" : user.role === "admin" ? "Super Admin" : CUSTOMER_TYPE_LABEL[user.customer_type]}</Text>
                 </View>
                 {user.role === "admin" ? (
                   <View style={[styles.typeBadge, { backgroundColor: colors.surfaceInverse }]}>

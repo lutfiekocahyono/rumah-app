@@ -1,7 +1,8 @@
 """Multi-vendor stores: open a store (admin verifies), seller product CRUD, public store page, admin verification."""
 import logging
+import re
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
 from fastapi import Depends, File, HTTPException, UploadFile
@@ -12,7 +13,20 @@ from pymongo import ReturnDocument
 import storage
 
 log = logging.getLogger("seller")
-PGS_STORE_ID = "pgs-official"
+PGS_STORE_ID = "pgs-official"  # PGS Sidoarjo (owns the shared 6,618-product catalog)
+OFFICIAL = [
+    {"store_id": PGS_STORE_ID, "name": "PGS Sidoarjo", "city": "Sidoarjo", "email": "sidoarjo@pgs.id", "password": "Sidoarjo123!"},
+    {"store_id": "pgs-jombang", "name": "Mitra PGS Jombang", "city": "Jombang", "email": "jombang@pgs.id", "password": "Jombang123!"},
+    {"store_id": "pgs-jember", "name": "Mitra PGS Jember", "city": "Jember", "email": "jember@pgs.id", "password": "Jember123!"},
+]
+OFFICIAL_IDS = [o["store_id"] for o in OFFICIAL]
+DEFAULT_COURIERS = [
+    {"code": "pickup", "name": "Ambil di toko", "cost": 0, "eta": "Hari ini", "active": True},
+    {"code": "jne", "name": "JNE Reguler", "cost": 25000, "eta": "2-3 hari", "active": True},
+    {"code": "jnt", "name": "J&T Express", "cost": 24000, "eta": "2-3 hari", "active": True},
+    {"code": "sicepat", "name": "SiCepat REG", "cost": 22000, "eta": "2-4 hari", "active": True},
+]
+SELLER_STATUSES = ("processing", "shipped", "completed", "cancelled")
 
 
 def _now() -> datetime:
@@ -32,6 +46,27 @@ class StoreStatusIn(BaseModel):
     note: str = Field(default="", max_length=200)
 
 
+class StockIn(BaseModel):
+    stock: int = Field(ge=0, le=999999)
+
+
+class CourierIn(BaseModel):
+    code: str = Field(pattern="^[a-z0-9_]{2,20}$")
+    name: str = Field(min_length=2, max_length=40)
+    cost: int = Field(ge=0, le=5_000_000)
+    eta: str = Field(default="", max_length=30)
+    active: bool = True
+
+
+class CouriersIn(BaseModel):
+    couriers: List[CourierIn] = Field(min_length=1, max_length=15)
+
+
+class SellerOrderStatusIn(BaseModel):
+    status: str = Field(pattern="^(processing|shipped|completed|cancelled)$")
+    tracking_number: str = Field(default="", max_length=40)
+
+
 class SellerProductIn(BaseModel):
     name: str = Field(min_length=3, max_length=150)
     description: str = Field(default="", max_length=5000)
@@ -43,11 +78,76 @@ class SellerProductIn(BaseModel):
 
 
 def store_out(s: dict) -> dict:
-    return {k: s.get(k) for k in ("store_id", "owner_id", "name", "description", "city", "phone", "logo",
-                                  "status", "note", "created_at")}
+    out = {k: s.get(k) for k in ("store_id", "owner_id", "name", "description", "city", "phone", "logo",
+                                 "status", "note", "created_at")}
+    out["official"] = s.get("store_id") in OFFICIAL_IDS
+    return out
 
 
-def register(api, db, get_current_user, require_admin, product_out_for_user, notify_user, log_activity):
+def couriers_of(store: dict) -> list:
+    return store.get("couriers") or DEFAULT_COURIERS
+
+
+async def store_names(db) -> dict:
+    return {s["store_id"]: s["name"] for s in await db.stores.find({}, {"store_id": 1, "name": 1}).to_list(5000)}
+
+
+async def branch_stocks(db, store_id: str, ids: list) -> dict:
+    """Stock of shared-catalog products at a branch (Jombang/Jember). Missing = 0."""
+    if not ids:
+        return {}
+    return {d["product_id"]: d["stock"] for d in await db.store_stock.find(
+        {"store_id": store_id, "product_id": {"$in": ids}}, {"product_id": 1, "stock": 1}).to_list(len(ids))}
+
+
+async def adjust_stock(db, order: dict, sign: int) -> None:
+    """sign=-1 reserve on checkout, +1 give back on cancel. 9999 = unlimited (website import)."""
+    sid = order.get("store_id", PGS_STORE_ID)
+    for i in order["items"]:
+        p = await db.products.find_one({"product_id": i["product_id"]}, {"store_id": 1, "stock": 1})
+        if not p:
+            continue
+        if sid != PGS_STORE_ID and p.get("store_id", PGS_STORE_ID) == PGS_STORE_ID:
+            row = await db.store_stock.find_one({"store_id": sid, "product_id": i["product_id"]})
+            if row and row["stock"] < 9999:
+                await db.store_stock.update_one({"_id": row["_id"]}, {"$inc": {"stock": sign * i["quantity"]}})
+        elif p.get("stock", 0) < 9999:
+            res = await db.products.find_one_and_update({"product_id": i["product_id"]}, {"$inc": {"stock": sign * i["quantity"]}},
+                                                        return_document=ReturnDocument.AFTER)
+            await db.products.update_one({"product_id": i["product_id"]}, {"$set": {"in_stock": res["stock"] > 0}})
+
+
+async def restock_once(db, order_id: str) -> None:
+    o = await db.orders.find_one_and_update({"order_id": order_id, "restocked": {"$ne": True}}, {"$set": {"restocked": True}})
+    if o:
+        await adjust_stock(db, o, +1)
+
+
+async def seed_branches(db, hash_pw) -> None:
+    for o in OFFICIAL:
+        u = await db.users.find_one({"email": o["email"]})
+        if not u:
+            u = {"user_id": f"user_{uuid.uuid4().hex[:12]}", "email": o["email"], "name": f"Admin {o['name']}",
+                 "password_hash": hash_pw(o["password"]), "role": "store_admin", "customer_type": "langsung",
+                 "email_verified": True, "created_at": _now()}
+            await db.users.insert_one(u)
+        st = await db.stores.find_one({"store_id": o["store_id"]})
+        if not st:
+            await db.stores.insert_one({"store_id": o["store_id"], "owner_id": u["user_id"], "name": o["name"], "name_lower": o["name"].lower(),
+                                        "description": f"Toko resmi {o['name']}", "city": o["city"], "phone": "", "logo": "",
+                                        "status": "active", "note": "", "couriers": DEFAULT_COURIERS, "created_at": _now()})
+            if o["store_id"] != PGS_STORE_ID:  # sample: copy Sidoarjo stock so the branch is shoppable; edit in Kelola Toko > Stok
+                cat = await db.products.find({"store_id": PGS_STORE_ID}, {"product_id": 1, "stock": 1}).to_list(20000)
+                if cat:
+                    await db.store_stock.insert_many([{"store_id": o["store_id"], "product_id": c["product_id"], "stock": c.get("stock", 0)} for c in cat])
+        elif o["store_id"] == PGS_STORE_ID and st.get("name") != o["name"]:  # rename PGS Official -> PGS Sidoarjo, hand to its manager
+            await db.stores.update_one({"store_id": PGS_STORE_ID}, {"$set": {"name": o["name"], "name_lower": o["name"].lower(), "owner_id": u["user_id"],
+                                                                            "couriers": st.get("couriers") or DEFAULT_COURIERS}})
+            await db.products.update_many({"store_id": PGS_STORE_ID}, {"$set": {"store_name": o["name"]}})
+
+
+def register(api, db, get_current_user, require_admin, product_out_for_user, notify_user, log_activity,
+             release_voucher, order_out):
 
     async def my_store(user: dict) -> Optional[dict]:
         return await db.stores.find_one({"owner_id": user["user_id"]}, {"_id": 0})
@@ -157,6 +257,154 @@ def register(api, db, get_current_user, require_admin, product_out_for_user, not
         if res.deleted_count == 0:
             raise HTTPException(status_code=404, detail="Produk tidak ditemukan")
         return {"ok": True}
+
+    # ---------------- inventory (stock per store) ----------------
+    @api.get("/seller/inventory")
+    async def seller_inventory(q: str = "", skip: int = 0, limit: int = 40, ctx=Depends(require_seller)):
+        sid = ctx["store"]["store_id"]
+        ids = [sid, PGS_STORE_ID] if sid in OFFICIAL_IDS else [sid]
+        query: dict = {"store_id": {"$in": ids}}
+        if q.strip():
+            query["name"] = {"$regex": re.escape(q.strip()), "$options": "i"}
+        docs = await db.products.find(query, {"_id": 0, "product_id": 1, "name": 1, "image": 1, "price": 1, "stock": 1, "store_id": 1}) \
+            .sort([("store_id", -1 if sid != PGS_STORE_ID else 1), ("name", 1)]).skip(max(0, skip)).limit(min(limit, 100)).to_list(100)
+        shared = [d["product_id"] for d in docs if d["store_id"] != sid]
+        stocks = await branch_stocks(db, sid, shared)
+        return [{**d, "stock": stocks.get(d["product_id"], 0) if d["store_id"] != sid else d.get("stock", 0),
+                 "own": d["store_id"] == sid} for d in docs]
+
+    @api.put("/seller/inventory/{product_id}")
+    async def seller_set_stock(product_id: str, body: StockIn, ctx=Depends(require_seller)):
+        sid = ctx["store"]["store_id"]
+        p = await db.products.find_one({"product_id": product_id}, {"store_id": 1})
+        if not p or (p["store_id"] != sid and not (sid in OFFICIAL_IDS and p["store_id"] == PGS_STORE_ID)):
+            raise HTTPException(status_code=404, detail="Produk tidak ditemukan")
+        if p["store_id"] == sid:
+            await db.products.update_one({"product_id": product_id}, {"$set": {"stock": body.stock, "in_stock": body.stock > 0, "updated_at": _now()}})
+        else:
+            await db.store_stock.update_one({"store_id": sid, "product_id": product_id}, {"$set": {"stock": body.stock}}, upsert=True)
+        return {"product_id": product_id, "stock": body.stock}
+
+    # ---------------- couriers ----------------
+    @api.get("/stores/{store_id}/couriers")
+    async def store_couriers(store_id: str):
+        s = await db.stores.find_one({"store_id": store_id, "status": "active"})
+        if not s:
+            raise HTTPException(status_code=404, detail="Toko tidak ditemukan")
+        return [c for c in couriers_of(s) if c.get("active", True)]
+
+    async def _save_couriers(store_id: str, body: CouriersIn) -> list:
+        codes = [c.code for c in body.couriers]
+        if len(set(codes)) != len(codes):
+            raise HTTPException(status_code=400, detail="Kode kurir tidak boleh sama")
+        data = [c.model_dump() for c in body.couriers]
+        await db.stores.update_one({"store_id": store_id}, {"$set": {"couriers": data}})
+        return data
+
+    @api.get("/seller/couriers")
+    async def seller_couriers(ctx=Depends(require_seller)):
+        return couriers_of(ctx["store"])
+
+    @api.put("/seller/couriers")
+    async def seller_set_couriers(body: CouriersIn, ctx=Depends(require_seller)):
+        return await _save_couriers(ctx["store"]["store_id"], body)
+
+    @api.get("/admin/stores/{store_id}/couriers")
+    async def admin_couriers(store_id: str, _=Depends(require_admin)):
+        s = await db.stores.find_one({"store_id": store_id})
+        if not s:
+            raise HTTPException(status_code=404, detail="Toko tidak ditemukan")
+        return couriers_of(s)
+
+    @api.put("/admin/stores/{store_id}/couriers")
+    async def admin_set_couriers(store_id: str, body: CouriersIn, _=Depends(require_admin)):
+        if not await db.stores.find_one({"store_id": store_id}):
+            raise HTTPException(status_code=404, detail="Toko tidak ditemukan")
+        return await _save_couriers(store_id, body)
+
+    # ---------------- store orders ----------------
+    @api.get("/seller/orders")
+    async def seller_orders(status: Optional[str] = None, ctx=Depends(require_seller)):
+        q: dict = {"store_id": ctx["store"]["store_id"]}
+        if status == "new":
+            q["status"] = {"$in": ["paid", "cod"]}
+        elif status:
+            q["status"] = status
+        return [order_out(d) for d in await db.orders.find(q, {"_id": 0}).sort("created_at", -1).to_list(300)]
+
+    @api.get("/seller/orders/{order_id}")
+    async def seller_order(order_id: str, ctx=Depends(require_seller)):
+        d = await db.orders.find_one({"order_id": order_id, "store_id": ctx["store"]["store_id"]}, {"_id": 0})
+        if not d:
+            raise HTTPException(status_code=404, detail="Pesanan tidak ditemukan")
+        return order_out(d)
+
+    @api.put("/seller/orders/{order_id}/status")
+    async def seller_order_status(order_id: str, body: SellerOrderStatusIn, ctx=Depends(require_seller)):
+        sid = ctx["store"]["store_id"]
+        d = await db.orders.find_one({"order_id": order_id, "store_id": sid})
+        if not d:
+            raise HTTPException(status_code=404, detail="Pesanan tidak ditemukan")
+        allowed = {"processing": ("paid", "cod"), "shipped": ("processing",), "completed": ("shipped", "processing"),
+                   "cancelled": ("pending", "paid", "cod", "processing")}[body.status]
+        if d["status"] not in allowed:
+            raise HTTPException(status_code=400, detail="Status pesanan tidak bisa diubah ke tahap ini")
+        pickup = (d.get("courier") or {}).get("code") == "pickup"
+        if body.status == "shipped" and not pickup and not body.tracking_number.strip():
+            raise HTTPException(status_code=400, detail="Masukkan nomor resi")
+        if body.status == "completed" and d["status"] == "processing" and not pickup:
+            raise HTTPException(status_code=400, detail="Kirim pesanan dulu, pembeli yang mengonfirmasi penerimaan")
+        upd = {"status": body.status, "updated_at": _now()}
+        if body.tracking_number.strip():
+            upd["tracking_number"] = body.tracking_number.strip().upper()
+        if body.status == "completed":
+            upd["completed_at"] = _now()
+        note = f"Resi {upd['tracking_number']}" if upd.get("tracking_number") and body.status == "shipped" else ctx["store"]["name"]
+        res = await db.orders.find_one_and_update({"order_id": order_id}, {"$set": upd, "$push": {"status_history": {
+            "status": body.status, "at": _now(), "note": note}}}, projection={"_id": 0}, return_document=ReturnDocument.AFTER)
+        if body.status == "cancelled":
+            await release_voucher(order_id)
+            await restock_once(db, order_id)
+        label = {"processing": "sedang diproses", "shipped": "sedang dikirim", "completed": "selesai", "cancelled": "dibatalkan"}[body.status]
+        extra = f" No. resi: {upd['tracking_number']}" if body.status == "shipped" and upd.get("tracking_number") else ""
+        await notify_user(d.get("user_id"), "order", "Status pesanan diperbarui", f"Pesanan {order_id} {label}.{extra}", f"/order/{order_id}")
+        return order_out(res)
+
+    # ---------------- revenue report (no commission) ----------------
+    async def _report(store_id: Optional[str]) -> dict:
+        match: dict = {"store_id": store_id} if store_id else {}
+        by_status = {r["_id"]: {"orders": r["n"], "total": r["t"]} for r in await db.orders.aggregate([
+            {"$match": match}, {"$group": {"_id": "$status", "n": {"$sum": 1}, "t": {"$sum": "$total"}}}]).to_list(20)}
+        since = _now() - timedelta(days=30)
+        daily = await db.orders.aggregate([
+            {"$match": {**match, "status": "completed", "created_at": {"$gte": since}}},
+            {"$group": {"_id": {"$dateToString": {"format": "%Y-%m-%d", "date": "$created_at"}}, "revenue": {"$sum": "$total"}, "orders": {"$sum": 1}}},
+            {"$sort": {"_id": 1}}]).to_list(40)
+        top = await db.orders.aggregate([
+            {"$match": {**match, "status": {"$in": ["completed", "shipped", "processing", "paid", "cod"]}}}, {"$unwind": "$items"},
+            {"$group": {"_id": "$items.product_id", "name": {"$first": "$items.name"}, "qty": {"$sum": "$items.quantity"},
+                        "revenue": {"$sum": {"$multiply": ["$items.price", "$items.quantity"]}}}},
+            {"$sort": {"qty": -1}}, {"$limit": 5}]).to_list(5)
+        done = by_status.get("completed", {"orders": 0, "total": 0})
+        running = sum(v["total"] for k, v in by_status.items() if k in ("paid", "cod", "processing", "shipped"))
+        return {"revenue_completed": done["total"], "orders_completed": done["orders"], "revenue_in_progress": running,
+                "by_status": by_status, "daily": [{"date": d["_id"], "revenue": d["revenue"], "orders": d["orders"]} for d in daily],
+                "top_products": [{"product_id": t["_id"], "name": t["name"], "qty": t["qty"], "revenue": t["revenue"]} for t in top]}
+
+    @api.get("/seller/report")
+    async def seller_report(ctx=Depends(require_seller)):
+        return await _report(ctx["store"]["store_id"])
+
+    @api.get("/admin/report")
+    async def admin_report(_=Depends(require_admin)):
+        stores = await db.stores.find({"status": "active"}, {"_id": 0, "store_id": 1, "name": 1}).to_list(500)
+        return {"all": await _report(None), "stores": [{**s, **(await _report(s["store_id"]))} for s in stores]}
+
+    @api.get("/official-stores")
+    async def official_stores():
+        docs = await db.stores.find({"store_id": {"$in": OFFICIAL_IDS}, "status": "active"}, {"_id": 0}).to_list(10)
+        order = {sid: i for i, sid in enumerate(OFFICIAL_IDS)}
+        return [store_out(d) for d in sorted(docs, key=lambda d: order[d["store_id"]])]
 
     # ---------------- public store page ----------------
     @api.get("/stores/{store_id}")

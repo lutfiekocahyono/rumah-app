@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TextInput } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useRouter } from "expo-router";
 
 import { colors, fontSize, radius, spacing } from "@/src/theme";
 import { api, type Store } from "@/src/api";
@@ -14,6 +15,7 @@ type Action = { store: Store; status: "active" | "rejected" | "suspended" };
 
 export default function AdminStores() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const [filter, setFilter] = useState<string>("pending");
   const [list, setList] = useState<Store[] | null>(null);
   const [notes, setNotes] = useState<Record<string, string>>({});
@@ -53,7 +55,7 @@ export default function AdminStores() {
             <Text style={adminStyles.muted}>{s.owner_name} · {s.owner_email}</Text>
             <Text style={adminStyles.muted}>{s.city} · {s.phone} · {fmtDate(s.created_at)}</Text>
             {s.description ? <Text style={styles.desc}>{s.description}</Text> : null}
-            {s.store_id !== "pgs-official" ? (
+            {s.store_id !== "pgs-official" && !s.official ? (
               <>
                 <TextInput testID={`store-note-${s.store_id}`} placeholder="Catatan untuk penjual (opsional)" placeholderTextColor={colors.muted}
                   value={notes[s.store_id] ?? ""} onChangeText={(t) => setNotes((n) => ({ ...n, [s.store_id]: t }))} style={styles.input} />
@@ -63,7 +65,13 @@ export default function AdminStores() {
                   {s.status === "active" ? <View style={{ flex: 1 }}><PrimaryButton testID={`store-suspend-${s.store_id}`} label="Nonaktifkan" variant="danger" onPress={() => setAction({ store: s, status: "suspended" })} /></View> : null}
                 </View>
               </>
-            ) : <Text style={adminStyles.muted}>Toko resmi PGS</Text>}
+            ) : (
+              <View style={{ gap: 6 }}>
+                <Text style={adminStyles.muted}>Toko resmi PGS</Text>
+                <PrimaryButton testID={`store-couriers-${s.store_id}`} label="Atur Tarif Kurir" variant="outline"
+                  onPress={() => router.push({ pathname: "/admin/store-couriers/[id]", params: { id: s.store_id, name: s.name } } as any)} />
+              </View>
+            )}
           </View>
         ))}
       </ScrollView>

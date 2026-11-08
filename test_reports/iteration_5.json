@@ -1,0 +1,50 @@
+{
+  "summary": "Iteration 5: 3 official stores (PGS Sidoarjo / Mitra PGS Jombang / Mitra PGS Jember), per-branch stock, store admins, per-store couriers, store-scoped cart and checkout, store order flow, revenue reports. Backend: new suite test_pgs_iter5_branches.py passes 16/16 when run serially (-n 0). Iter4 test_old_products_pgs_official was updated to expect 'PGS Sidoarjo' and passes. Frontend at 375x667, all of these passed: store switch and /pilih-toko (choice persists after reload), product cards and detail show 'Mitra PGS Jombang', cart store chips, checkout with store param and couriers (JNE ongkir Rp25.000 correct), COD order, order-tracking (store, courier, resi, timeline), confirm-received, Jombang admin (Kelola Toko > report stats and 3 nav tiles, orders list, so-process, so-ship without resi shows the error and with resi ships, so-cancel confirm dialog, stock search and edit-on-blur with checkmark updating only Jombang, couriers save shows courier-ok), admin (Admin Panel > Laporan Pendapatan, report-total and report-store-*, Tarif kurir link, Verifikasi Toko > Aktif shows 'Atur Tarif Kurir'). Main issues: 19 legacy orders have no store_id, so PGS Sidoarjo cannot see or handle them (HIGH); the order detail status banner is red with an X for processing/shipped/completed. No deprecated Expo packages found.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "GET /api/seller/orders (PGS Sidoarjo), GET /api/seller/report, GET /api/admin/report", "issue": "19 legacy orders created before the multi-store change have no store_id field: 8 paid (Rp2.361.000), 3 COD (Rp3.283.304) and 8 cancelled. seller_orders/_report match {store_id: 'pgs-official'}, so these orders are invisible to the PGS Sidoarjo store admin, who cannot process or ship them. They are counted only in the admin report 'all' total (Pesanan berjalan Rp6.060.304), not in the per-store row (Rp416.000). Fix: a one-time idempotent migration in seed_branches, db.orders.update_many({store_id:{$exists:false}}, {$set:{store_id:'pgs-official', store_name:'PGS Sidoarjo'}}), or match store_id in [pgs-official, null] for Sidoarjo.", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "POST /api/cart/items", "issue": "There is one cart line per product_id. Adding the same product from another branch silently moves the existing line to the new store and resets qty to the new quantity (verified: Sidoarjo qty line became Jombang qty 1). The buyer gets no warning."},
+      {"endpoint": "Midtrans/Xendit webhook and /orders/{id}/refresh (server.py ~923/942/961)", "issue": "When a payment becomes expired/failed/cancelled, only _release_voucher is called. seller.restock_once is not, so stock reserved at checkout (adjust_stock -1) is never returned for unpaid online orders. COD and store cancel do restock correctly."},
+      {"endpoint": "PUT /api/admin/orders/{id}/status", "issue": "No transition validation, unlike the seller endpoint. Admin can mark completed→cancelled (restocks a delivered order) or shipped without resi."},
+      {"endpoint": "POST /api/checkout", "issue": "The stock check and decrement are not atomic (check, then $inc), so concurrent checkouts can oversell branch stock. Use a conditional $inc with stock >= qty."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "app/order/[id].tsx:66,80 status banner", "issue": "Statuses processing / shipped / completed fall into the else branch: colors.error and a 'close-circle' icon. A shipped ('Dikirim') or completed order shows a red X like a failed order. Map processing/shipped to info/brand, completed to success, and only cancelled/expired/failed to error.", "testID": "order-status", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Courier editor (/seller/couriers, /admin/store-couriers/{id})", "issues": ["The ETA TextInput (2nd input in the cost row) overflows past the card's right edge at 375px. On web, a TextInput with flex:1 keeps its intrinsic width, so add minWidth:0 to styles.input (src/components/courier-editor.tsx:46-47,68). The ETA input also has no testID."]},
+      {"screen": "Home header", "issues": ["store-switch touch target is 207x30 (less than 44px tall)."]},
+      {"screen": "Home (Jombang/Jember selected)", "issues": ["The 'Gratis Ongkir Area Sidoarjo & sekitarnya, min. belanja Rp500.000' banner still shows for every branch, but checkout now always charges the courier tariff. The copy is misleading."]},
+      {"screen": "Akun (store_admin)", "issues": ["The store admin profile shows the 'Pembeli Langsung' customer-type badge. Consider showing a 'Admin Toko' badge instead."]},
+      {"screen": "/seller/orders", "issues": ["testID='so-filter' passed to the Chips component is not rendered in the DOM (Chips does not forward testID)."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_pgs_iter5_branches.py", "/app/backend/tests/test_pgs_iter4_account_seller.py", "/app/test_reports/pytest/pytest_iter5.xml"],
+  "action_items": [
+    "HIGH: migrate legacy orders without store_id to store_id='pgs-official' / store_name='PGS Sidoarjo' (idempotent update_many at startup) so the Sidoarjo admin can process the 11 open paid/COD orders and reports per store add up.",
+    "Fix the order detail status banner colour/icon for processing/shipped/completed (app/order/[id].tsx:66,80).",
+    "Call seller.restock_once when the Midtrans/Xendit status becomes expired/failed/cancelled (webhooks and refresh).",
+    "Add transition validation to PUT /api/admin/orders/{id}/status (or reuse the seller rules).",
+    "Courier editor: add minWidth:0 to inputs to stop the ETA overflow; add a testID to the ETA input.",
+    "Optional: warn or keep separate lines when the same product is added from another branch; update or hide the 'Gratis Ongkir Area Sidoarjo' banner; make the store-switch hit area at least 44px; forward testID in Chips."
+  ],
+  "critical_code_review_comments": [
+    "seller.py adjust_stock/checkout: a read-then-$inc race can drive stock negative; use find_one_and_update with {stock: {$gte: qty}}.",
+    "app/seller/stock.tsx:46-58: load() returns early when busy.current is true. If the query changes while a load is in flight, setItems(null) runs but the reset load is skipped, leaving a permanent spinner (potential race, not reproduced in UI).",
+    "store-context: the saved store is per device (AsyncStorage). That is fine, but a new device/browser defaults to Sidoarjo even for a logged-in user who picked another branch.",
+    "Wishlist endpoint does not apply branch stock (_apply_stock), so wishlist shows Sidoarjo stock and store_name while a Jombang branch is selected."
+  ],
+  "updated_files": ["/app/backend/tests/test_pgs_iter4_account_seller.py (store_name expectation -> 'PGS Sidoarjo')", "/app/backend/tests/test_pgs_iter5_branches.py (new)"],
+  "success_rate": {"backend": "100% (16/16 new tests, serial run). Data issue: legacy orders not attributed to a store", "frontend": "~95% (all requested flows work; 1 status-banner UI bug + design nits)"},
+  "seed_data_creation": "Created TEST users (test_br_*@example.com, test_ui_1794111547@example.com) and 8 test orders. All 8 test orders were deleted by order_id. Restored Jombang/Jember stock of pgs-9955 to 218 and the Jombang JNE tariff to 25000. Jember couriers were restored by the test teardown. Pre-existing TEST_Toko 09880 (active) from an earlier iteration is still in stores.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run test_pgs_iter5_branches.py with -n 0 (serial). Tests share one finite-stock product and collide under pytest-xdist. In expo-router web, wait ~4s after login before page.goto, otherwise auth is not persisted yet (Akun shows 'Belum masuk'). The checkout sticky footer (pay-now-btn) covers courier rows at y>575 on 375x667: scrollIntoView({block:'center'}) before clicking, or a force click will hit 'Bayar Sekarang'. Laporan Pendapatan is inside Admin Panel (/admin), not the Akun Admin section. Admin courier editor route: /admin/store-couriers/{store_id}.",
+  "rca_of_issue": "Legacy orders: Order pydantic model defaults store_id='pgs-official', so the API output looks fine, but the DB documents have no store_id. Every Mongo filter on store_id (seller_orders, seller_order, seller_order_status, _report) excludes them. Reproduce: db.orders.count_documents({store_id:{$exists:false}}) == 19; GET /api/admin/report 'all'.revenue_in_progress is much larger than the sum over stores. Banner bug: statusColor/icon ternary in order/[id].tsx only handles paid/pending/cod."
+}

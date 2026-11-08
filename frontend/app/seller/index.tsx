@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Icon from "@react-native-vector-icons/ionicons";
 
 import { colors, fontSize, radius, spacing, formatIDR } from "@/src/theme";
-import { api, type Product, type Store, type StoreInput } from "@/src/api";
+import { api, type Product, type Report, type Store, type StoreInput } from "@/src/api";
 import { useAuth } from "@/src/auth-context";
 import { ScreenHeader } from "@/src/components/screen-header";
 import { adminStyles, Card, Field, PrimaryButton } from "@/src/components/admin-form";
@@ -24,6 +24,7 @@ export default function SellerHome() {
   const { user } = useAuth();
   const [store, setStore] = useState<Store | null | undefined>(undefined);
   const [products, setProducts] = useState<Product[]>([]);
+  const [report, setReport] = useState<Report | null>(null);
   const [form, setForm] = useState<StoreInput | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -33,7 +34,11 @@ export default function SellerHome() {
     try {
       const s = await api.myStore();
       setStore(s);
-      if (s?.status === "active") setProducts(await api.sellerProducts());
+      if (s?.status === "active") {
+        const [p, r] = await Promise.all([s.store_id === "pgs-official" ? Promise.resolve([]) : api.sellerProducts(), api.sellerReport()]);
+        setProducts(p);
+        setReport(r);
+      }
     } catch (e: any) { setErr(e.message); setStore(null); }
   }, [user]);
   useFocusEffect(useCallback(() => { void load(); }, [load]));
@@ -115,8 +120,36 @@ export default function SellerHome() {
 
           {store?.status === "active" ? (
             <>
+              {report ? (
+                <View style={styles.stats} testID="seller-report">
+                  <View style={styles.stat}><Text style={styles.statVal}>{formatIDR(report.revenue_completed)}</Text><Text style={adminStyles.muted}>Pendapatan selesai</Text></View>
+                  <View style={styles.stat}><Text style={styles.statVal}>{formatIDR(report.revenue_in_progress)}</Text><Text style={adminStyles.muted}>Pesanan berjalan</Text></View>
+                  <View style={styles.stat}><Text style={styles.statVal}>{(report.by_status.paid?.orders ?? 0) + (report.by_status.cod?.orders ?? 0)}</Text><Text style={adminStyles.muted}>Pesanan baru</Text></View>
+                  <View style={styles.stat}><Text style={styles.statVal}>{report.orders_completed}</Text><Text style={adminStyles.muted}>Pesanan selesai</Text></View>
+                </View>
+              ) : null}
+              <View style={styles.nav}>
+                {[
+                  { icon: "receipt-outline", label: "Pesanan", to: "/seller/orders" },
+                  { icon: "cube-outline", label: "Stok", to: "/seller/stock" },
+                  { icon: "car-outline", label: "Tarif Kurir", to: "/seller/couriers" },
+                ].map((n) => (
+                  <Pressable key={n.to} testID={`seller-nav-${n.to.split("/").pop()}`} style={styles.navItem} onPress={() => router.push(n.to as any)}>
+                    <Icon name={n.icon as any} size={24} color={colors.brandPrimary} />
+                    <Text style={styles.navText}>{n.label}</Text>
+                  </Pressable>
+                ))}
+              </View>
+              {report?.top_products.length ? (
+                <Card>
+                  <Text style={styles.h}>Produk terlaris</Text>
+                  {report.top_products.map((t) => (
+                    <Text key={t.product_id} style={adminStyles.muted} numberOfLines={1}>{t.qty}x · {t.name} · {formatIDR(t.revenue)}</Text>
+                  ))}
+                </Card>
+              ) : null}
               <View style={styles.between}>
-                <Text style={styles.h}>Produk ({products.length})</Text>
+                <Text style={styles.h}>Produk Toko Ini ({products.length})</Text>
                 <Pressable testID="seller-add-product" style={styles.addBtn} onPress={() => router.push("/seller/product/new" as any)}>
                   <Icon name="add" size={18} color={colors.onBrandPrimary} />
                   <Text style={styles.addText}>Tambah</Text>
@@ -143,6 +176,12 @@ export default function SellerHome() {
 
 const styles = StyleSheet.create({
   h: { fontSize: fontSize.lg, fontWeight: "500", color: colors.onSurface },
+  stats: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  stat: { width: "48%", flexGrow: 1, backgroundColor: colors.surface, borderRadius: radius.md, padding: spacing.md, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, gap: 2 },
+  statVal: { fontSize: fontSize.base, fontWeight: "700", color: colors.brandPrimary },
+  nav: { flexDirection: "row", gap: spacing.sm },
+  navItem: { flex: 1, alignItems: "center", gap: 6, backgroundColor: colors.surface, borderRadius: radius.md, paddingVertical: spacing.md, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, minHeight: 72 },
+  navText: { fontSize: 13, color: colors.onSurface, fontWeight: "500" },
   between: { flexDirection: "row", alignItems: "center", gap: spacing.sm, justifyContent: "space-between" },
   status: { flexDirection: "row", alignItems: "center", gap: 6, borderWidth: 1, borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: 6, alignSelf: "flex-start" },
   statusText: { fontSize: 13, fontWeight: "600" },

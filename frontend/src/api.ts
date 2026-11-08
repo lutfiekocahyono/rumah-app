@@ -52,11 +52,16 @@ export async function getGuestId(): Promise<string> {
   return nid;
 }
 
+let currentStore = "pgs-official";
+/** Branch chosen by the buyer (PGS Sidoarjo / Mitra Jombang / Mitra Jember); sent with every request. */
+export const setCurrentStore = (id: string) => { currentStore = id; };
+
 async function headers(): Promise<Record<string, string>> {
   const h: Record<string, string> = { "Content-Type": "application/json" };
   const token = await getToken();
   if (token) h["Authorization"] = `Bearer ${token}`;
   h["X-Guest-Id"] = await getGuestId();
+  h["X-Store-Id"] = currentStore;
   return h;
 }
 
@@ -205,6 +210,23 @@ export const api = {
   adminStores: (status?: string) => req<Store[]>(`/admin/stores${status ? `?status=${status}` : ""}`),
   adminSetStoreStatus: (id: string, status: "active" | "rejected" | "suspended", note = "") =>
     req<Store>(`/admin/stores/${id}/status`, { method: "PUT", body: JSON.stringify({ status, note }) }),
+
+  // branches, couriers, store orders, reports
+  officialStores: () => req<Store[]>("/official-stores"),
+  storeCouriers: (id: string) => req<Courier[]>(`/stores/${id}/couriers`),
+  confirmReceived: (id: string) => req<Order>(`/orders/${id}/confirm`, { method: "POST" }),
+  sellerInventory: (q = "", skip = 0) => req<InventoryItem[]>(`/seller/inventory?q=${encodeURIComponent(q)}&skip=${skip}&limit=40`),
+  sellerSetStock: (id: string, stock: number) => req<{ stock: number }>(`/seller/inventory/${id}`, { method: "PUT", body: JSON.stringify({ stock }) }),
+  sellerCouriers: () => req<Courier[]>("/seller/couriers"),
+  sellerSaveCouriers: (couriers: Courier[]) => req<Courier[]>("/seller/couriers", { method: "PUT", body: JSON.stringify({ couriers }) }),
+  adminCouriers: (id: string) => req<Courier[]>(`/admin/stores/${id}/couriers`),
+  adminSaveCouriers: (id: string, couriers: Courier[]) => req<Courier[]>(`/admin/stores/${id}/couriers`, { method: "PUT", body: JSON.stringify({ couriers }) }),
+  sellerOrders: (status?: string) => req<Order[]>(`/seller/orders${status ? `?status=${status}` : ""}`),
+  sellerOrder: (id: string) => req<Order>(`/seller/orders/${id}`),
+  sellerSetOrderStatus: (id: string, status: string, tracking_number = "") =>
+    req<Order>(`/seller/orders/${id}/status`, { method: "PUT", body: JSON.stringify({ status, tracking_number }) }),
+  sellerReport: () => req<Report>("/seller/report"),
+  adminReport: () => req<{ all: Report; stores: (Report & { store_id: string; name: string })[] }>("/admin/report"),
 };
 
 async function uploadTo(path: string, file: LocalFile): Promise<{ url: string }> {
@@ -254,7 +276,7 @@ export type StoreInfo = {
   branches: { name: string; address: string; phone: string; lat: number; lng: number }[];
 };
 export type User = {
-  user_id: string; email: string; name: string; role: "admin" | "customer"; customer_type: CustomerType; picture?: string | null;
+  user_id: string; email: string; name: string; role: "admin" | "customer" | "store_admin"; customer_type: CustomerType; picture?: string | null;
   email_verified: boolean; phone?: string | null; phone_verified: boolean; gender: string; birthdate: string; has_password: boolean;
 };
 export type Address = { address_id: string; label: string; recipient: string; phone: string; address: string; city: string; postal_code: string; is_default: boolean };
@@ -262,9 +284,17 @@ export type AddressInput = Omit<Address, "address_id">;
 export type AppNotification = { notif_id: string; kind: "order" | "promo" | "security"; title: string; body: string; link: string; read: boolean; created_at: string };
 export type ActivityLog = { log_id: string; action: string; detail: string; created_at: string };
 export type AccountSettings = { notif_order: boolean; notif_promo: boolean; notif_security: boolean };
-export type Store = { store_id: string; owner_id: string; name: string; description: string; city: string; phone?: string; logo: string; status: "pending" | "active" | "rejected" | "suspended"; note: string; created_at: string; product_count?: number; owner_name?: string; owner_email?: string };
+export type Store = { official?: boolean; store_id: string; owner_id: string; name: string; description: string; city: string; phone?: string; logo: string; status: "pending" | "active" | "rejected" | "suspended"; note: string; created_at: string; product_count?: number; owner_name?: string; owner_email?: string };
 export type StoreInput = { name: string; description: string; city: string; phone: string; logo: string };
 export type SellerProductInput = { name: string; description: string; category: string; price: number; original_price: number; stock: number; images: string[] };
+export type Courier = { code: string; name: string; cost: number; eta: string; active: boolean };
+export type InventoryItem = { product_id: string; name: string; image: string; price: number; stock: number; own: boolean };
+export type Report = {
+  revenue_completed: number; orders_completed: number; revenue_in_progress: number;
+  by_status: Record<string, { orders: number; total: number }>;
+  daily: { date: string; revenue: number; orders: number }[];
+  top_products: { product_id: string; name: string; qty: number; revenue: number }[];
+};
 export type Category = { category_id: string; name: string; icon: string; image: string; parent?: string | null; count: number };
 export type Product = {
   product_id: string; name: string; category: string; price: number; original_price: number;
@@ -275,15 +305,17 @@ export type Product = {
   flash_price?: number | null; flash_ends_at?: string | null;
   store_id: string; store_name: string;
 };
-export type CartItem = { product_id: string; quantity: number; name: string; price: number; base_price: number; original_price: number; image: string; stock: number; next_tier?: PriceTier | null };
+export type CartItem = { product_id: string; quantity: number; name: string; price: number; base_price: number; original_price: number; image: string; stock: number; next_tier?: PriceTier | null; store_id: string; store_name: string };
 export type Cart = { items: CartItem[]; subtotal: number; savings: number; item_count: number; customer_type: CustomerType };
 export type PaymentMethod = "midtrans" | "xendit" | "cod";
-export type CheckoutPayload = { full_name: string; phone: string; address: string; city: string; payment_method: PaymentMethod; voucher_code?: string };
+export type CheckoutPayload = { full_name: string; phone: string; address: string; city: string; payment_method: PaymentMethod; voucher_code?: string; store_id: string; courier: string };
 export type OrderItem = { product_id: string; name: string; price: number; quantity: number; image: string };
 export type Order = {
   order_id: string; user_id?: string | null; items: OrderItem[]; subtotal: number; shipping_cost: number; discount?: number; voucher_code?: string | null; total: number;
   shipping: Record<string, string>; status: "pending" | "paid" | "expired" | "failed" | "cod" | "processing" | "shipped" | "completed" | "cancelled"; payment_method: PaymentMethod;
   payment_url?: string | null; customer_type: CustomerType; created_at: string;
+  store_id: string; store_name: string; courier?: { code: string; name: string; cost: number; eta: string } | null;
+  tracking_number: string; status_history: { status: Order["status"]; at: string; note: string }[];
 };
 export type AdminStats = { orders_today: number; revenue_today: number; need_action: number; waiting_payment: number; customers: number; products: number };
 export const ORDER_STATUS_LABEL: Record<Order["status"], string> = {

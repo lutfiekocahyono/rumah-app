@@ -242,7 +242,7 @@ class TestActivityNotif:
 class TestSeller:
     def test_old_products_pgs_official(self):
         p = requests.get(f"{API}/products", params={"limit": 5, "store": "pgs-official"}).json()
-        assert len(p) == 5 and all(x["store_name"] == "PGS Official" for x in p)
+        assert len(p) == 5 and all(x["store_name"] == "PGS Sidoarjo" for x in p)
         s = requests.get(f"{API}/stores/pgs-official")
         assert s.status_code == 200 and s.json()["product_count"] >= 6618 and "phone" not in s.json()
 

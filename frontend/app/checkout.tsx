@@ -1,13 +1,13 @@
 import React, { useEffect, useState } from "react";
 import { View, Text, StyleSheet, Pressable, TextInput, KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator } from "react-native";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Icon from "@react-native-vector-icons/ionicons";
 
 import { colors, fontSize, radius, spacing, formatIDR } from "@/src/theme";
 import { useCart } from "@/src/cart-context";
 import { useAuth } from "@/src/auth-context";
-import { api, type Address, type PaymentMethod, type Voucher } from "@/src/api";
+import { api, type Address, type Courier, type PaymentMethod, type Voucher } from "@/src/api";
 import * as WebBrowser from "expo-web-browser";
 
 export default function Checkout() {
@@ -61,7 +61,18 @@ export default function Checkout() {
   };
 
   const discount = voucher?.discount ?? 0;
-  const total = cart.subtotal - discount + 25000;
+  const params = useLocalSearchParams<{ store?: string }>();
+  const storeId = params.store || cart.items[0]?.store_id || "pgs-official";
+  const items = cart.items.filter((i) => i.store_id === storeId);
+  const subtotal = items.reduce((t, i) => t + i.price * i.quantity, 0);
+  const itemCount = items.reduce((t, i) => t + i.quantity, 0);
+  const [couriers, setCouriers] = useState<Courier[]>([]);
+  const [courier, setCourier] = useState("");
+  useEffect(() => {
+    api.storeCouriers(storeId).then((l) => { setCouriers(l); setCourier((c) => c || l[0]?.code || ""); }).catch(() => {});
+  }, [storeId]);
+  const shipCost = couriers.find((c) => c.code === courier)?.cost ?? 0;
+  const total = subtotal - discount + shipCost;
 
   const submit = async () => {
     setErr("");
@@ -69,13 +80,17 @@ export default function Checkout() {
       setErr("Lengkapi semua data pengiriman");
       return;
     }
-    if (cart.item_count === 0) {
+    if (itemCount === 0) {
       setErr("Keranjang kosong");
+      return;
+    }
+    if (!courier) {
+      setErr("Pilih kurir pengiriman");
       return;
     }
     setLoading(true);
     try {
-      const order = await api.checkout({ full_name: fullName, phone, address, city, payment_method: method, voucher_code: voucher?.code });
+      const order = await api.checkout({ full_name: fullName, phone, address, city, payment_method: method, voucher_code: voucher?.code, store_id: storeId, courier });
       await refresh();
       router.replace(`/order/${order.order_id}` as any);
       if (order.payment_url) await WebBrowser.openBrowserAsync(order.payment_url);
@@ -117,6 +132,22 @@ export default function Checkout() {
           <Input testID="co-phone" label="No. HP / WhatsApp" value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
           <Input testID="co-address" label="Alamat lengkap" value={address} onChangeText={setAddress} multiline />
           <Input testID="co-city" label="Kota" value={city} onChangeText={setCity} />
+        </View>
+
+        <Text style={[styles.section, { marginTop: spacing.xl }]}>Toko & Kurir</Text>
+        <View style={styles.card} testID="checkout-couriers">
+          <Text style={styles.paySub}>Dikirim dari: {items[0]?.store_name ?? "-"}</Text>
+          {couriers.map((c) => (
+            <Pressable key={c.code} testID={`co-courier-${c.code}`} onPress={() => setCourier(c.code)}
+              style={{ flexDirection: "row", alignItems: "center", gap: spacing.md, minHeight: 48 }}>
+              <Icon name={courier === c.code ? "radio-button-on" : "radio-button-off"} size={20} color={courier === c.code ? colors.brandPrimary : colors.muted} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: colors.onSurface, fontSize: fontSize.base }}>{c.name}</Text>
+                {c.eta ? <Text style={styles.paySub}>Estimasi {c.eta}</Text> : null}
+              </View>
+              <Text style={{ color: colors.onSurface, fontWeight: "600" }}>{c.cost ? formatIDR(c.cost) : "Gratis"}</Text>
+            </Pressable>
+          ))}
         </View>
 
         <Text style={[styles.section, { marginTop: spacing.xl }]}>Metode Pembayaran</Text>
@@ -185,9 +216,8 @@ export default function Checkout() {
 
         <Text style={[styles.section, { marginTop: spacing.xl }]}>Ringkasan</Text>
         <View style={styles.card}>
-          <Row label={`Subtotal (${cart.item_count} item)`} value={formatIDR(cart.subtotal)} />
-          {cart.savings > 0 ? <Row label="Termasuk hemat harga bertingkat" value={`-${formatIDR(cart.savings)}`} /> : null}
-          <Row label="Ongkos kirim" value={formatIDR(25000)} />
+          <Row label={`Subtotal (${itemCount} item)`} value={formatIDR(subtotal)} />
+          <Row label={`Ongkos kirim${couriers.find((c) => c.code === courier) ? ` (${couriers.find((c) => c.code === courier)!.name})` : ""}`} value={formatIDR(shipCost)} />
           {discount > 0 ? <Row label={`Voucher ${voucher?.code}`} value={`-${formatIDR(discount)}`} /> : null}
           <View style={styles.sep} />
           <Row label="Total Pembayaran" value={formatIDR(total)} big />

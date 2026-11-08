@@ -78,6 +78,7 @@ INDEXES: dict[str, list[IndexModel]] = {
     "uploads": [IndexModel([("storage_path", ASCENDING)], name="storage_path", unique=True)],
     "one_time_codes": [IndexModel([("expires_at", ASCENDING)], name="ttl", expireAfterSeconds=0),
                        IndexModel([("user_id", ASCENDING), ("purpose", ASCENDING)], name="user_purpose")],
+    "store_stock": [IndexModel([("store_id", ASCENDING), ("product_id", ASCENDING)], name="store_product", unique=True)],
     "rate_limits": [IndexModel([("expires_at", ASCENDING)], name="ttl", expireAfterSeconds=0)],
     "addresses": [IndexModel([("user_id", ASCENDING), ("address_id", ASCENDING)], name="user_addr", unique=True)],
     "activity_logs": [IndexModel([("user_id", ASCENDING), ("created_at", DESCENDING)], name="user_time")],
@@ -164,7 +165,9 @@ async def seed_data() -> None:
                                     "name_lower": "pgs official", "description": "Toko resmi Pusat Grosir Sidoarjo",
                                     "city": "Sidoarjo", "phone": os.environ.get("OWNER_WHATSAPP", ""), "logo": "",
                                     "status": "active", "note": "", "created_at": datetime.now(timezone.utc)})
-    await db.products.update_many({"store_id": {"$exists": False}}, {"$set": {"store_id": seller.PGS_STORE_ID, "store_name": "PGS Official"}})
+    await db.products.update_many({"store_id": {"$exists": False}}, {"$set": {"store_id": seller.PGS_STORE_ID, "store_name": "PGS Sidoarjo"}})
+    await seller.seed_branches(db, _hash)
+    await db.orders.update_many({"store_id": {"$exists": False}}, {"$set": {"store_id": seller.PGS_STORE_ID, "store_name": "PGS Sidoarjo"}})
     await db.users.update_many({"email_verified": {"$exists": False}, "auth_provider": "google"}, {"$set": {"email_verified": True}})
     await db.users.update_many({"email": {"$in": ["demo@pgs.id", os.environ["ADMIN_EMAIL"]]}}, {"$set": {"email_verified": True}})
     # homepage promo sample content (editable in Admin > Promo & Beranda)
@@ -287,6 +290,8 @@ class CartItemDetailed(BaseModel):
     image: str
     stock: int
     next_tier: Optional[PriceTier] = None
+    store_id: str = seller.PGS_STORE_ID
+    store_name: str = "PGS Sidoarjo"
 
 
 class CartOut(BaseModel):
@@ -308,6 +313,8 @@ class CheckoutIn(BaseModel):
     city: str = Field(min_length=2)
     payment_method: str = Field(pattern="^(midtrans|xendit|cod)$")
     voucher_code: Optional[str] = None
+    store_id: Optional[str] = None
+    courier: str = "pickup"
 
 
 class OrderItem(BaseModel):
@@ -332,6 +339,11 @@ class Order(BaseModel):
     payment_method: str = "cod"
     payment_url: Optional[str] = None
     customer_type: str = "langsung"
+    store_id: str = seller.PGS_STORE_ID
+    store_name: str = "PGS Sidoarjo"
+    courier: Optional[dict] = None
+    tracking_number: str = ""
+    status_history: List[dict] = []
     created_at: datetime
 
 
@@ -559,6 +571,30 @@ async def list_categories(parent: Optional[str] = None, all: bool = False):
     return [Category(**d) for d in docs]
 
 
+def _ctx(x_store_id: Optional[str]) -> str:
+    return x_store_id if x_store_id in seller.OFFICIAL_IDS else seller.PGS_STORE_ID
+
+
+async def _visible(ctx: str) -> dict:
+    """Hide inactive stores and the *own* products of other official branches (catalog is shared)."""
+    others = [s for s in seller.OFFICIAL_IDS if s not in (seller.PGS_STORE_ID, ctx)]
+    return {"store_id": {"$nin": await _hidden_stores() + others}}
+
+
+async def _apply_stock(docs: List[dict], ctx: str) -> List[dict]:
+    """Catalog items show the stock of the buyer's chosen branch."""
+    if ctx == seller.PGS_STORE_ID:
+        return docs
+    ids = [d["product_id"] for d in docs if d.get("store_id", seller.PGS_STORE_ID) == seller.PGS_STORE_ID]
+    stocks = await seller.branch_stocks(db, ctx, ids)
+    for d in docs:
+        if d["product_id"] in stocks or d["product_id"] in ids:
+            d["stock"] = stocks.get(d["product_id"], 0)
+            d["in_stock"] = d["stock"] > 0
+            d["store_name"] = next(o["name"] for o in seller.OFFICIAL if o["store_id"] == ctx)
+    return docs
+
+
 async def _hidden_stores() -> List[str]:
     """Stores that are not active (pending/rejected/suspended): their products stay hidden from buyers."""
     return [s["store_id"] for s in await db.stores.find({"status": {"$ne": "active"}}, {"store_id": 1}).to_list(5000)]
@@ -585,8 +621,10 @@ async def list_products(
     skip: int = Query(0, ge=0),
     store: Optional[str] = None,
     user=Depends(get_optional_user),
+    x_store_id: Optional[str] = Header(default=None),
 ):
-    query: dict = {"store_id": {"$nin": await _hidden_stores()}}
+    ctx = _ctx(x_store_id)
+    query: dict = await _visible(ctx)
     if category:
         children = [c["category_id"] for c in await db.categories.find({"parent": category}, {"category_id": 1}).to_list(200)]
         query["categories"] = {"$in": [category, *children]}
@@ -601,39 +639,47 @@ async def list_products(
         "rating": [("rating", -1), ("product_id", -1)],
         "newest": [("in_stock", -1), ("created_at", -1), ("product_id", -1)],
     }
-    docs = await db.products.find(query, {"_id": 0}).sort(sort_map[sort]).skip(skip).limit(limit).to_list(limit)
+    docs = await _apply_stock(await db.products.find(query, {"_id": 0}).sort(sort_map[sort]).skip(skip).limit(limit).to_list(limit), ctx)
     pricing, flash = await get_pricing(db), await promo.active_flash(db)
     ctype = (user or {}).get("customer_type", "langsung")
     return [_product_out(d, ctype, pricing, flash) for d in docs]
 
 
 @api.get("/products/{product_id}", response_model=Product)
-async def get_product(product_id: str, user=Depends(get_optional_user)):
-    doc = await db.products.find_one({"product_id": product_id, "store_id": {"$nin": await _hidden_stores()}}, {"_id": 0})
+async def get_product(product_id: str, user=Depends(get_optional_user), x_store_id: Optional[str] = Header(default=None)):
+    ctx = _ctx(x_store_id)
+    doc = await db.products.find_one({"product_id": product_id, **await _visible(ctx)}, {"_id": 0})
     if not doc:
         raise HTTPException(status_code=404, detail="Produk tidak ditemukan")
+    await _apply_stock([doc], ctx)
     return _product_out(doc, (user or {}).get("customer_type", "langsung"), await get_pricing(db), await promo.active_flash(db))
 
 
 # ---------------------------------------------------------------------------
 # Cart
 # ---------------------------------------------------------------------------
-async def _load_cart_detailed(owner: str) -> CartOut:
+async def _load_cart_detailed(owner: str, only_store: Optional[str] = None) -> CartOut:
     ctype = await _ctype_for_owner(owner)
     cart = await db.carts.find_one({"owner": owner}, {"_id": 0}) or {"owner": owner, "items": []}
-    items = cart.get("items", [])
+    items = [i for i in cart.get("items", []) if not only_store or i.get("store_id", seller.PGS_STORE_ID) == only_store]
     if not items:
         return CartOut(items=[], subtotal=0, item_count=0, customer_type=ctype)
     pricing, flash = await get_pricing(db), await promo.active_flash(db)
     flash_prices = (flash or {}).get("prices", {})
     ids = [i["product_id"] for i in items]
     prods = {p["product_id"]: p for p in await db.products.find({"product_id": {"$in": ids}}, {"_id": 0}).to_list(500)}
+    names = await seller.store_names(db)
+    stock_by: dict = {}
+    for sid in {i.get("store_id", seller.PGS_STORE_ID) for i in items} - {seller.PGS_STORE_ID}:
+        stock_by[sid] = await seller.branch_stocks(db, sid, ids)
     detailed: List[CartItemDetailed] = []
     subtotal = savings = 0
     for it in items:
         p = prods.get(it["product_id"])
         if not p:
             continue
+        sid = it.get("store_id", seller.PGS_STORE_ID)
+        stock = stock_by[sid].get(p["product_id"], 0) if sid in stock_by and p.get("store_id") == seller.PGS_STORE_ID else p["stock"]
         qty = it["quantity"]
         price = unit_price(p, ctype, qty, pricing)
         if flash_prices.get(p["product_id"]):
@@ -641,8 +687,8 @@ async def _load_cart_detailed(owner: str) -> CartOut:
         nxt = next((t for t in price_tiers(p, ctype, pricing) if t["min_qty"] > qty), None)
         detailed.append(CartItemDetailed(
             product_id=it["product_id"], quantity=qty, name=p["name"], price=price, base_price=p["price"],
-            original_price=p["original_price"], image=p["image"], stock=p["stock"],
-            next_tier=PriceTier(**nxt) if nxt else None,
+            original_price=p["original_price"], image=p["image"], stock=stock,
+            next_tier=PriceTier(**nxt) if nxt else None, store_id=sid, store_name=names.get(sid, sid),
         ))
         subtotal += price * qty
         savings += max(0, p["price"] - price) * qty
@@ -656,34 +702,40 @@ async def get_cart(owner: str = Depends(get_owner)):
 
 
 @api.post("/cart/items", response_model=CartOut)
-async def add_to_cart(body: CartItemIn, owner: str = Depends(get_owner)):
-    product = await db.products.find_one({"product_id": body.product_id})
+async def add_to_cart(body: CartItemIn, owner: str = Depends(get_owner), x_store_id: Optional[str] = Header(default=None)):
+    ctx = _ctx(x_store_id)
+    product = await db.products.find_one({"product_id": body.product_id, **await _visible(ctx)})
     if not product:
         raise HTTPException(status_code=404, detail="Produk tidak ditemukan")
+    await _apply_stock([product], ctx)
+    item_store = ctx if product.get("store_id", seller.PGS_STORE_ID) == seller.PGS_STORE_ID else product["store_id"]
     if not product.get("in_stock", True) or product["stock"] <= 0:
         raise HTTPException(status_code=400, detail="Stok habis")
     cart = await db.carts.find_one({"owner": owner}) or {"owner": owner, "items": []}
     items = cart.get("items", [])
     for it in items:
         if it["product_id"] == body.product_id:
-            it["quantity"] = min(product["stock"], it["quantity"] + body.quantity)
+            it["quantity"] = min(product["stock"], it["quantity"] + body.quantity) if it.get("store_id", seller.PGS_STORE_ID) == item_store else min(product["stock"], body.quantity)
+            it["store_id"] = item_store
             break
     else:
-        items.append({"product_id": body.product_id, "quantity": min(product["stock"], body.quantity)})
+        items.append({"product_id": body.product_id, "quantity": min(product["stock"], body.quantity), "store_id": item_store})
     await db.carts.update_one({"owner": owner}, {"$set": {"items": items, "updated_at": datetime.now(timezone.utc)}}, upsert=True)
     return await _load_cart_detailed(owner)
 
 
 @api.put("/cart/items/{product_id}", response_model=CartOut)
 async def update_cart_item(product_id: str, body: CartQtyIn, owner: str = Depends(get_owner)):
-    product = await db.products.find_one({"product_id": product_id}, {"stock": 1})
+    product = await db.products.find_one({"product_id": product_id}, {"stock": 1, "product_id": 1, "store_id": 1})
     if not product:
         raise HTTPException(status_code=404, detail="Produk tidak ditemukan")
     cart = await db.carts.find_one({"owner": owner}) or {"owner": owner, "items": []}
     items = [i for i in cart.get("items", []) if i["product_id"] != product_id]
     if body.quantity > 0:
         old = next((i for i in cart.get("items", []) if i["product_id"] == product_id), None)
-        entry = {"product_id": product_id, "quantity": min(product["stock"], body.quantity)}
+        sid = (old or {}).get("store_id", seller.PGS_STORE_ID)
+        await _apply_stock([product], sid) if sid in seller.OFFICIAL_IDS else None
+        entry = {"product_id": product_id, "quantity": min(product["stock"], body.quantity), "store_id": sid}
         if old:
             items = [entry if i["product_id"] == product_id else i for i in cart["items"]]
         else:
@@ -735,9 +787,6 @@ async def remove_wishlist(product_id: str, owner: str = Depends(get_owner)):
 # ---------------------------------------------------------------------------
 # Orders & payments
 # ---------------------------------------------------------------------------
-SHIPPING_COST = 25000
-
-
 def _order_out(d: dict) -> Order:
     return Order(**{k: v for k, v in d.items() if k in Order.model_fields and k != "items"},
                  items=[OrderItem(**i) for i in d.get("items", [])])
@@ -745,9 +794,24 @@ def _order_out(d: dict) -> Order:
 
 @api.post("/checkout", response_model=Order)
 async def checkout(body: CheckoutIn, background: BackgroundTasks, owner: str = Depends(get_owner)):
-    cart = await _load_cart_detailed(owner)
+    full = await _load_cart_detailed(owner)
+    stores = {i.store_id for i in full.items}
+    store_id = body.store_id or (stores.pop() if len(stores) == 1 else None)
+    if not store_id:
+        raise HTTPException(status_code=400, detail="Pilih toko yang akan di-checkout")
+    cart = await _load_cart_detailed(owner, store_id)
     if cart.item_count == 0:
         raise HTTPException(status_code=400, detail="Keranjang kosong")
+    for i in cart.items:
+        if i.quantity > i.stock:
+            raise HTTPException(status_code=400, detail=f"Stok {i.name} tidak cukup (sisa {i.stock})")
+    store = await db.stores.find_one({"store_id": store_id, "status": "active"})
+    if not store:
+        raise HTTPException(status_code=400, detail="Toko tidak aktif")
+    courier = next((c for c in seller.couriers_of(store) if c["code"] == body.courier and c.get("active", True)), None)
+    if not courier:
+        raise HTTPException(status_code=400, detail="Pilih kurir pengiriman")
+    SHIPPING_COST = int(courier["cost"])
     user_id = owner[5:] if owner.startswith("user:") else None
     user = await db.users.find_one({"user_id": user_id}, {"email": 1}) if user_id else None
     discount, vcode = 0, None
@@ -772,7 +836,12 @@ async def checkout(body: CheckoutIn, background: BackgroundTasks, owner: str = D
         "discount": discount,
         "voucher_code": vcode,
         "total": cart.subtotal - discount + SHIPPING_COST,
-        "shipping": body.model_dump(exclude={"payment_method"}),
+        "shipping": body.model_dump(exclude={"payment_method", "store_id", "courier", "voucher_code"}),
+        "store_id": store_id,
+        "store_name": store["name"],
+        "courier": {k: courier.get(k) for k in ("code", "name", "cost", "eta")},
+        "tracking_number": "",
+        "status_history": [{"status": "cod" if body.payment_method == "cod" else "pending", "at": datetime.now(timezone.utc), "note": "Pesanan dibuat"}],
         "payment_method": body.payment_method,
         "customer_type": cart.customer_type,
         "status": "cod" if body.payment_method == "cod" else "pending",
@@ -790,10 +859,8 @@ async def checkout(body: CheckoutIn, background: BackgroundTasks, owner: str = D
     await db.orders.insert_one(order_doc)
     await _track(owner, [p["category"] for p in await db.products.find(
         {"product_id": {"$in": [i.product_id for i in cart.items]}}, {"category": 1}).to_list(500)], weight=3)
-    for i in cart.items:  # reserve stock (9999 = unlimited from website import)
-        if i.stock < 9999:
-            await db.products.update_one({"product_id": i.product_id}, {"$inc": {"stock": -i.quantity}})
-    await db.carts.update_one({"owner": owner}, {"$set": {"items": []}}, upsert=True)
+    await seller.adjust_stock(db, order_doc, -1)
+    await db.carts.update_one({"owner": owner}, {"$pull": {"items": {"product_id": {"$in": [i.product_id for i in cart.items]}}}})
     background.add_task(notify.send_owner_order, order_doc)
     await ACCT["notify_user"](user_id, "order", "Pesanan dibuat", f"Pesanan {order_doc['order_id']} berhasil dibuat.", f"/order/{order_doc['order_id']}")
     await ACCT["log_activity"](user_id, "order", f"Membuat pesanan {order_doc['order_id']}")
@@ -810,6 +877,7 @@ async def _release_voucher(order_id: str) -> None:
         {"$set": {"voucher_released": True}})
     if o:
         await db.vouchers.update_one({"code": o["voucher_code"], "used": {"$gt": 0}}, {"$inc": {"used": -1}})
+    await seller.restock_once(db, order_id)
 
 
 @api.get("/orders", response_model=List[Order])
@@ -823,6 +891,19 @@ async def get_order(order_id: str, owner: str = Depends(get_owner)):
     d = await db.orders.find_one({"order_id": order_id, "owner": owner}, {"_id": 0})
     if not d:
         raise HTTPException(status_code=404, detail="Pesanan tidak ditemukan")
+    return _order_out(d)
+
+
+@api.post("/orders/{order_id}/confirm", response_model=Order)
+async def confirm_received(order_id: str, owner: str = Depends(get_owner)):
+    d = await db.orders.find_one_and_update(
+        {"order_id": order_id, "owner": owner, "status": "shipped"},
+        {"$set": {"status": "completed", "completed_at": datetime.now(timezone.utc)},
+         "$push": {"status_history": {"status": "completed", "at": datetime.now(timezone.utc), "note": "Diterima pembeli"}}},
+        projection={"_id": 0}, return_document=ReturnDocument.AFTER)
+    if not d:
+        raise HTTPException(status_code=400, detail="Pesanan belum dikirim atau tidak ditemukan")
+    await ACCT["log_activity"](d.get("user_id"), "order", f"Mengonfirmasi pesanan {order_id} diterima")
     return _order_out(d)
 
 
@@ -938,6 +1019,8 @@ async def admin_order_status(order_id: str, body: OrderStatusIn, _=Depends(requi
         raise HTTPException(status_code=404, detail="Pesanan tidak ditemukan")
     if body.status == "cancelled":
         await _release_voucher(order_id)
+        await seller.restock_once(db, order_id)
+    await db.orders.update_one({"order_id": order_id}, {"$push": {"status_history": {"status": body.status, "at": datetime.now(timezone.utc), "note": "Admin"}}})
     label = {"processing": "sedang diproses", "shipped": "sedang dikirim", "completed": "selesai", "cancelled": "dibatalkan"}[body.status]
     await ACCT["notify_user"](d.get("user_id"), "order", "Status pesanan diperbarui", f"Pesanan {order_id} {label}.", f"/order/{order_id}")
     return _order_out(d)
@@ -1176,9 +1259,10 @@ async def track_view(product_id: str, owner: Optional[str] = Depends(get_optiona
 async def recommendations(
     limit: int = Query(20, ge=1, le=60), skip: int = Query(0, ge=0),
     owner: Optional[str] = Depends(get_optional_owner), user=Depends(get_optional_user),
+    x_store_id: Optional[str] = Header(default=None),
 ):
     mode = (await promo.get_home(db))["recommend_mode"]
-    base = {"in_stock": {"$ne": False}, "store_id": {"$nin": await _hidden_stores()}}
+    base = {"in_stock": {"$ne": False}, **await _visible(_ctx(x_store_id))}
     docs: list = []
     if mode == "random":
         docs = await db.products.aggregate([{"$match": base}, {"$sample": {"size": limit}}, {"$project": {"_id": 0}}]).to_list(limit)
@@ -1193,6 +1277,7 @@ async def recommendations(
             {"$sort": {"_fav": -1, "sold": -1, "created_at": -1, "product_id": -1}},
             {"$skip": skip}, {"$limit": limit}, {"$project": {"_id": 0, "_fav": 0}},
         ]).to_list(limit)
+    await _apply_stock(docs, _ctx(x_store_id))
     pricing, flash = await get_pricing(db), await promo.active_flash(db)
     ctype = (user or {}).get("customer_type", "langsung")
     return [_product_out(d, ctype, pricing, flash) for d in docs]
@@ -1330,7 +1415,8 @@ async def _product_out_for_user(d: dict, user: dict) -> Product:
 
 
 ACCT = account.register(api, db, get_current_user, _user_out, _make_token)
-seller.register(api, db, get_current_user, require_admin, _product_out_for_user, ACCT["notify_user"], ACCT["log_activity"])
+seller.register(api, db, get_current_user, require_admin, _product_out_for_user, ACCT["notify_user"], ACCT["log_activity"],
+                _release_voucher, _order_out)
 
 app.include_router(api)
 

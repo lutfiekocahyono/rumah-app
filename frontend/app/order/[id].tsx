@@ -8,6 +8,7 @@ import * as WebBrowser from "expo-web-browser";
 
 import { colors, fontSize, radius, spacing, formatIDR } from "@/src/theme";
 import { api, ORDER_STATUS_LABEL, type Order } from "@/src/api";
+import { OrderTracking } from "@/src/components/order-tracking";
 
 const METHOD_LABEL = { midtrans: "Midtrans", xendit: "Xendit", cod: "COD (Bayar di Tempat)" };
 
@@ -60,7 +61,7 @@ export default function OrderDetail() {
     );
   }
 
-  const paid = order.status === "paid";
+  const paid = ["paid", "processing", "shipped", "completed"].includes(order.status);
   const pending = order.status === "pending";
   const statusColor = paid ? colors.success : pending ? colors.warning : order.status === "cod" ? colors.info : colors.error;
 
@@ -86,6 +87,16 @@ export default function OrderDetail() {
           <Text style={styles.hint}>Selesaikan pembayaran di halaman {METHOD_LABEL[order.payment_method]}, lalu kembali ke sini. Status diperbarui otomatis.</Text>
         ) : null}
         {err ? <Text style={styles.err}>{err}</Text> : null}
+
+        <OrderTracking order={order} />
+        {order.status === "shipped" ? (
+          <Pressable testID="confirm-received-btn" style={styles.primaryBtn} disabled={checking} onPress={async () => {
+            setChecking(true);
+            try { setOrder(await api.confirmReceived(order.order_id)); } catch (e: any) { setErr(e.message); } finally { setChecking(false); }
+          }}>
+            <Text style={styles.primaryText}>Pesanan Sudah Diterima</Text>
+          </Pressable>
+        ) : null}
 
         <View style={styles.card}>
           {order.items.map((it) => (
