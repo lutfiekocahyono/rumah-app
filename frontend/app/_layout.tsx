@@ -34,7 +34,7 @@ export default function RootLayout() {
                       <Stack.Screen name="category/[id]" />
                       <Stack.Screen name="search" />
                       <Stack.Screen name="checkout" />
-                      <Stack.Screen name="order-success" />
+                      <Stack.Screen name="order/[id]" />
                       <Stack.Screen name="wishlist" />
                       <Stack.Screen name="orders" />
                     </Stack>

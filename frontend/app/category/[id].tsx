@@ -27,6 +27,8 @@ export default function CategoryPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [sort, setSort] = useState("popular");
   const [loading, setLoading] = useState(true);
+  const [done, setDone] = useState(false);
+  const [moreLoading, setMoreLoading] = useState(false);
 
   useEffect(() => {
     api.categories().then((cs) => setCat(cs.find((c) => c.category_id === id) ?? null));
@@ -35,8 +37,21 @@ export default function CategoryPage() {
   useEffect(() => {
     if (!id) return;
     setLoading(true);
-    api.products({ category: id, sort }).then((p) => { setProducts(p); setLoading(false); }).catch(() => setLoading(false));
+    setDone(false);
+    api.products({ category: id, sort }).then((p) => { setProducts(p); setDone(p.length < 40); setLoading(false); }).catch(() => setLoading(false));
   }, [id, sort]);
+
+  const loadMore = async () => {
+    if (done || moreLoading || loading || !id) return;
+    setMoreLoading(true);
+    try {
+      const p = await api.products({ category: id, sort, skip: products.length });
+      setProducts((cur) => [...cur, ...p]);
+      if (p.length < 40) setDone(true);
+    } finally {
+      setMoreLoading(false);
+    }
+  };
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]} testID="category-screen">
@@ -82,6 +97,9 @@ export default function CategoryPage() {
           numColumns={2}
           columnWrapperStyle={{ gap: CARD_GAP, paddingHorizontal: spacing.lg }}
           contentContainerStyle={{ gap: CARD_GAP, paddingVertical: spacing.md, paddingBottom: spacing.xl }}
+          onEndReached={loadMore}
+          onEndReachedThreshold={0.5}
+          ListFooterComponent={moreLoading ? <ActivityIndicator color={colors.brandPrimary} style={{ marginVertical: spacing.md }} /> : null}
           renderItem={({ item }) => <ProductCard product={item} style={{ width: CARD_WIDTH }} />}
         />
       )}

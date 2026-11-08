@@ -1,5 +1,5 @@
 import React from "react";
-import { View, Text, StyleSheet, Pressable, FlatList } from "react-native";
+import { View, Text, StyleSheet, Pressable, FlatList, Linking } from "react-native";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -8,10 +8,24 @@ import Icon from "@react-native-vector-icons/ionicons";
 import { colors, fontSize, radius, spacing, formatIDR } from "@/src/theme";
 import { useCart } from "@/src/cart-context";
 
+const STORE_WHATSAPP = "6281335551252";
+
 export default function Keranjang() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { cart, updateQty, removeItem } = useCart();
+
+  const orderViaWhatsApp = () => {
+    const lines = [
+      "Halo Pusat Grosir Sidoarjo, saya mau pesan:",
+      ...cart.items.map((i) => `- ${i.name} x${i.quantity} @ ${formatIDR(i.price)}`),
+      `Subtotal: ${formatIDR(cart.subtotal)}`,
+      "",
+      "Nama:",
+      "Alamat:",
+    ];
+    Linking.openURL(`https://wa.me/${STORE_WHATSAPP}?text=${encodeURIComponent(lines.join("\n"))}`);
+  };
 
   const empty = cart.items.length === 0;
 
@@ -38,13 +52,21 @@ export default function Keranjang() {
           <FlatList
             data={cart.items}
             keyExtractor={(it) => it.product_id}
-            contentContainerStyle={{ padding: spacing.lg, gap: spacing.md, paddingBottom: 180 }}
+            contentContainerStyle={{ padding: spacing.lg, gap: spacing.md, paddingBottom: 240 }}
             renderItem={({ item }) => (
               <View style={styles.row} testID={`cart-row-${item.product_id}`}>
                 <Image source={item.image} style={styles.rowImg} contentFit="cover" />
                 <View style={{ flex: 1, gap: 4 }}>
                   <Text style={styles.rowName} numberOfLines={2}>{item.name}</Text>
-                  <Text style={styles.rowPrice}>{formatIDR(item.price)}</Text>
+                  <View style={styles.priceLine}>
+                    <Text style={styles.rowPrice} testID={`cart-unit-price-${item.product_id}`}>{formatIDR(item.price)}</Text>
+                    {item.price < item.base_price ? <Text style={styles.basePrice}>{formatIDR(item.base_price)}</Text> : null}
+                  </View>
+                  {item.next_tier ? (
+                    <Text style={styles.nextTier} testID={`cart-next-tier-${item.product_id}`}>
+                      Beli {item.next_tier.min_qty - item.quantity} lagi → {formatIDR(item.next_tier.price)}/pcs
+                    </Text>
+                  ) : null}
                   <View style={styles.qtyRow}>
                     <Pressable
                       testID={`cart-minus-${item.product_id}`}
@@ -75,6 +97,12 @@ export default function Keranjang() {
               <Text style={styles.sumLabel}>Subtotal</Text>
               <Text style={styles.sumValue}>{formatIDR(cart.subtotal)}</Text>
             </View>
+            {cart.savings > 0 ? (
+              <View style={styles.sumRow}>
+                <Text style={[styles.sumLabel, { color: colors.success }]}>Sudah termasuk hemat harga bertingkat</Text>
+                <Text style={[styles.sumValue, { color: colors.success }]} testID="cart-savings">{formatIDR(cart.savings)}</Text>
+              </View>
+            ) : null}
             <View style={styles.sumRow}>
               <Text style={styles.sumLabel}>Ongkos kirim</Text>
               <Text style={styles.sumValue}>{formatIDR(25000)}</Text>
@@ -85,6 +113,10 @@ export default function Keranjang() {
             </View>
             <Pressable testID="checkout-btn" style={styles.checkoutBtn} onPress={() => router.push("/checkout" as any)}>
               <Text style={styles.checkoutText}>Checkout ({cart.item_count})</Text>
+            </Pressable>
+            <Pressable testID="whatsapp-order-btn" style={styles.waBtn} onPress={orderViaWhatsApp}>
+              <Icon name="logo-whatsapp" size={18} color={colors.success} />
+              <Text style={styles.waText}>Pesan via WhatsApp</Text>
             </Pressable>
           </View>
         </>
@@ -116,6 +148,9 @@ const styles = StyleSheet.create({
   rowImg: { width: 80, height: 80, borderRadius: radius.sm, backgroundColor: colors.surfaceTertiary },
   rowName: { fontSize: fontSize.sm, color: colors.onSurface },
   rowPrice: { fontSize: fontSize.base, color: colors.brandPrimary, fontWeight: "500" },
+  priceLine: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  basePrice: { fontSize: 11, color: colors.muted, textDecorationLine: "line-through" },
+  nextTier: { fontSize: 11, color: colors.success },
   qtyRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: 4 },
   qtyBtn: { width: 26, height: 26, borderRadius: 13, backgroundColor: colors.surfaceTertiary, alignItems: "center", justifyContent: "center" },
   qtyText: { minWidth: 20, textAlign: "center", color: colors.onSurface, fontWeight: "500" },
@@ -133,4 +168,6 @@ const styles = StyleSheet.create({
   totalValue: { color: colors.brandPrimary, fontSize: fontSize.lg, fontWeight: "500" },
   checkoutBtn: { backgroundColor: colors.brandPrimary, borderRadius: radius.pill, paddingVertical: 14, alignItems: "center", marginTop: spacing.sm },
   checkoutText: { color: colors.onBrandPrimary, fontSize: fontSize.base, fontWeight: "500" },
+  waBtn: { flexDirection: "row", gap: 6, borderRadius: radius.pill, minHeight: 44, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.success },
+  waText: { color: colors.success, fontSize: fontSize.base, fontWeight: "500" },
 });

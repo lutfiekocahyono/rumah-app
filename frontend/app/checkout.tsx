@@ -7,7 +7,8 @@ import Icon from "@react-native-vector-icons/ionicons";
 import { colors, fontSize, radius, spacing, formatIDR } from "@/src/theme";
 import { useCart } from "@/src/cart-context";
 import { useAuth } from "@/src/auth-context";
-import { api } from "@/src/api";
+import { api, type PaymentMethod } from "@/src/api";
+import * as WebBrowser from "expo-web-browser";
 
 export default function Checkout() {
   const insets = useSafeAreaInsets();
@@ -19,7 +20,7 @@ export default function Checkout() {
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
   const [city, setCity] = useState("Sidoarjo");
-  const [method, setMethod] = useState("ewallet");
+  const [method, setMethod] = useState<PaymentMethod>("midtrans");
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
 
@@ -39,7 +40,8 @@ export default function Checkout() {
     try {
       const order = await api.checkout({ full_name: fullName, phone, address, city, payment_method: method });
       await refresh();
-      router.replace({ pathname: "/order-success" as any, params: { order_id: order.order_id, total: String(order.total) } });
+      router.replace(`/order/${order.order_id}` as any);
+      if (order.payment_url) await WebBrowser.openBrowserAsync(order.payment_url);
     } catch (e: any) {
       setErr(e?.message || "Gagal checkout");
     } finally {
@@ -68,11 +70,11 @@ export default function Checkout() {
 
         <Text style={[styles.section, { marginTop: spacing.xl }]}>Metode Pembayaran</Text>
         <View style={styles.card}>
-          {[
-            { id: "ewallet", label: "E-Wallet (OVO, Gopay, Dana)", icon: "wallet-outline" },
-            { id: "transfer", label: "Transfer Bank", icon: "business-outline" },
-            { id: "cod", label: "COD (Bayar di Tempat)", icon: "cash-outline" },
-          ].map((m) => (
+          {([
+            { id: "midtrans", label: "Midtrans", sub: "QRIS · Transfer Bank (VA) · GoPay · ShopeePay", icon: "qr-code-outline" },
+            { id: "xendit", label: "Xendit", sub: "QRIS · Transfer Bank (VA) · OVO · DANA · ShopeePay", icon: "wallet-outline" },
+            { id: "cod", label: "COD (Bayar di Tempat)", sub: "Bayar tunai saat barang diterima", icon: "cash-outline" },
+          ] as const).map((m) => (
             <Pressable
               key={m.id}
               testID={`pay-${m.id}`}
@@ -80,7 +82,10 @@ export default function Checkout() {
               onPress={() => setMethod(m.id)}
             >
               <Icon name={m.icon as any} size={20} color={colors.onSurface} />
-              <Text style={styles.payLabel}>{m.label}</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.payLabel}>{m.label}</Text>
+                <Text style={styles.paySub}>{m.sub}</Text>
+              </View>
               <View style={[styles.radio, method === m.id && styles.radioActive]}>
                 {method === m.id ? <View style={styles.radioDot} /> : null}
               </View>
@@ -91,6 +96,7 @@ export default function Checkout() {
         <Text style={[styles.section, { marginTop: spacing.xl }]}>Ringkasan</Text>
         <View style={styles.card}>
           <Row label={`Subtotal (${cart.item_count} item)`} value={formatIDR(cart.subtotal)} />
+          {cart.savings > 0 ? <Row label="Termasuk hemat harga bertingkat" value={`-${formatIDR(cart.savings)}`} /> : null}
           <Row label="Ongkos kirim" value={formatIDR(25000)} />
           <View style={styles.sep} />
           <Row label="Total Pembayaran" value={formatIDR(total)} big />
@@ -100,6 +106,8 @@ export default function Checkout() {
       </ScrollView>
 
       <View style={[styles.bottom, { paddingBottom: Math.max(spacing.md, insets.bottom + spacing.sm) }]}>
+        {err ? <Text style={styles.errBar} testID="checkout-error-bar">{err}</Text> : null}
+        <View style={styles.bottomRow}>
         <View style={{ flex: 1 }}>
           <Text style={styles.smallLabel}>Total</Text>
           <Text style={styles.totalValue}>{formatIDR(total)}</Text>
@@ -107,6 +115,7 @@ export default function Checkout() {
         <Pressable testID="pay-now-btn" style={styles.payBtn} onPress={submit} disabled={loading}>
           {loading ? <ActivityIndicator color={colors.onBrandPrimary} /> : <Text style={styles.payBtnText}>Bayar Sekarang</Text>}
         </Pressable>
+        </View>
       </View>
     </KeyboardAvoidingView>
   );
@@ -151,7 +160,8 @@ const styles = StyleSheet.create({
   input: { backgroundColor: colors.surfaceTertiary, borderRadius: radius.sm, paddingHorizontal: spacing.md, paddingVertical: 10, color: colors.onSurface, fontSize: fontSize.base },
 
   payRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.sm },
-  payLabel: { flex: 1, color: colors.onSurface, fontSize: fontSize.sm },
+  payLabel: { color: colors.onSurface, fontSize: fontSize.sm, fontWeight: "500" },
+  paySub: { color: colors.muted, fontSize: 11, marginTop: 2 },
   radio: { width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: colors.border, alignItems: "center", justifyContent: "center" },
   radioActive: { borderColor: colors.brandPrimary },
   radioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.brandPrimary },
@@ -163,7 +173,9 @@ const styles = StyleSheet.create({
 
   err: { color: colors.error, fontSize: fontSize.sm, marginTop: spacing.md },
 
-  bottom: { position: "absolute", left: 0, right: 0, bottom: 0, backgroundColor: colors.surface, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, paddingHorizontal: spacing.lg, paddingTop: spacing.md, flexDirection: "row", alignItems: "center", gap: spacing.md },
+  bottom: { position: "absolute", left: 0, right: 0, bottom: 0, backgroundColor: colors.surface, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, paddingHorizontal: spacing.lg, paddingTop: spacing.md, gap: spacing.sm },
+  bottomRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  errBar: { color: colors.error, fontSize: fontSize.sm },
   smallLabel: { fontSize: 11, color: colors.muted },
   totalValue: { fontSize: fontSize.lg, color: colors.brandPrimary, fontWeight: "500" },
   payBtn: { backgroundColor: colors.brandPrimary, paddingHorizontal: spacing.xl, paddingVertical: 14, borderRadius: radius.pill, minWidth: 180, alignItems: "center" },

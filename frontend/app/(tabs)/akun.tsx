@@ -6,6 +6,8 @@ import Icon from "@react-native-vector-icons/ionicons";
 
 import { colors, fontSize, radius, spacing } from "@/src/theme";
 import { useAuth } from "@/src/auth-context";
+import { CUSTOMER_TYPE_LABEL } from "@/src/api";
+import { Image } from "expo-image";
 
 type MenuItem = { icon: string; label: string; to?: string; onPress?: () => void; danger?: boolean };
 
@@ -15,6 +17,18 @@ export default function Akun() {
   const { user, logout } = useAuth();
 
   const menuGroups: { title: string; items: MenuItem[] }[] = [
+    ...(user?.role === "admin"
+      ? [{
+          title: "Admin",
+          items: [
+            { icon: "speedometer-outline", label: "Admin Panel", to: "/admin" },
+            { icon: "receipt-outline", label: "Pesanan Masuk", to: "/admin/orders" },
+            { icon: "pricetags-outline", label: "Pengaturan Harga", to: "/admin/pricing" },
+            { icon: "people-outline", label: "Kategori Pelanggan", to: "/admin/customers" },
+            { icon: "cube-outline", label: "Harga Manual per Produk", to: "/admin/products" },
+          ],
+        }]
+      : []),
     {
       title: "Pesanan",
       items: [
@@ -23,12 +37,9 @@ export default function Akun() {
       ],
     },
     {
-      title: "Pengaturan",
+      title: "Toko",
       items: [
-        { icon: "location-outline", label: "Alamat Pengiriman" },
-        { icon: "card-outline", label: "Metode Pembayaran" },
-        { icon: "notifications-outline", label: "Notifikasi" },
-        { icon: "help-circle-outline", label: "Pusat Bantuan" },
+        { icon: "storefront-outline", label: "Alamat & Kontak Toko", to: "/store" },
       ],
     },
   ];
@@ -42,11 +53,25 @@ export default function Akun() {
         {user ? (
           <View style={styles.profile} testID="profile-card">
             <View style={styles.avatar}>
-              <Text style={styles.avatarText}>{user.name?.[0]?.toUpperCase() ?? "U"}</Text>
+              {user.picture ? (
+                <Image source={user.picture} style={styles.avatarImg} />
+              ) : (
+                <Text style={styles.avatarText}>{user.name?.[0]?.toUpperCase() ?? "U"}</Text>
+              )}
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.name}>{user.name}</Text>
               <Text style={styles.email}>{user.email}</Text>
+              <View style={styles.badgeRow}>
+                <View style={styles.typeBadge} testID="customer-type-badge">
+                  <Text style={styles.typeBadgeText}>{CUSTOMER_TYPE_LABEL[user.customer_type]}</Text>
+                </View>
+                {user.role === "admin" ? (
+                  <View style={[styles.typeBadge, { backgroundColor: colors.surfaceInverse }]}>
+                    <Text style={[styles.typeBadgeText, { color: colors.onSurfaceInverse }]}>Admin</Text>
+                  </View>
+                ) : null}
+              </View>
             </View>
           </View>
         ) : (
@@ -105,6 +130,10 @@ const styles = StyleSheet.create({
   profile: { flexDirection: "row", alignItems: "center", gap: spacing.md, padding: spacing.lg },
   avatar: { width: 56, height: 56, borderRadius: 28, backgroundColor: colors.brandPrimary, alignItems: "center", justifyContent: "center" },
   avatarText: { color: colors.onBrandPrimary, fontSize: fontSize.xl, fontWeight: "500" },
+  avatarImg: { width: 56, height: 56, borderRadius: 28 },
+  badgeRow: { flexDirection: "row", gap: 6, marginTop: 6 },
+  typeBadge: { backgroundColor: colors.brandTertiary, paddingHorizontal: 8, paddingVertical: 2, borderRadius: radius.sm },
+  typeBadgeText: { color: colors.onBrandTertiary, fontSize: 11, fontWeight: "500" },
   name: { fontSize: fontSize.lg, color: colors.onSurface, fontWeight: "500" },
   email: { fontSize: fontSize.sm, color: colors.muted, marginTop: 2 },
 

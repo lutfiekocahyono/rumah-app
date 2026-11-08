@@ -19,6 +19,8 @@ export default function Kategori() {
   const [active, setActive] = useState<string>("");
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
+  const [done, setDone] = useState(false);
+  const [moreLoading, setMoreLoading] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -31,8 +33,21 @@ export default function Kategori() {
   useEffect(() => {
     if (!active) return;
     setLoading(true);
-    api.products({ category: active }).then((p) => { setProducts(p); setLoading(false); }).catch(() => setLoading(false));
+    setDone(false);
+    api.products({ category: active }).then((p) => { setProducts(p); setDone(p.length < 40); setLoading(false); }).catch(() => setLoading(false));
   }, [active]);
+
+  const loadMore = async () => {
+    if (done || moreLoading || loading) return;
+    setMoreLoading(true);
+    try {
+      const p = await api.products({ category: active, skip: products.length });
+      setProducts((cur) => [...cur, ...p]);
+      if (p.length < 40) setDone(true);
+    } finally {
+      setMoreLoading(false);
+    }
+  };
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]} testID="kategori-screen">
@@ -82,6 +97,9 @@ export default function Kategori() {
               showsVerticalScrollIndicator={false}
               columnWrapperStyle={{ gap: CARD_GAP, paddingHorizontal: spacing.md }}
               contentContainerStyle={{ gap: CARD_GAP, paddingVertical: spacing.md, paddingBottom: spacing.xl }}
+              onEndReached={loadMore}
+              onEndReachedThreshold={0.5}
+              ListFooterComponent={moreLoading ? <ActivityIndicator color={colors.brandPrimary} style={{ marginVertical: spacing.md }} /> : null}
               renderItem={({ item }) => <ProductCard product={item} style={{ width: (screenW - 110 - spacing.md * 2 - CARD_GAP) / 2 }} />}
             />
           )}

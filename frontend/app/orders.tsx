@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Icon from "@react-native-vector-icons/ionicons";
 
 import { colors, fontSize, radius, spacing, formatIDR } from "@/src/theme";
-import { api, type Order } from "@/src/api";
+import { api, ORDER_STATUS_LABEL, type Order } from "@/src/api";
 
 export default function Orders() {
   const insets = useSafeAreaInsets();
@@ -40,11 +40,11 @@ export default function Orders() {
           keyExtractor={(o) => o.order_id}
           contentContainerStyle={{ padding: spacing.lg, gap: spacing.md }}
           renderItem={({ item }) => (
-            <View style={styles.card} testID={`order-${item.order_id}`}>
+            <Pressable style={styles.card} testID={`order-${item.order_id}`} onPress={() => router.push(`/order/${item.order_id}` as any)}>
               <View style={styles.cardHeader}>
                 <Text style={styles.orderId}>{item.order_id}</Text>
                 <View style={styles.statusBadge}>
-                  <Text style={styles.statusText}>{item.status.toUpperCase()}</Text>
+                  <Text style={styles.statusText}>{ORDER_STATUS_LABEL[item.status] ?? item.status}</Text>
                 </View>
               </View>
               {item.items.slice(0, 2).map((it) => (
@@ -61,7 +61,7 @@ export default function Orders() {
                 <Text style={styles.totalLabel}>Total</Text>
                 <Text style={styles.totalValue}>{formatIDR(item.total)}</Text>
               </View>
-            </View>
+            </Pressable>
           )}
         />
       )}

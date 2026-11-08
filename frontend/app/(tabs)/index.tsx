@@ -17,20 +17,20 @@ const CARD_WIDTH = (screenW - spacing.lg * 2 - CARD_GAP) / 2;
 const BANNERS = [
   {
     id: "b1",
-    title: "Promo Mega Akhir Bulan",
-    subtitle: "Diskon hingga 70%",
+    title: "Pusat Grosir Sidoarjo",
+    subtitle: "Tersedia Partai, Koli, Grosir, dan Ecer",
     image: "https://images.unsplash.com/photo-1724582586529-62622e50c0b3?w=1200",
   },
   {
     id: "b2",
-    title: "Furniture & Home Living",
-    subtitle: "Harga grosir Sidoarjo",
+    title: "Rumah Tangga & Furniture",
+    subtitle: "Makin banyak beli, makin hemat",
     image: "https://images.unsplash.com/photo-1586023492125-27b2c045efd7?w=1200",
   },
   {
     id: "b3",
-    title: "Elektronik Rumah",
-    subtitle: "Gratis ongkir se-Jatim",
+    title: "Audio & Elektronik",
+    subtitle: "Kirim ke seluruh Indonesia",
     image: "https://images.unsplash.com/photo-1740803292822-a742c6a4fef0?w=1200",
   },
 ];
@@ -42,12 +42,25 @@ export default function Home() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [bannerIdx, setBannerIdx] = useState(0);
+  const [bannerW, setBannerW] = useState(screenW - spacing.lg * 2);
+  const [homeMore, setHomeMore] = useState(false);
+  const [homeDone, setHomeDone] = useState(false);
+  const loadMoreHome = async () => {
+    setHomeMore(true);
+    try {
+      const p = await api.products({ sort: "newest", skip: products.length });
+      setProducts((cur) => [...cur, ...p]);
+      if (p.length < 40) setHomeDone(true);
+    } finally {
+      setHomeMore(false);
+    }
+  };
   const bannerRef = useRef<ScrollView>(null);
 
   useEffect(() => {
     (async () => {
       try {
-        const [c, p] = await Promise.all([api.categories(), api.products({ sort: "popular" })]);
+        const [c, p] = await Promise.all([api.categories(), api.products({ sort: "newest" })]);
         setCats(c);
         setProducts(p);
       } finally {
@@ -60,19 +73,17 @@ export default function Home() {
     const t = setInterval(() => {
       const next = (bannerIdx + 1) % BANNERS.length;
       setBannerIdx(next);
-      bannerRef.current?.scrollTo({ x: next * (screenW - spacing.lg * 2), animated: true });
+      bannerRef.current?.scrollTo({ x: next * bannerW, animated: true });
     }, 4000);
     return () => clearInterval(t);
-  }, [bannerIdx]);
+  }, [bannerIdx, bannerW]);
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]} testID="home-screen">
       {/* Sticky header */}
       <View style={styles.header}>
         <View style={styles.headerBrand}>
-          <View style={styles.logoBox}>
-            <Icon name="storefront" size={18} color={colors.onBrandPrimary} />
-          </View>
+          <Image source={require("../../assets/images/pgs-logo-small.png")} style={styles.logoImg} contentFit="contain" testID="home-logo" />
           <View style={{ flex: 1 }}>
             <Text style={styles.brandLabel}>Pusat Grosir</Text>
             <Text style={styles.brandCity}>Sidoarjo</Text>
@@ -92,7 +103,7 @@ export default function Home() {
           onPress={() => router.push("/search" as any)}
         >
           <Icon name="search" size={18} color={colors.muted} />
-          <Text style={styles.searchPlaceholder}>Cari furniture, elektronik, dapur…</Text>
+          <Text style={styles.searchPlaceholder}>Cari dari 6.618 produk…</Text>
         </Pressable>
       </View>
 
@@ -110,11 +121,12 @@ export default function Home() {
               ref={bannerRef}
               horizontal
               pagingEnabled
+              onLayout={(e) => setBannerW(e.nativeEvent.layout.width)}
               showsHorizontalScrollIndicator={false}
-              onMomentumScrollEnd={(e) => setBannerIdx(Math.round(e.nativeEvent.contentOffset.x / (screenW - spacing.lg * 2)))}
+              onMomentumScrollEnd={(e) => setBannerIdx(Math.round(e.nativeEvent.contentOffset.x / bannerW))}
             >
               {BANNERS.map((b) => (
-                <View key={b.id} style={styles.banner}>
+                <View key={b.id} style={[styles.banner, { width: bannerW }]}>
                   <Image source={b.image} style={StyleSheet.absoluteFill} contentFit="cover" />
                   <LinearGradient
                     colors={["transparent", "rgba(0,0,0,0.65)"]}
@@ -194,6 +206,11 @@ export default function Home() {
             contentContainerStyle={{ gap: CARD_GAP }}
             renderItem={({ item }) => <ProductCard product={item} style={{ width: CARD_WIDTH }} />}
           />
+          {!homeDone ? (
+            <Pressable testID="home-load-more" style={styles.moreBtn} onPress={loadMoreHome} disabled={homeMore}>
+              {homeMore ? <ActivityIndicator color={colors.brandPrimary} /> : <Text style={styles.moreText}>Lihat lebih banyak produk</Text>}
+            </Pressable>
+          ) : null}
         </ScrollView>
       )}
     </View>
@@ -210,6 +227,7 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
   },
   headerBrand: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingVertical: spacing.sm },
+  logoImg: { width: 40, height: 40 },
   logoBox: {
     width: 36, height: 36, borderRadius: 10,
     backgroundColor: colors.brandPrimary,
@@ -274,6 +292,8 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     justifyContent: "space-around",
   },
+  moreBtn: { marginHorizontal: spacing.lg, marginTop: spacing.lg, minHeight: 48, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.brandPrimary, alignItems: "center", justifyContent: "center" },
+  moreText: { color: colors.brandPrimary, fontWeight: "500" },
   promoItem: { flexDirection: "row", alignItems: "center", gap: 6 },
   promoText: { fontSize: 11, color: colors.onSurface, fontWeight: "500" },
 });

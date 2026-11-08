@@ -7,15 +7,15 @@ type CartCtx = {
   wishlist: Product[];
   loading: boolean;
   refresh: () => Promise<void>;
-  addToCart: (product_id: string, quantity?: number) => Promise<void>;
-  updateQty: (product_id: string, quantity: number) => Promise<void>;
-  removeItem: (product_id: string) => Promise<void>;
-  clear: () => Promise<void>;
-  toggleWishlist: (product_id: string) => Promise<void>;
+  addToCart: (product_id: string, quantity?: number) => Promise<string | null>;
+  updateQty: (product_id: string, quantity: number) => Promise<string | null>;
+  removeItem: (product_id: string) => Promise<string | null>;
+  clear: () => Promise<string | null>;
+  toggleWishlist: (product_id: string) => Promise<string | null>;
   isWished: (product_id: string) => boolean;
 };
 
-const empty: Cart = { items: [], subtotal: 0, item_count: 0 };
+const empty: Cart = { items: [], subtotal: 0, savings: 0, item_count: 0, customer_type: "langsung" };
 const Ctx = createContext<CartCtx | null>(null);
 
 export function CartProvider({ children }: { children: React.ReactNode }) {
@@ -39,13 +39,12 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => { void refresh(); }, [refresh, user?.user_id]);
 
-  // Errors are swallowed here so a network failure never crashes a screen.
-  const safe = async (fn: () => Promise<void>) => {
-    try { await fn(); } catch (e) { console.warn("cart error", e); }
+  // Errors are caught here so a network failure never crashes a screen; the message is returned.
+  const safe = async (fn: () => Promise<void>): Promise<string | null> => {
+    try { await fn(); return null; } catch (e: any) { return e?.message || "Terjadi kesalahan"; }
   };
   const addToCart = (product_id: string, quantity = 1) =>
-    safe(async () => setCart(await api.addCart(product_id, quantity)));
-  const updateQty = (product_id: string, quantity: number) =>
+    safe(async () => setCart(await api.addCart(product_id, quantity)));  const updateQty = (product_id: string, quantity: number) =>
     safe(async () => setCart(await api.updateCart(product_id, quantity)));
   const removeItem = (product_id: string) =>
     safe(async () => setCart(await api.removeCart(product_id)));

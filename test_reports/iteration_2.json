@@ -1,0 +1,44 @@
+{
+  "summary": "Iteration 2 (tiered pricing, admin panel, payments, imported catalog) tested end-to-end. Backend: 20/20 pytest pass (catalog 14 top cats, dapur subcats, pagination skip=40 no overlap, q search + price_asc, 6,618 products, /store with 3 branches+hours, invalid token 401, non-admin 403, global reseller pricing 5% + qty tiers 6/12 -> cart unit = base*0.95*0.96, savings & next_tier correct, per-product manual reseller tiers override only reseller, checkout validation 422, midtrans/xendit 503 'belum dikonfigurasi' without clearing cart, COD -> status cod, admin orders filter, status change shipped reflected to owner, invalid status 422). Frontend (390x844): home PGS logo + 'Lihat lebih banyak' 40->80, Kategori sidebar 14 + infinite scroll, login 'Masuk dengan Google' button present, admin login -> Akun admin menu -> dashboard stats, Pesanan Masuk filter COD + detail + Kirim status change, Pengaturan Harga save, Kategori Pelanggan set Reseller, Harga Manual per Produk save; demo reseller: product tier table + unit price changes at qty 6, cart unit price/next-tier hint/savings/'Pesan via WhatsApp' (opens wa.me with order text), checkout Midtrans/Xendit show error without crash, COD -> order detail 'Bayar di Tempat'. All flows PASS; only minor UX/code issues found. No deprecated Expo packages detected. Fonnte notification correctly skipped with warning log. All test settings were RESET (pricing 0/[], demo=langsung, tier_prices cleared on pgs-9957/pgs-9955), test orders cancelled.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/store", "issue": "Response leaks internal settings field \"key\":\"store\" (also GET/PUT /api/admin/pricing returns \"key\":\"pricing\"). Exclude it in projection."},
+      {"endpoint": "GET /api/admin/stats", "issue": "'today' start = UTC midnight - 7h. Between 00:00-07:00 WIB the UTC date is still yesterday, so orders_today/revenue_today include the previous WIB day. Compute midnight in Asia/Jakarta tz then convert to UTC."},
+      {"endpoint": "POST /api/checkout", "issue": "Stock is not decremented on order creation (product.stock stays unchanged); may oversell if stock matters."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Checkout error message", "issue": "checkout-error Text is rendered at the very bottom of the ScrollView (below Ringkasan); on 390x844 after tapping 'Bayar Sekarang' with Midtrans/Xendit or empty fields the error is off-screen so user sees nothing happen. Show it near the sticky pay button, scroll to it, or use an Alert/toast.", "testID": "checkout-error", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Admin > Pengaturan Harga", "issues": ["Qty tier row (Beli ≥ [min] [pct] % [trash]) overflows container at 390px width: the '%' suffix is clipped at the right screen edge. Reduce input widths / use flex:1."]},
+      {"screen": "Keranjang", "issues": ["'Hemat harga bertingkat -Rp88.182' is shown between Subtotal (already discounted) and Ongkir, visually implying it is subtracted again although Total = Subtotal + Ongkir. Use label like 'Termasuk hemat' (as checkout does) or show normal subtotal before discount."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_pgs_iter2.py", "/app/backend/tests/ui_helper.py", "/app/test_reports/pytest/pytest_iter2.xml"],
+  "action_items": [
+    "Make checkout error visible (near pay button / Alert) - currently off-screen at bottom of ScrollView (app/checkout.tsx:105)",
+    "Fix qty-tier row overflow on admin pricing screen ('%' clipped) (app/admin/pricing.tsx ~line 80-90)",
+    "Clarify cart savings line label (keranjang.tsx) so it doesn't look double-subtracted",
+    "Exclude 'key' field from /api/store and /api/admin/pricing responses",
+    "Compute admin stats 'today' using Asia/Jakarta midnight",
+    "Optional: decrement stock on checkout; split server.py (873 lines > 700) into routers (catalog/cart/orders/admin)"
+  ],
+  "critical_code_review_comments": [
+    "server.py is 873 lines - split into modules (admin, orders/payments, catalog, cart).",
+    "pricing.price_tiers: manual tiers for a customer type fully replace type discount + global qty tiers (by design); if admin sets manual tiers without min_qty=1, base row stays at type-discounted price - OK.",
+    "Payment webhooks verify signature/token and amount - good. Checkout raises 503 before insert so cart is preserved - good.",
+    "pytest-xdist is enabled by default in this env; iteration-2 tests share demo cart/global pricing so they must be run with -n 0."
+  ],
+  "updated_files": ["/app/backend/tests/test_pgs_iter2.py (new)", "/app/backend/tests/ui_helper.py (new)"],
+  "success_rate": {"backend": "100% (20/20)", "frontend": "100% of requested flows functional; 1 medium UX bug + 2 design issues"},
+  "seed_data_creation": "Created TEST_ COD orders (TEST_Buyer, TEST_UIBuyer, TEST_UICheckout) - all set to cancelled. Pricing/customer type/tier_prices temporarily changed and RESET to clean state (type_discounts all 0, qty_tiers [], demo@pgs.id=langsung, tier_prices cleared on pgs-9957 & pgs-9955). Demo cart cleared.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run backend tests with: cd /app/backend && export $(grep EXPO_PUBLIC_BACKEND_URL /app/frontend/.env|xargs) && python -m pytest tests/test_pgs_iter2.py -n 0. Tests auto-reset pricing/demo type/tiers in teardown. ui_helper.py has commands order|pricing|reset <pids>|cancel <oids>. Admin orders list includes ORD- prefixed orders from iteration 1 (status paid). Google OAuth flow not completed (button only). Midtrans/Xendit/Fonnte keys not configured (503 + skipped WA expected).",
+  "rca_of_issue": ""
+}

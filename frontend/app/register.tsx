@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, Pressable, TextInput, KeyboardAvoidingView, Pla
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Icon from "@react-native-vector-icons/ionicons";
+import { Image } from "expo-image";
 
 import { colors, fontSize, radius, spacing } from "@/src/theme";
 import { useAuth } from "@/src/auth-context";
@@ -41,9 +42,7 @@ export default function Register() {
         <Pressable testID="close-btn" hitSlop={8} onPress={() => router.back()} style={styles.close}>
           <Icon name="close" size={22} color={colors.onSurface} />
         </Pressable>
-        <View style={styles.logoBox}>
-          <Icon name="storefront" size={26} color={colors.onBrandPrimary} />
-        </View>
+        <Image source={require("../assets/images/pgs-logo-small.png")} style={{ width: 72, height: 72, marginTop: spacing.md }} contentFit="contain" />
         <Text style={styles.title}>Buat akun baru</Text>
         <Text style={styles.subtitle}>Daftar gratis dan nikmati promo eksklusif.</Text>
 

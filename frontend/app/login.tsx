@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, Pressable, TextInput, KeyboardAvoidingView, Pla
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Icon from "@react-native-vector-icons/ionicons";
+import { Image } from "expo-image";
 
 import { colors, fontSize, radius, spacing } from "@/src/theme";
 import { useAuth } from "@/src/auth-context";
@@ -10,20 +11,35 @@ import { useAuth } from "@/src/auth-context";
 export default function Login() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { login } = useAuth();
-  const [email, setEmail] = useState("demo@pgs.id");
-  const [password, setPassword] = useState("Demo1234!");
+  const { login, loginWithGoogle } = useAuth();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [show, setShow] = useState(false);
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
+  const [gLoading, setGLoading] = useState(false);
+
+  const done = () => {
+    if (router.canGoBack()) router.back();
+    else router.replace("/(tabs)/akun" as any);
+  };
+
+  const google = async () => {
+    setErr("");
+    setGLoading(true);
+    try {
+      if (await loginWithGoogle()) done();
+    } finally {
+      setGLoading(false);
+    }
+  };
 
   const submit = async () => {
     setErr("");
     setLoading(true);
     try {
       await login(email.trim(), password);
-      if (router.canGoBack()) router.back();
-      else router.replace("/(tabs)/akun" as any);
+      done();
     } catch (e: any) {
       setErr(e?.message || "Gagal masuk");
     } finally {
@@ -38,10 +54,7 @@ export default function Login() {
           <Icon name="close" size={22} color={colors.onSurface} />
         </Pressable>
 
-        <View style={styles.logoBox}>
-          <Icon name="storefront" size={26} color={colors.onBrandPrimary} />
-        </View>
-        <Text style={styles.title}>Masuk ke Pusat Grosir Sidoarjo</Text>
+        <Image source={require("../assets/images/pgs-logo-small.png")} style={styles.logoImg} contentFit="contain" />
         <Text style={styles.subtitle}>Belanja lebih mudah, aman, dan penuh promo.</Text>
 
         <View style={styles.inputWrap}>
@@ -80,6 +93,15 @@ export default function Login() {
           <View style={styles.line} />
         </View>
 
+        <Pressable testID="google-login-btn" style={[styles.outlineBtn, { marginBottom: spacing.md }]} onPress={google} disabled={gLoading}>
+          {gLoading ? <ActivityIndicator color={colors.onSurface} /> : (
+            <>
+              <Icon name="logo-google" size={18} color="#EA4335" />
+              <Text style={styles.outlineText}>Masuk dengan Google</Text>
+            </>
+          )}
+        </Pressable>
+
         <Pressable testID="continue-guest" style={styles.outlineBtn} onPress={() => router.replace("/(tabs)" as any)}>
           <Icon name="person-outline" size={18} color={colors.onSurface} />
           <Text style={styles.outlineText}>Lanjut sebagai Tamu</Text>
@@ -96,6 +118,7 @@ export default function Login() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.surface },
   close: { alignSelf: "flex-end", padding: spacing.sm },
+  logoImg: { width: 72, height: 72, marginTop: spacing.md },
   logoBox: { width: 56, height: 56, borderRadius: 16, backgroundColor: colors.brandPrimary, alignItems: "center", justifyContent: "center", marginTop: spacing.lg },
   title: { fontSize: 22, color: colors.onSurface, fontWeight: "500", marginTop: spacing.lg },
   subtitle: { fontSize: fontSize.sm, color: colors.muted, marginTop: 4, marginBottom: spacing.xl },

@@ -7,8 +7,9 @@ import Icon from "@react-native-vector-icons/ionicons";
 import * as Haptics from "expo-haptics";
 
 import { colors, fontSize, radius, spacing, formatIDR } from "@/src/theme";
-import { api, type Product } from "@/src/api";
+import { api, CUSTOMER_TYPE_LABEL, type Product } from "@/src/api";
 import { useCart } from "@/src/cart-context";
+import { useAuth } from "@/src/auth-context";
 
 const { width: screenW } = Dimensions.get("window");
 
@@ -16,6 +17,7 @@ export default function ProductDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { user } = useAuth();
   const { addToCart, toggleWishlist, isWished } = useCart();
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
@@ -33,7 +35,12 @@ export default function ProductDetail() {
     if (!product) return;
     setAdding(true);
     try {
-      await addToCart(product.product_id, qty);
+      const err = await addToCart(product.product_id, qty);
+      if (err) {
+        setToast(err);
+        setTimeout(() => setToast(""), 2000);
+        return;
+      }
       Haptics.notificationAsync?.(Haptics.NotificationFeedbackType.Success).catch(() => {});
       if (goCart) router.push("/(tabs)/keranjang" as any);
       else {
@@ -44,6 +51,10 @@ export default function ProductDetail() {
       setAdding(false);
     }
   };
+
+  const tiers = product?.price_tiers ?? [];
+  const myType = user?.customer_type ?? "langsung";
+  const unit = tiers.reduce((p, t) => (qty >= t.min_qty ? t.price : p), product?.my_price ?? product?.price ?? 0);
 
   if (loading) {
     return (
@@ -95,25 +106,59 @@ export default function ProductDetail() {
 
         <View style={styles.body}>
           <View style={styles.priceRow}>
-            <Text style={styles.price}>{formatIDR(product.price)}</Text>
-            {product.discount > 0 ? (
-              <View style={styles.discountBadge}>
-                <Text style={styles.discountText}>-{product.discount}%</Text>
-              </View>
-            ) : null}
-            {product.original_price > product.price ? (
-              <Text style={styles.oldPrice}>{formatIDR(product.original_price)}</Text>
+            <Text style={styles.price} testID="pd-unit-price">{formatIDR(unit)}</Text>
+            {unit < product.price ? (
+              <Text style={styles.oldPrice}>{formatIDR(product.price)}</Text>
             ) : null}
           </View>
+          <Text style={styles.ctypeText} testID="pd-customer-type">
+            Harga untuk {CUSTOMER_TYPE_LABEL[user?.customer_type ?? "langsung"]} · per pcs
+          </Text>
+          {product.price_max > product.price_min ? (
+            <Text style={styles.rangeText} testID="pd-price-range">
+              Rentang harga {formatIDR(product.price_min)} - {formatIDR(product.price_max)}
+            </Text>
+          ) : null}
           <Text style={styles.name}>{product.name}</Text>
           <View style={styles.meta}>
-            <Icon name="star" size={14} color="#F59E0B" />
+            <Icon name="star" size={14} color={colors.warning} />
             <Text style={styles.metaText}>{product.rating.toFixed(1)}</Text>
             <Text style={styles.metaDot}>·</Text>
-            <Text style={styles.metaText}>{product.sold} terjual</Text>
-            <Text style={styles.metaDot}>·</Text>
-            <Text style={styles.metaText}>Stok {product.stock}</Text>
+            <Text style={[styles.metaText, !product.in_stock && { color: colors.error }]}>
+              {product.in_stock ? `Stok ${product.stock >= 9999 ? "tersedia" : product.stock}` : "Stok habis"}
+            </Text>
           </View>
+
+          {product.price_matrix?.length ? (
+            <>
+              <View style={styles.sep} />
+              <Text style={styles.sectionTitle}>Tabel Harga</Text>
+              <View style={styles.tierTable} testID="price-matrix-table">
+                <View style={[styles.mRow, styles.mHead]}>
+                  <Text style={[styles.mCellQty, styles.mHeadText]}>Jumlah</Text>
+                  {(["langsung", "pengecer", "reseller"] as const).map((c) => (
+                    <Text key={c} style={[styles.mCell, styles.mHeadText, c === myType && styles.mMine]} numberOfLines={2}>
+                      {CUSTOMER_TYPE_LABEL[c]}
+                    </Text>
+                  ))}
+                </View>
+                {product.price_matrix.map((r, i) => {
+                  const next = product.price_matrix[i + 1];
+                  const active = qty >= r.min_qty && (!next || qty < next.min_qty);
+                  return (
+                    <View key={r.min_qty} style={[styles.mRow, active && styles.tierRowActive]} testID={`matrix-row-${r.min_qty}`}>
+                      <Text style={styles.mCellQty}>{next ? `${r.min_qty}-${next.min_qty - 1}` : `≥ ${r.min_qty}`} pcs</Text>
+                      {(["langsung", "pengecer", "reseller"] as const).map((c) => (
+                        <Text key={c} style={[styles.mCell, c === myType && styles.mMine, active && c === myType && styles.tierActiveText]} numberOfLines={1} adjustsFontSizeToFit>
+                          {formatIDR(r[c])}
+                        </Text>
+                      ))}
+                    </View>
+                  );
+                })}
+              </View>
+            </>
+          ) : null}
 
           <View style={styles.sep} />
           <Text style={styles.sectionTitle}>Deskripsi</Text>
@@ -125,10 +170,12 @@ export default function ProductDetail() {
             <Pressable testID="qty-minus" style={styles.qtyBtn} onPress={() => setQty((q) => Math.max(1, q - 1))}>
               <Icon name="remove" size={16} color={colors.onSurface} />
             </Pressable>
-            <Text style={styles.qtyText}>{qty}</Text>
+            <Text style={styles.qtyText} testID="qty-value">{qty}</Text>
             <Pressable testID="qty-plus" style={styles.qtyBtn} onPress={() => setQty((q) => Math.min(product.stock, q + 1))}>
               <Icon name="add" size={16} color={colors.onSurface} />
             </Pressable>
+            <View style={{ flex: 1 }} />
+            <Text style={styles.subtotal} testID="pd-subtotal">Subtotal {formatIDR(unit * qty)}</Text>
           </View>
 
           <View style={styles.sep} />
@@ -199,6 +246,21 @@ const styles = StyleSheet.create({
   desc: { fontSize: fontSize.sm, color: colors.onSurfaceSecondary, lineHeight: 20 },
 
   qtyRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  subtotal: { fontSize: fontSize.sm, color: colors.onSurface, fontWeight: "500" },
+  ctypeText: { fontSize: 11, color: colors.muted, marginTop: 2 },
+  tierTable: { borderRadius: radius.md, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, overflow: "hidden" },
+  tierRow: { flexDirection: "row", justifyContent: "space-between", paddingHorizontal: spacing.md, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.divider },
+  tierRowActive: { backgroundColor: colors.brandTertiary },
+  tierQty: { fontSize: fontSize.sm, color: colors.onSurfaceSecondary },
+  tierPrice: { fontSize: fontSize.sm, color: colors.onSurface, fontWeight: "500" },
+  tierActiveText: { color: colors.brandPrimary },
+  rangeText: { fontSize: fontSize.sm, color: colors.onSurfaceSecondary, marginTop: 2 },
+  mRow: { flexDirection: "row", alignItems: "center", paddingHorizontal: spacing.sm, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.divider },
+  mHead: { backgroundColor: colors.surfaceTertiary },
+  mHeadText: { fontSize: 11, color: colors.onSurfaceSecondary, fontWeight: "500" },
+  mCellQty: { width: 72, fontSize: 12, color: colors.onSurfaceSecondary },
+  mCell: { flex: 1, fontSize: 12, color: colors.onSurface, textAlign: "right" },
+  mMine: { color: colors.brandPrimary, fontWeight: "500" },
   qtyBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: colors.surfaceTertiary, alignItems: "center", justifyContent: "center" },
   qtyText: { fontSize: fontSize.base, color: colors.onSurface, fontWeight: "500", minWidth: 24, textAlign: "center" },
 
