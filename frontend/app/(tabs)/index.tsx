@@ -1,5 +1,5 @@
-import React, { useEffect, useRef, useState } from "react";
-import { View, Text, ScrollView, StyleSheet, Pressable, TextInput, ActivityIndicator, FlatList, Dimensions } from "react-native";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { View, Text, ScrollView, StyleSheet, Pressable, ActivityIndicator, FlatList, Dimensions, RefreshControl } from "react-native";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -7,80 +7,86 @@ import Icon from "@react-native-vector-icons/ionicons";
 import { LinearGradient } from "expo-linear-gradient";
 
 import { colors, fontSize, radius, spacing } from "@/src/theme";
-import { api, type Category, type Product } from "@/src/api";
+import { api, imgUrl, type Banner, type Category, type FlashSale, type HomeSettings, type Product, type Voucher } from "@/src/api";
 import { ProductCard } from "@/src/components/product-card";
+import { FlashSaleSection, FreeShippingBanner, ProductRail, SectionHeader, VoucherStrip } from "@/src/components/home-sections";
 
 const { width: screenW } = Dimensions.get("window");
 const CARD_GAP = spacing.md;
 const CARD_WIDTH = (screenW - spacing.lg * 2 - CARD_GAP) / 2;
 
-const BANNERS = [
-  {
-    id: "b1",
-    title: "Pusat Grosir Sidoarjo",
-    subtitle: "Tersedia Partai, Koli, Grosir, dan Ecer",
-    image: "https://images.unsplash.com/photo-1724582586529-62622e50c0b3?w=1200",
-  },
-  {
-    id: "b2",
-    title: "Rumah Tangga & Furniture",
-    subtitle: "Makin banyak beli, makin hemat",
-    image: "https://images.unsplash.com/photo-1586023492125-27b2c045efd7?w=1200",
-  },
-  {
-    id: "b3",
-    title: "Audio & Elektronik",
-    subtitle: "Kirim ke seluruh Indonesia",
-    image: "https://images.unsplash.com/photo-1740803292822-a742c6a4fef0?w=1200",
-  },
-];
+type HomeData = {
+  banners: Banner[]; cats: Category[]; flash: FlashSale; vouchers: Voucher[]; settings: HomeSettings | null;
+  popular: Product[]; newest: Product[]; recs: Product[];
+};
+const EMPTY: HomeData = { banners: [], cats: [], flash: { active: false, items: [] }, vouchers: [], settings: null, popular: [], newest: [], recs: [] };
 
 export default function Home() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const [cats, setCats] = useState<Category[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
+  const [data, setData] = useState<HomeData>(EMPTY);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [bannerIdx, setBannerIdx] = useState(0);
   const [bannerW, setBannerW] = useState(screenW - spacing.lg * 2);
-  const [homeMore, setHomeMore] = useState(false);
-  const [homeDone, setHomeDone] = useState(false);
-  const loadMoreHome = async () => {
-    setHomeMore(true);
-    try {
-      const p = await api.products({ sort: "newest", skip: products.length });
-      setProducts((cur) => [...cur, ...p]);
-      if (p.length < 40) setHomeDone(true);
-    } finally {
-      setHomeMore(false);
-    }
-  };
+  const [recMore, setRecMore] = useState(false);
+  const [recDone, setRecDone] = useState(false);
+  const recSkip = useRef(0); // server-side offset (dedupe on screen may hide some items)
   const bannerRef = useRef<ScrollView>(null);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const [c, p] = await Promise.all([api.categories(), api.products({ sort: "newest" })]);
-        setCats(c);
-        setProducts(p);
-      } finally {
-        setLoading(false);
-      }
-    })();
+  const load = useCallback(async () => {
+    const safe = <T,>(p: Promise<T>, fb: T) => p.catch(() => fb);
+    const [banners, cats, flash, vouchers, settings, popular, newest, recs] = await Promise.all([
+      safe(api.banners(), []), safe(api.categories(), []), safe(api.flashSale(), EMPTY.flash), safe(api.vouchers(), []),
+      safe(api.homeSettings(), null), safe(api.products({ sort: "popular", limit: 10 }), []),
+      safe(api.products({ sort: "newest", limit: 10 }), []), safe(api.recommendations(0, 20), []),
+    ]);
+    setData({ banners, cats, flash, vouchers, settings, popular, newest, recs });
+    recSkip.current = recs.length;
+    setRecDone(recs.length < 20);
   }, []);
 
+  useEffect(() => { load().finally(() => setLoading(false)); }, [load]);
+
+  const loadMoreRecs = async () => {
+    setRecMore(true);
+    try {
+      const more = await api.recommendations(recSkip.current, 20);
+      recSkip.current += more.length;
+      setData((d) => {
+        const have = new Set(d.recs.map((p) => p.product_id));
+        return { ...d, recs: [...d.recs, ...more.filter((p) => !have.has(p.product_id))] };
+      });
+      if (more.length < 20) setRecDone(true);
+    } finally {
+      setRecMore(false);
+    }
+  };
+
+  const banners = data.banners;
   useEffect(() => {
+    if (banners.length < 2) return;
     const t = setInterval(() => {
-      const next = (bannerIdx + 1) % BANNERS.length;
+      const next = (bannerIdx + 1) % banners.length;
       setBannerIdx(next);
       bannerRef.current?.scrollTo({ x: next * bannerW, animated: true });
     }, 4000);
     return () => clearInterval(t);
-  }, [bannerIdx, bannerW]);
+  }, [bannerIdx, bannerW, banners.length]);
+
+  const openBanner = (b: Banner) => {
+    if (!b.link_value) return;
+    if (b.link_type === "category") router.push(`/category/${b.link_value}` as any);
+    else if (b.link_type === "product") router.push(`/product/${b.link_value}` as any);
+    else if (b.link_type === "search") router.push({ pathname: "/search", params: { q: b.link_value } } as any);
+  };
+
+  const onFlashEnd = useCallback(() => {
+    setData((d) => ({ ...d, flash: { active: false, items: [] } }));
+  }, []);
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]} testID="home-screen">
-      {/* Sticky header */}
       <View style={styles.header}>
         <View style={styles.headerBrand}>
           <Image source={require("../../assets/images/pgs-logo-small.png")} style={styles.logoImg} contentFit="contain" testID="home-logo" />
@@ -88,20 +94,11 @@ export default function Home() {
             <Text style={styles.brandLabel}>Pusat Grosir</Text>
             <Text style={styles.brandCity}>Sidoarjo</Text>
           </View>
-          <Pressable
-            testID="wishlist-shortcut"
-            hitSlop={8}
-            onPress={() => router.push("/wishlist" as any)}
-            style={styles.iconBtn}
-          >
+          <Pressable testID="wishlist-shortcut" hitSlop={8} onPress={() => router.push("/wishlist" as any)} style={styles.iconBtn}>
             <Icon name="heart-outline" size={22} color={colors.onSurface} />
           </Pressable>
         </View>
-        <Pressable
-          testID="search-input-open"
-          style={styles.search}
-          onPress={() => router.push("/search" as any)}
-        >
+        <Pressable testID="search-input-open" style={styles.search} onPress={() => router.push("/search" as any)}>
           <Icon name="search" size={18} color={colors.muted} />
           <Text style={styles.searchPlaceholder}>Cari dari 6.618 produk…</Text>
         </Pressable>
@@ -114,102 +111,89 @@ export default function Home() {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingBottom: spacing["2xl"] }}
           testID="home-scroll"
+          refreshControl={<RefreshControl refreshing={refreshing} tintColor={colors.brandPrimary}
+            onRefresh={async () => { setRefreshing(true); await load(); setRefreshing(false); }} />}
         >
-          {/* Banner carousel */}
-          <View style={styles.bannerWrap}>
-            <ScrollView
-              ref={bannerRef}
-              horizontal
-              pagingEnabled
-              onLayout={(e) => setBannerW(e.nativeEvent.layout.width)}
-              showsHorizontalScrollIndicator={false}
-              onMomentumScrollEnd={(e) => setBannerIdx(Math.round(e.nativeEvent.contentOffset.x / bannerW))}
-            >
-              {BANNERS.map((b) => (
-                <View key={b.id} style={[styles.banner, { width: bannerW }]}>
-                  <Image source={b.image} style={StyleSheet.absoluteFill} contentFit="cover" />
-                  <LinearGradient
-                    colors={["transparent", "rgba(0,0,0,0.65)"]}
-                    style={StyleSheet.absoluteFill}
-                  />
-                  <View style={styles.bannerContent}>
-                    <Text style={styles.bannerTitle}>{b.title}</Text>
-                    <Text style={styles.bannerSubtitle}>{b.subtitle}</Text>
-                    <View style={styles.bannerCta}>
-                      <Text style={styles.bannerCtaText}>Belanja Sekarang</Text>
-                      <Icon name="arrow-forward" size={14} color={colors.onBrandPrimary} />
-                    </View>
-                  </View>
-                </View>
-              ))}
-            </ScrollView>
-            <View style={styles.dots}>
-              {BANNERS.map((_, i) => (
-                <View key={i} style={[styles.dot, i === bannerIdx && styles.dotActive]} />
-              ))}
-            </View>
-          </View>
-
-          {/* Categories */}
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Kategori</Text>
-            <Pressable onPress={() => router.push("/kategori" as any)}>
-              <Text style={styles.linkText}>Lihat Semua</Text>
-            </Pressable>
-          </View>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.catsRow}
-          >
-            {cats.map((c) => (
-              <Pressable
-                key={c.category_id}
-                testID={`category-${c.category_id}`}
-                style={styles.catItem}
-                onPress={() => router.push(`/category/${c.category_id}` as any)}
+          {/* Banner promosi */}
+          {banners.length ? (
+            <View style={styles.bannerWrap} testID="banner-section">
+              <ScrollView
+                ref={bannerRef}
+                horizontal
+                pagingEnabled
+                onLayout={(e) => setBannerW(e.nativeEvent.layout.width)}
+                showsHorizontalScrollIndicator={false}
+                onMomentumScrollEnd={(e) => setBannerIdx(Math.round(e.nativeEvent.contentOffset.x / bannerW))}
               >
-                <View style={styles.catIconWrap}>
-                  <Icon name={c.icon as any} size={22} color={colors.brandPrimary} />
-                </View>
-                <Text style={styles.catName} numberOfLines={1}>{c.name}</Text>
+                {banners.map((b) => (
+                  <Pressable key={b.banner_id} testID={`banner-${b.banner_id}`} onPress={() => openBanner(b)} style={[styles.banner, { width: bannerW }]}>
+                    <Image source={imgUrl(b.image)} style={StyleSheet.absoluteFill} contentFit="cover" />
+                    <LinearGradient colors={["transparent", "rgba(0,0,0,0.65)"]} style={StyleSheet.absoluteFill} />
+                    <View style={styles.bannerContent}>
+                      <Text style={styles.bannerTitle}>{b.title}</Text>
+                      {b.subtitle ? <Text style={styles.bannerSubtitle}>{b.subtitle}</Text> : null}
+                      {b.link_type !== "none" && b.link_value ? (
+                        <View style={styles.bannerCta}>
+                          <Text style={styles.bannerCtaText}>Belanja Sekarang</Text>
+                          <Icon name="arrow-forward" size={14} color={colors.onBrandPrimary} />
+                        </View>
+                      ) : null}
+                    </View>
+                  </Pressable>
+                ))}
+              </ScrollView>
+              <View style={styles.dots}>
+                {banners.map((_, i) => <View key={i} style={[styles.dot, i === bannerIdx && styles.dotActive]} />)}
+              </View>
+            </View>
+          ) : null}
+
+          {/* Kategori */}
+          <SectionHeader
+            title="Kategori"
+            right={<Pressable onPress={() => router.push("/kategori" as any)}><Text style={styles.linkText}>Lihat Semua</Text></Pressable>}
+          />
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.catsRow}>
+            {data.cats.map((c) => (
+              <Pressable key={c.category_id} testID={`category-${c.category_id}`} style={styles.catItem}
+                onPress={() => router.push(`/category/${c.category_id}` as any)}>
+                <View style={styles.catIconWrap}><Icon name={c.icon as any} size={22} color={colors.brandPrimary} /></View>
+                <Text style={styles.catName} numberOfLines={2}>{c.name}</Text>
               </Pressable>
             ))}
           </ScrollView>
 
-          {/* Quick promo band */}
-          <View style={styles.promoBand}>
-            <View style={styles.promoItem}>
-              <Icon name="rocket" size={18} color={colors.brandPrimary} />
-              <Text style={styles.promoText}>Pengiriman Cepat</Text>
-            </View>
-            <View style={styles.promoItem}>
-              <Icon name="shield-checkmark" size={18} color={colors.brandPrimary} />
-              <Text style={styles.promoText}>Garansi Asli</Text>
-            </View>
-            <View style={styles.promoItem}>
-              <Icon name="pricetag" size={18} color={colors.brandPrimary} />
-              <Text style={styles.promoText}>Harga Grosir</Text>
-            </View>
-          </View>
+          {data.settings ? <FreeShippingBanner s={data.settings.free_shipping} /> : null}
 
-          {/* Products grid */}
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Rekomendasi untukmu</Text>
-          </View>
-          <FlatList
-            data={products}
-            keyExtractor={(p) => p.product_id}
-            numColumns={2}
-            scrollEnabled={false}
-            columnWrapperStyle={{ gap: CARD_GAP, paddingHorizontal: spacing.lg }}
-            contentContainerStyle={{ gap: CARD_GAP }}
-            renderItem={({ item }) => <ProductCard product={item} style={{ width: CARD_WIDTH }} />}
+          <FlashSaleSection flash={data.flash} onEnd={onFlashEnd} />
+
+          <VoucherStrip
+            vouchers={data.vouchers}
+            onChange={(v) => setData((d) => ({ ...d, vouchers: d.vouchers.map((x) => (x.code === v.code ? v : x)) }))}
           />
-          {!homeDone ? (
-            <Pressable testID="home-load-more" style={styles.moreBtn} onPress={loadMoreHome} disabled={homeMore}>
-              {homeMore ? <ActivityIndicator color={colors.brandPrimary} /> : <Text style={styles.moreText}>Lihat lebih banyak produk</Text>}
-            </Pressable>
+
+          <ProductRail title="Produk Populer" icon="flame-outline" items={data.popular} testID="popular-section" />
+          <ProductRail title="Produk Terbaru" icon="sparkles-outline" items={data.newest} testID="newest-section" />
+
+          {/* Rekomendasi */}
+          {data.recs.length ? (
+            <View testID="recommend-section">
+              <SectionHeader title="Rekomendasi untukmu" icon="thumbs-up-outline" />
+              <FlatList
+                data={data.recs}
+                keyExtractor={(p) => p.product_id}
+                numColumns={2}
+                scrollEnabled={false}
+                columnWrapperStyle={{ gap: CARD_GAP, paddingHorizontal: spacing.lg }}
+                contentContainerStyle={{ gap: CARD_GAP }}
+                renderItem={({ item }) => <ProductCard product={item} style={{ width: CARD_WIDTH }} />}
+              />
+              {!recDone ? (
+                <Pressable testID="home-load-more" style={styles.moreBtn} onPress={loadMoreRecs} disabled={recMore}>
+                  {recMore ? <ActivityIndicator color={colors.brandPrimary} /> : <Text style={styles.moreText}>Lihat lebih banyak produk</Text>}
+                </Pressable>
+              ) : null}
+            </View>
           ) : null}
         </ScrollView>
       )}
@@ -220,46 +204,28 @@ export default function Home() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.surface },
   header: {
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.md,
-    backgroundColor: colors.surface,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
+    paddingHorizontal: spacing.lg, paddingBottom: spacing.md, backgroundColor: colors.surface,
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border,
   },
   headerBrand: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingVertical: spacing.sm },
   logoImg: { width: 40, height: 40 },
-  logoBox: {
-    width: 36, height: 36, borderRadius: 10,
-    backgroundColor: colors.brandPrimary,
-    alignItems: "center", justifyContent: "center",
-  },
   brandLabel: { fontSize: 11, color: colors.muted },
   brandCity: { fontSize: fontSize.lg, color: colors.onSurface, fontWeight: "500" },
   iconBtn: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center", backgroundColor: colors.surfaceTertiary },
   search: {
-    flexDirection: "row", alignItems: "center", gap: spacing.sm,
-    backgroundColor: colors.surfaceTertiary,
-    paddingHorizontal: spacing.md, paddingVertical: 10,
-    borderRadius: radius.pill, marginTop: 4,
+    flexDirection: "row", alignItems: "center", gap: spacing.sm, backgroundColor: colors.surfaceTertiary,
+    paddingHorizontal: spacing.md, paddingVertical: 10, borderRadius: radius.pill, marginTop: 4,
   },
   searchPlaceholder: { color: colors.muted, fontSize: fontSize.sm, flex: 1 },
-
   loadingWrap: { flex: 1, alignItems: "center", justifyContent: "center" },
 
   bannerWrap: { paddingTop: spacing.lg, paddingHorizontal: spacing.lg },
-  banner: {
-    width: screenW - spacing.lg * 2,
-    height: 170,
-    borderRadius: radius.lg,
-    overflow: "hidden",
-    justifyContent: "flex-end",
-  },
+  banner: { height: 170, borderRadius: radius.lg, overflow: "hidden", justifyContent: "flex-end" },
   bannerContent: { padding: spacing.lg, gap: 4 },
   bannerTitle: { color: "#FFFFFF", fontSize: fontSize.xl, fontWeight: "500" },
   bannerSubtitle: { color: "#FFFFFF", fontSize: fontSize.sm, opacity: 0.9 },
   bannerCta: {
-    alignSelf: "flex-start", flexDirection: "row", alignItems: "center", gap: 6,
-    backgroundColor: colors.brandPrimary,
+    alignSelf: "flex-start", flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: colors.brandPrimary,
     paddingHorizontal: spacing.md, paddingVertical: 6, borderRadius: radius.pill, marginTop: 8,
   },
   bannerCtaText: { color: colors.onBrandPrimary, fontSize: fontSize.sm, fontWeight: "500" },
@@ -267,33 +233,12 @@ const styles = StyleSheet.create({
   dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.border },
   dotActive: { backgroundColor: colors.brandPrimary, width: 18 },
 
-  sectionHeader: {
-    paddingHorizontal: spacing.lg,
-    marginTop: spacing.xl, marginBottom: spacing.md,
-    flexDirection: "row", justifyContent: "space-between", alignItems: "center",
-  },
-  sectionTitle: { fontSize: fontSize.lg, fontWeight: "500", color: colors.onSurface },
   linkText: { fontSize: fontSize.sm, color: colors.brandPrimary, fontWeight: "500" },
-
   catsRow: { gap: spacing.md, paddingHorizontal: spacing.lg, paddingVertical: 4 },
   catItem: { alignItems: "center", gap: 6, width: 68 },
-  catIconWrap: {
-    width: 56, height: 56, borderRadius: radius.md,
-    backgroundColor: colors.brandTertiary, alignItems: "center", justifyContent: "center",
-  },
+  catIconWrap: { width: 56, height: 56, borderRadius: radius.md, backgroundColor: colors.brandTertiary, alignItems: "center", justifyContent: "center" },
   catName: { fontSize: 11, color: colors.onSurface, textAlign: "center" },
 
-  promoBand: {
-    flexDirection: "row",
-    marginHorizontal: spacing.lg,
-    marginTop: spacing.lg,
-    backgroundColor: colors.surfaceTertiary,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    justifyContent: "space-around",
-  },
   moreBtn: { marginHorizontal: spacing.lg, marginTop: spacing.lg, minHeight: 48, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.brandPrimary, alignItems: "center", justifyContent: "center" },
   moreText: { color: colors.brandPrimary, fontWeight: "500" },
-  promoItem: { flexDirection: "row", alignItems: "center", gap: 6 },
-  promoText: { fontSize: 11, color: colors.onSurface, fontWeight: "500" },
 });

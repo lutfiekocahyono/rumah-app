@@ -35,6 +35,8 @@ async def midtrans_create(order: dict) -> dict:
     ]
     if order.get("shipping_cost"):
         items.append({"id": "ongkir", "price": order["shipping_cost"], "quantity": 1, "name": "Ongkos Kirim"})
+    if order.get("discount"):
+        items.append({"id": "voucher", "price": -order["discount"], "quantity": 1, "name": f"Voucher {order.get('voucher_code') or ''}"[:50]})
     ship = order["shipping"]
     payload = {
         "transaction_details": {"order_id": order["order_id"], "gross_amount": order["total"]},
@@ -96,7 +98,8 @@ async def xendit_create(order: dict) -> dict:
         "invoice_duration": 86400,
         "customer": {"given_names": order["shipping"]["full_name"][:50], "mobile_number": order["shipping"]["phone"][:20]},
         "items": [{"name": i["name"][:100], "quantity": i["quantity"], "price": i["price"]} for i in order["items"]],
-        "fees": [{"type": "Ongkos Kirim", "value": order.get("shipping_cost", 0)}] if order.get("shipping_cost") else [],
+        "fees": ([{"type": "Ongkos Kirim", "value": order["shipping_cost"]}] if order.get("shipping_cost") else [])
+        + ([{"type": f"Voucher {order.get('voucher_code') or ''}", "value": -order["discount"]}] if order.get("discount") else []),
     }
     if order.get("email"):
         payload["payer_email"] = order["email"]

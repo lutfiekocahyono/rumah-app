@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { View, Text, StyleSheet, Pressable, TextInput, KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -7,7 +7,7 @@ import Icon from "@react-native-vector-icons/ionicons";
 import { colors, fontSize, radius, spacing, formatIDR } from "@/src/theme";
 import { useCart } from "@/src/cart-context";
 import { useAuth } from "@/src/auth-context";
-import { api, type PaymentMethod } from "@/src/api";
+import { api, type PaymentMethod, type Voucher } from "@/src/api";
 import * as WebBrowser from "expo-web-browser";
 
 export default function Checkout() {
@@ -23,8 +23,31 @@ export default function Checkout() {
   const [method, setMethod] = useState<PaymentMethod>("midtrans");
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
+  const [voucherText, setVoucherText] = useState("");
+  const [voucher, setVoucher] = useState<{ code: string; title: string; discount: number } | null>(null);
+  const [voucherErr, setVoucherErr] = useState("");
+  const [voucherBusy, setVoucherBusy] = useState(false);
+  const [myVouchers, setMyVouchers] = useState<Voucher[]>([]);
 
-  const total = cart.subtotal + 25000;
+  useEffect(() => { api.myVouchers().then(setMyVouchers).catch(() => {}); }, []);
+
+  const applyVoucher = async (code: string) => {
+    if (!code.trim()) return;
+    setVoucherBusy(true);
+    setVoucherErr("");
+    try {
+      setVoucher(await api.applyVoucher(code.trim()));
+      setVoucherText(code.trim().toUpperCase());
+    } catch (e: any) {
+      setVoucher(null);
+      setVoucherErr(e.message);
+    } finally {
+      setVoucherBusy(false);
+    }
+  };
+
+  const discount = voucher?.discount ?? 0;
+  const total = cart.subtotal - discount + 25000;
 
   const submit = async () => {
     setErr("");
@@ -38,7 +61,7 @@ export default function Checkout() {
     }
     setLoading(true);
     try {
-      const order = await api.checkout({ full_name: fullName, phone, address, city, payment_method: method });
+      const order = await api.checkout({ full_name: fullName, phone, address, city, payment_method: method, voucher_code: voucher?.code });
       await refresh();
       router.replace(`/order/${order.order_id}` as any);
       if (order.payment_url) await WebBrowser.openBrowserAsync(order.payment_url);
@@ -93,11 +116,51 @@ export default function Checkout() {
           ))}
         </View>
 
+        <Text style={[styles.section, { marginTop: spacing.xl }]}>Voucher Diskon</Text>
+        <View style={styles.card} testID="checkout-voucher">
+          <View style={styles.voucherRow}>
+            <TextInput
+              testID="co-voucher-input"
+              value={voucherText}
+              onChangeText={(t) => { setVoucherText(t.toUpperCase()); if (voucher) setVoucher(null); setVoucherErr(""); }}
+              placeholder="Masukkan kode voucher"
+              placeholderTextColor={colors.muted}
+              autoCapitalize="characters"
+              style={[styles.input, { flex: 1 }]}
+            />
+            {voucher ? (
+              <Pressable testID="co-voucher-remove" style={styles.voucherBtnOutline} onPress={() => { setVoucher(null); setVoucherText(""); }}>
+                <Text style={styles.voucherBtnOutlineText}>Hapus</Text>
+              </Pressable>
+            ) : (
+              <Pressable testID="co-voucher-apply" style={styles.voucherBtn} onPress={() => applyVoucher(voucherText)} disabled={voucherBusy}>
+                {voucherBusy ? <ActivityIndicator color={colors.onBrandPrimary} /> : <Text style={styles.payBtnText}>Pakai</Text>}
+              </Pressable>
+            )}
+          </View>
+          {voucher ? <Text style={styles.voucherOk} testID="co-voucher-ok">{voucher.title} · hemat {formatIDR(voucher.discount)}</Text> : null}
+          {voucherErr ? <Text style={styles.err} testID="co-voucher-error">{voucherErr}</Text> : null}
+          {myVouchers.length && !voucher ? (
+            <View style={styles.myVouchers}>
+              <Text style={styles.paySub}>Voucher yang sudah kamu klaim:</Text>
+              <View style={styles.chipRow}>
+                {myVouchers.map((v) => (
+                  <Pressable key={v.code} testID={`co-my-voucher-${v.code}`} style={styles.vChip} onPress={() => applyVoucher(v.code)}>
+                    <Icon name="ticket-outline" size={14} color={colors.brandPrimary} />
+                    <Text style={styles.vChipText}>{v.code}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+          ) : null}
+        </View>
+
         <Text style={[styles.section, { marginTop: spacing.xl }]}>Ringkasan</Text>
         <View style={styles.card}>
           <Row label={`Subtotal (${cart.item_count} item)`} value={formatIDR(cart.subtotal)} />
           {cart.savings > 0 ? <Row label="Termasuk hemat harga bertingkat" value={`-${formatIDR(cart.savings)}`} /> : null}
           <Row label="Ongkos kirim" value={formatIDR(25000)} />
+          {discount > 0 ? <Row label={`Voucher ${voucher?.code}`} value={`-${formatIDR(discount)}`} /> : null}
           <View style={styles.sep} />
           <Row label="Total Pembayaran" value={formatIDR(total)} big />
         </View>
@@ -172,6 +235,15 @@ const styles = StyleSheet.create({
   sep: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border, marginVertical: spacing.sm },
 
   err: { color: colors.error, fontSize: fontSize.sm, marginTop: spacing.md },
+  voucherRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  voucherBtn: { backgroundColor: colors.brandPrimary, borderRadius: radius.pill, paddingHorizontal: spacing.lg, minHeight: 44, justifyContent: "center", alignItems: "center", minWidth: 80 },
+  voucherBtnOutline: { borderWidth: 1, borderColor: colors.brandPrimary, borderRadius: radius.pill, paddingHorizontal: spacing.lg, minHeight: 44, justifyContent: "center" },
+  voucherBtnOutlineText: { color: colors.brandPrimary, fontWeight: "500" },
+  voucherOk: { color: colors.success, fontSize: fontSize.sm, marginTop: spacing.sm },
+  myVouchers: { marginTop: spacing.md, gap: spacing.sm },
+  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  vChip: { flexDirection: "row", alignItems: "center", gap: 4, borderWidth: 1, borderColor: colors.brandPrimary, borderRadius: radius.pill, paddingHorizontal: spacing.md, minHeight: 34, backgroundColor: colors.brandTertiary },
+  vChipText: { color: colors.brandPrimary, fontSize: 12, fontWeight: "600" },
 
   bottom: { position: "absolute", left: 0, right: 0, bottom: 0, backgroundColor: colors.surface, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, paddingHorizontal: spacing.lg, paddingTop: spacing.md, gap: spacing.sm },
   bottomRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },

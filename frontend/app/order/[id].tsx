@@ -103,6 +103,7 @@ export default function OrderDetail() {
         <View style={styles.card}>
           <Row label="Subtotal" value={formatIDR(order.subtotal)} />
           <Row label="Ongkos kirim" value={formatIDR(order.shipping_cost)} />
+          {order.discount ? <Row label={`Voucher ${order.voucher_code ?? ""}`} value={`-${formatIDR(order.discount)}`} /> : null}
           <Row label="Metode bayar" value={METHOD_LABEL[order.payment_method]} />
           <View style={styles.sep} />
           <Row label="Total" value={formatIDR(order.total)} big />

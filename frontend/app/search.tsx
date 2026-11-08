@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { View, Text, StyleSheet, Pressable, TextInput, FlatList, Dimensions, ActivityIndicator } from "react-native";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Icon from "@react-native-vector-icons/ionicons";
 
@@ -15,7 +15,8 @@ const CARD_WIDTH = (screenW - spacing.lg * 2 - CARD_GAP) / 2;
 export default function Search() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const [q, setQ] = useState("");
+  const params = useLocalSearchParams<{ q?: string }>();
+  const [q, setQ] = useState(params.q ?? "");
   const [results, setResults] = useState<Product[]>([]);
   const [loading, setLoading] = useState(false);
 

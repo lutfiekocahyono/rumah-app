@@ -10,6 +10,7 @@ import { colors, fontSize, radius, spacing, formatIDR } from "@/src/theme";
 import { api, CUSTOMER_TYPE_LABEL, type Product } from "@/src/api";
 import { useCart } from "@/src/cart-context";
 import { useAuth } from "@/src/auth-context";
+import { Countdown } from "@/src/components/countdown";
 
 const { width: screenW } = Dimensions.get("window");
 
@@ -29,6 +30,7 @@ export default function ProductDetail() {
   useEffect(() => {
     if (!id) return;
     api.product(id).then((p) => { setProduct(p); setLoading(false); }).catch(() => setLoading(false));
+    api.trackView(id).catch(() => {});
   }, [id]);
 
   const handleAdd = async (goCart: boolean) => {
@@ -54,7 +56,9 @@ export default function ProductDetail() {
 
   const tiers = product?.price_tiers ?? [];
   const myType = user?.customer_type ?? "langsung";
-  const unit = tiers.reduce((p, t) => (qty >= t.min_qty ? t.price : p), product?.my_price ?? product?.price ?? 0);
+  const tierUnit = tiers.reduce((p, t) => (qty >= t.min_qty ? t.price : p), product?.my_price ?? product?.price ?? 0);
+  const flashPrice = product?.flash_price ?? null;
+  const unit = flashPrice ? Math.min(tierUnit, flashPrice) : tierUnit;
 
   if (loading) {
     return (
@@ -103,6 +107,19 @@ export default function ProductDetail() {
             <View style={styles.imgDots}>{images.map((_, i) => <View key={i} style={[styles.imgDot, i === imgIdx && styles.imgDotActive]} />)}</View>
           ) : null}
         </View>
+
+        {flashPrice && product.flash_ends_at ? (
+          <View style={styles.flashBar} testID="pd-flash-bar">
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+              <Icon name="flash" size={18} color={colors.onBrandPrimary} />
+              <Text style={styles.flashBarText}>Flash Sale {formatIDR(flashPrice)}</Text>
+            </View>
+            <View style={styles.flashTimer}>
+              <Text style={styles.flashEnds}>Berakhir</Text>
+              <Countdown endsAt={product.flash_ends_at} onEnd={() => setProduct((p) => (p ? { ...p, flash_price: null } : p))} />
+            </View>
+          </View>
+        ) : null}
 
         <View style={styles.body}>
           <View style={styles.priceRow}>
@@ -221,6 +238,10 @@ export default function ProductDetail() {
 }
 
 const styles = StyleSheet.create({
+  flashBar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: colors.brandPrimary, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm },
+  flashBarText: { color: colors.onBrandPrimary, fontWeight: "700", fontSize: fontSize.base },
+  flashTimer: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: colors.surface, borderRadius: radius.sm, paddingHorizontal: 6, paddingVertical: 3 },
+  flashEnds: { fontSize: 11, color: colors.onSurface },
   root: { flex: 1, backgroundColor: colors.surface },
   center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.surface },
 

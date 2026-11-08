@@ -1,5 +1,6 @@
 import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
+import { uploadForm, type LocalFile } from "@/src/utils/upload";
 
 const BASE = process.env.EXPO_PUBLIC_BACKEND_URL;
 
@@ -139,7 +140,60 @@ export const api = {
     req<Order>(`/admin/orders/${id}/status`, { method: "PUT", body: JSON.stringify({ status }) }),
   adminSaveProductTiers: (id: string, tier_prices: ProductTiers["tier_prices"]) =>
     req<ProductTiers>(`/admin/products/${id}/tiers`, { method: "PUT", body: JSON.stringify({ tier_prices }) }),
+
+  // homepage promo
+  banners: () => req<Banner[]>("/banners"),
+  homeSettings: () => req<HomeSettings>("/home-settings"),
+  flashSale: () => req<FlashSale>("/flash-sale"),
+  vouchers: () => req<Voucher[]>("/vouchers"),
+  myVouchers: () => req<Voucher[]>("/vouchers/mine"),
+  claimVoucher: (code: string) => req<Voucher>(`/vouchers/${encodeURIComponent(code)}/claim`, { method: "POST" }),
+  applyVoucher: (code: string) => req<{ code: string; title: string; discount: number }>("/vouchers/apply", { method: "POST", body: JSON.stringify({ code }) }),
+  trackView: (product_id: string) => req<{ ok: boolean }>(`/activity/view/${product_id}`, { method: "POST" }),
+  recommendations: (skip = 0, limit = 20) => req<Product[]>(`/recommendations?skip=${skip}&limit=${limit}`),
+
+  // admin promo
+  adminBanners: () => req<Banner[]>("/admin/banners"),
+  adminSaveBanner: (b: BannerInput, id?: string) =>
+    req<Banner>(id ? `/admin/banners/${id}` : "/admin/banners", { method: id ? "PUT" : "POST", body: JSON.stringify(b) }),
+  adminDeleteBanner: (id: string) => req<{ ok: boolean }>(`/admin/banners/${id}`, { method: "DELETE" }),
+  adminFlashSale: () => req<AdminFlashSale>("/admin/flash-sale"),
+  adminSaveFlashSale: (f: { title: string; active: boolean; ends_at: string; items: { product_id: string; flash_price: number }[] }) =>
+    req<AdminFlashSale>("/admin/flash-sale", { method: "PUT", body: JSON.stringify(f) }),
+  adminVouchers: () => req<Voucher[]>("/admin/vouchers"),
+  adminSaveVoucher: (v: VoucherInput, isNew: boolean) =>
+    req<Voucher>(isNew ? "/admin/vouchers" : `/admin/vouchers/${v.code}`, { method: isNew ? "POST" : "PUT", body: JSON.stringify(v) }),
+  adminDeleteVoucher: (code: string) => req<{ ok: boolean }>(`/admin/vouchers/${code}`, { method: "DELETE" }),
+  adminSaveHomeSettings: (s: Omit<HomeSettings, "key">) => req<HomeSettings>("/admin/home-settings", { method: "PUT", body: JSON.stringify(s) }),
+  adminUpload: async (file: LocalFile) => {
+    const token = await getToken();
+    const res = await uploadForm(`${BASE}/api/admin/upload`, { headers: token ? { Authorization: `Bearer ${token}` } : {}, files: { file } });
+    if (!res.ok) {
+      let msg = `HTTP ${res.status}`;
+      try { msg = (await res.json()).detail || msg; } catch {}
+      throw new Error(msg);
+    }
+    return (await res.json()) as { url: string };
+  },
 };
+
+/** Uploaded files come back as "/api/files/..." — make them absolute for <Image>. */
+export const imgUrl = (u: string) => (u?.startsWith("/") ? `${BASE}${u}` : u);
+
+export type Banner = { banner_id: string; title: string; subtitle: string; image: string; link_type: "none" | "category" | "product" | "search"; link_value: string; order: number; active: boolean };
+export type BannerInput = Omit<Banner, "banner_id">;
+export type HomeSettings = {
+  key?: string;
+  free_shipping: { enabled: boolean; title: string; subtitle: string; min_purchase: number };
+  recommend_mode: "personal" | "random";
+};
+export type FlashSale = { active: boolean; title?: string; ends_at?: string; items: Product[] };
+export type AdminFlashSale = { title: string; active: boolean; ends_at: string; items: { product_id: string; flash_price: number; name: string; image: string; price: number }[] };
+export type Voucher = {
+  code: string; title: string; description: string; mode: DiscountMode; value: number; max_discount: number;
+  min_purchase: number; quota: number; used: number; active: boolean; show_on_home: boolean; ends_at: string | null; claimed: boolean;
+};
+export type VoucherInput = Omit<Voucher, "used" | "claimed">;
 
 export type CustomerType = "langsung" | "pengecer" | "reseller";
 export const CUSTOMER_TYPE_LABEL: Record<CustomerType, string> = {
@@ -166,14 +220,15 @@ export type Product = {
   in_stock: boolean; my_price: number; price_tiers: PriceTier[];
   price_min: number; price_max: number;
   price_matrix: ({ min_qty: number } & Record<CustomerType, number>)[];
+  flash_price?: number | null; flash_ends_at?: string | null;
 };
 export type CartItem = { product_id: string; quantity: number; name: string; price: number; base_price: number; original_price: number; image: string; stock: number; next_tier?: PriceTier | null };
 export type Cart = { items: CartItem[]; subtotal: number; savings: number; item_count: number; customer_type: CustomerType };
 export type PaymentMethod = "midtrans" | "xendit" | "cod";
-export type CheckoutPayload = { full_name: string; phone: string; address: string; city: string; payment_method: PaymentMethod };
+export type CheckoutPayload = { full_name: string; phone: string; address: string; city: string; payment_method: PaymentMethod; voucher_code?: string };
 export type OrderItem = { product_id: string; name: string; price: number; quantity: number; image: string };
 export type Order = {
-  order_id: string; user_id?: string | null; items: OrderItem[]; subtotal: number; shipping_cost: number; total: number;
+  order_id: string; user_id?: string | null; items: OrderItem[]; subtotal: number; shipping_cost: number; discount?: number; voucher_code?: string | null; total: number;
   shipping: Record<string, string>; status: "pending" | "paid" | "expired" | "failed" | "cod" | "processing" | "shipped" | "completed" | "cancelled"; payment_method: PaymentMethod;
   payment_url?: string | null; customer_type: CustomerType; created_at: string;
 };

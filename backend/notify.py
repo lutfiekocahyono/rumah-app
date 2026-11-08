@@ -29,6 +29,7 @@ def format_order(o: dict) -> str:
         "",
         f"Subtotal: {_rp(o['subtotal'])}",
         f"Ongkir: {_rp(o['shipping_cost'])}",
+        *([f"Voucher {o.get('voucher_code')}: -{_rp(o['discount'])}"] if o.get("discount") else []),
         f"*Total: {_rp(o['total'])}*",
         f"Bayar: {METHOD_LABEL.get(o['payment_method'], o['payment_method'])}",
     ]

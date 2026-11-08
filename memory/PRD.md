@@ -26,3 +26,12 @@ Iteration 2: import all data from pusatgrosirsidoarjo.com; tiered pricing (pembe
 ## Backlog
 - P1: shipping cost by city/courier, stock sync with website, push product edits from admin
 - P2: vouchers, reviews, reorder button
+
+## Iteration 3 — Homepage promo features (DONE, tested)
+- Home order: Search → Banner promosi (admin-managed, upload via Emergent Object Storage) → Kategori → Gratis Ongkir info banner → Flash Sale (countdown) → Voucher (klaim) → Produk Populer → Produk Terbaru → Rekomendasi (load more).
+- Flash sale: admin picks products, flash price, end time; flash price applied in product detail + cart (min of tier price & flash price). Settings key `flash_sale`.
+- Vouchers: collection `vouchers` (percent/rupiah, max_discount, min_purchase, quota, ends_at, active, show_on_home); claim (`voucher_claims`), apply at checkout, used count increments; released on cancel/expired/failed. Midtrans/Xendit get negative voucher line.
+- Gratis ongkir: info only (settings key `home.free_shipping`); shipping still Rp25.000.
+- Rekomendasi: `home.recommend_mode` personal (activity: viewed + purchased categories) | random.
+- Admin screens: /admin/banners, /admin/flash-sale, /admin/vouchers, /admin/home-settings.
+- Backlog: per-user voucher limit (not requested yet), delete confirmations in admin.

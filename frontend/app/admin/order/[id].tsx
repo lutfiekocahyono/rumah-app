@@ -104,6 +104,7 @@ export default function AdminOrderDetail() {
             <View style={styles.sep} />
             <View style={styles.between}><Text style={styles.muted}>Subtotal</Text><Text style={styles.itemName}>{formatIDR(order.subtotal)}</Text></View>
             <View style={styles.between}><Text style={styles.muted}>Ongkir</Text><Text style={styles.itemName}>{formatIDR(order.shipping_cost)}</Text></View>
+            {order.discount ? <View style={styles.between}><Text style={styles.muted}>Voucher {order.voucher_code}</Text><Text style={styles.itemName}>-{formatIDR(order.discount)}</Text></View> : null}
             <View style={styles.between}><Text style={styles.name}>Total</Text><Text style={styles.total}>{formatIDR(order.total)}</Text></View>
           </View>
         </ScrollView>

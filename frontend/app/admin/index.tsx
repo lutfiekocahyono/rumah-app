@@ -15,6 +15,10 @@ const MENU = [
   { icon: "pricetags-outline", label: "Pengaturan Harga", sub: "Potongan per kategori & jumlah beli", to: "/admin/pricing" },
   { icon: "people-outline", label: "Kategori Pelanggan", sub: "Pengecer, Reseller, Pembeli Langsung", to: "/admin/customers" },
   { icon: "cube-outline", label: "Harga Manual per Produk", sub: "Atur harga per jumlah untuk 1 produk", to: "/admin/products" },
+  { icon: "images-outline", label: "Banner Promosi", sub: "Gambar, judul & tautan di beranda", to: "/admin/banners" },
+  { icon: "flash-outline", label: "Flash Sale", sub: "Produk, harga flash & jam berakhir", to: "/admin/flash-sale" },
+  { icon: "ticket-outline", label: "Voucher Diskon", sub: "Kode kupon % atau Rp untuk checkout", to: "/admin/vouchers" },
+  { icon: "car-outline", label: "Gratis Ongkir & Rekomendasi", sub: "Banner ongkir & mode rekomendasi", to: "/admin/home-settings" },
 ];
 
 export default function AdminHome() {

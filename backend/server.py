@@ -10,10 +10,13 @@ from typing import List, Optional
 
 import bcrypt
 import jwt
-from fastapi import APIRouter, BackgroundTasks, Depends, FastAPI, Header, HTTPException, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, FastAPI, File, Header, HTTPException, Query, Request, Response, UploadFile
+from fastapi.concurrency import run_in_threadpool
 import httpx
 import notify
 import payments
+import promo
+import storage
 from pricing import CUSTOMER_TYPES, DEFAULT_PRICING, get_pricing, price_matrix, price_tiers, unit_price
 from pymongo import ReturnDocument
 from dotenv import load_dotenv
@@ -65,6 +68,11 @@ INDEXES: dict[str, list[IndexModel]] = {
         IndexModel([("user_id", ASCENDING), ("created_at", DESCENDING)], name="user_orders"),
         IndexModel([("owner", ASCENDING), ("created_at", DESCENDING)], name="owner_orders"),
     ],
+    "banners": [IndexModel([("banner_id", ASCENDING)], name="banner_id", unique=True)],
+    "vouchers": [IndexModel([("code", ASCENDING)], name="code", unique=True)],
+    "voucher_claims": [IndexModel([("owner", ASCENDING)], name="owner", unique=True)],
+    "activity": [IndexModel([("owner", ASCENDING)], name="owner", unique=True)],
+    "uploads": [IndexModel([("storage_path", ASCENDING)], name="storage_path", unique=True)],
 }
 
 
@@ -138,6 +146,17 @@ async def seed_data() -> None:
     await db.users.update_many({"role": {"$exists": False}}, {"$set": {"role": "customer"}})
     if not await db.settings.find_one({"key": "pricing"}):
         await db.settings.insert_one({**DEFAULT_PRICING})
+    # homepage promo sample content (editable in Admin > Promo & Beranda)
+    if await db.banners.count_documents({}) == 0:
+        await db.banners.insert_many([{**b, "banner_id": f"bn_{uuid.uuid4().hex[:10]}", "order": i, "active": True}
+                                      for i, b in enumerate(promo.SAMPLE_BANNERS)])
+    if await db.vouchers.count_documents({}) == 0:
+        await db.vouchers.insert_many([{**v, "created_at": datetime.now(timezone.utc)} for v in promo.SAMPLE_VOUCHERS])
+    if not await db.settings.find_one({"key": "home"}):
+        await db.settings.insert_one({**promo.DEFAULT_HOME})
+    if not await db.settings.find_one({"key": "flash_sale"}):
+        top = await db.products.find({"in_stock": {"$ne": False}, "price": {"$gt": 10000}}, {"product_id": 1, "price": 1}).sort("sold", -1).limit(8).to_list(8)
+        await db.settings.insert_one(promo.sample_flash([p["product_id"] for p in top], {p["product_id"]: p["price"] for p in top}))
 
 
 app = FastAPI(title="Pusat Grosir Sidoarjo API")
@@ -215,6 +234,8 @@ class Product(BaseModel):
     price_min: int = 0
     price_max: int = 0
     price_matrix: List[dict] = []
+    flash_price: Optional[int] = None
+    flash_ends_at: Optional[datetime] = None
 
 
 class CartItemIn(BaseModel):
@@ -257,6 +278,7 @@ class CheckoutIn(BaseModel):
     address: str = Field(min_length=5)
     city: str = Field(min_length=2)
     payment_method: str = Field(pattern="^(midtrans|xendit|cod)$")
+    voucher_code: Optional[str] = None
 
 
 class OrderItem(BaseModel):
@@ -273,6 +295,8 @@ class Order(BaseModel):
     items: List[OrderItem]
     subtotal: int = 0
     shipping_cost: int = 0
+    discount: int = 0
+    voucher_code: Optional[str] = None
     total: int
     shipping: dict
     status: str
@@ -478,13 +502,16 @@ async def list_categories(parent: Optional[str] = None, all: bool = False):
     return [Category(**d) for d in docs]
 
 
-def _product_out(d: dict, ctype: str, pricing: dict) -> Product:
+def _product_out(d: dict, ctype: str, pricing: dict, flash: Optional[dict] = None) -> Product:
     tiers = price_tiers(d, ctype, pricing)
     matrix = price_matrix(d, pricing)
     all_prices = [r[c] for r in matrix for c in CUSTOMER_TYPES] or [d.get("price", 0)]
+    fp = (flash or {}).get("prices", {}).get(d["product_id"])
     return Product(**{k: v for k, v in d.items() if k in Product.model_fields},
-                   my_price=tiers[0]["price"], price_tiers=[PriceTier(**t) for t in tiers],
-                   price_min=min(all_prices), price_max=max(all_prices), price_matrix=matrix)
+                   my_price=min(tiers[0]["price"], fp) if fp else tiers[0]["price"],
+                   price_tiers=[PriceTier(**t) for t in tiers],
+                   price_min=min(all_prices), price_max=max(all_prices), price_matrix=matrix,
+                   flash_price=fp, flash_ends_at=flash["ends_at"] if fp else None)
 
 
 @api.get("/products", response_model=List[Product])
@@ -510,9 +537,9 @@ async def list_products(
         "newest": [("in_stock", -1), ("created_at", -1), ("product_id", -1)],
     }
     docs = await db.products.find(query, {"_id": 0}).sort(sort_map[sort]).skip(skip).limit(limit).to_list(limit)
-    pricing = await get_pricing(db)
+    pricing, flash = await get_pricing(db), await promo.active_flash(db)
     ctype = (user or {}).get("customer_type", "langsung")
-    return [_product_out(d, ctype, pricing) for d in docs]
+    return [_product_out(d, ctype, pricing, flash) for d in docs]
 
 
 @api.get("/products/{product_id}", response_model=Product)
@@ -520,7 +547,7 @@ async def get_product(product_id: str, user=Depends(get_optional_user)):
     doc = await db.products.find_one({"product_id": product_id}, {"_id": 0})
     if not doc:
         raise HTTPException(status_code=404, detail="Produk tidak ditemukan")
-    return _product_out(doc, (user or {}).get("customer_type", "langsung"), await get_pricing(db))
+    return _product_out(doc, (user or {}).get("customer_type", "langsung"), await get_pricing(db), await promo.active_flash(db))
 
 
 # ---------------------------------------------------------------------------
@@ -532,7 +559,8 @@ async def _load_cart_detailed(owner: str) -> CartOut:
     items = cart.get("items", [])
     if not items:
         return CartOut(items=[], subtotal=0, item_count=0, customer_type=ctype)
-    pricing = await get_pricing(db)
+    pricing, flash = await get_pricing(db), await promo.active_flash(db)
+    flash_prices = (flash or {}).get("prices", {})
     ids = [i["product_id"] for i in items]
     prods = {p["product_id"]: p for p in await db.products.find({"product_id": {"$in": ids}}, {"_id": 0}).to_list(500)}
     detailed: List[CartItemDetailed] = []
@@ -543,6 +571,8 @@ async def _load_cart_detailed(owner: str) -> CartOut:
             continue
         qty = it["quantity"]
         price = unit_price(p, ctype, qty, pricing)
+        if flash_prices.get(p["product_id"]):
+            price = min(price, flash_prices[p["product_id"]])
         nxt = next((t for t in price_tiers(p, ctype, pricing) if t["min_qty"] > qty), None)
         detailed.append(CartItemDetailed(
             product_id=it["product_id"], quantity=qty, name=p["name"], price=price, base_price=p["price"],
@@ -618,9 +648,9 @@ async def get_wishlist(owner: str = Depends(get_owner)):
     ids = doc.get("items", [])
     if not ids:
         return WishlistOut(items=[])
-    ctype, pricing = await _ctype_for_owner(owner), await get_pricing(db)
+    ctype, pricing, flash = await _ctype_for_owner(owner), await get_pricing(db), await promo.active_flash(db)
     prods = await db.products.find({"product_id": {"$in": ids}}, {"_id": 0}).to_list(500)
-    return WishlistOut(items=[_product_out(p, ctype, pricing) for p in prods])
+    return WishlistOut(items=[_product_out(p, ctype, pricing, flash) for p in prods])
 
 
 @api.post("/wishlist/{product_id}", response_model=WishlistOut)
@@ -655,6 +685,17 @@ async def checkout(body: CheckoutIn, background: BackgroundTasks, owner: str = D
         raise HTTPException(status_code=400, detail="Keranjang kosong")
     user_id = owner[5:] if owner.startswith("user:") else None
     user = await db.users.find_one({"user_id": user_id}, {"email": 1}) if user_id else None
+    discount, vcode = 0, None
+    if body.voucher_code and body.voucher_code.strip():
+        vcode = body.voucher_code.strip().upper()
+        discount, verr = promo.voucher_check(await db.vouchers.find_one({"code": vcode}), cart.subtotal)
+        if verr:
+            raise HTTPException(status_code=400, detail=verr)
+        claimed = await db.vouchers.find_one_and_update(
+            {"code": vcode, "$or": [{"quota": 0}, {"quota": None}, {"$expr": {"$lt": ["$used", "$quota"]}}]},
+            {"$inc": {"used": 1}})
+        if not claimed:
+            raise HTTPException(status_code=400, detail="Kuota voucher sudah habis")
     order_doc = {
         "order_id": f"PGS-{datetime.now(timezone.utc).strftime('%y%m%d')}-{uuid.uuid4().hex[:6].upper()}",
         "user_id": user_id,
@@ -663,24 +704,45 @@ async def checkout(body: CheckoutIn, background: BackgroundTasks, owner: str = D
         "items": [OrderItem(product_id=i.product_id, name=i.name, price=i.price, quantity=i.quantity, image=i.image).model_dump() for i in cart.items],
         "subtotal": cart.subtotal,
         "shipping_cost": SHIPPING_COST,
-        "total": cart.subtotal + SHIPPING_COST,
+        "discount": discount,
+        "voucher_code": vcode,
+        "total": cart.subtotal - discount + SHIPPING_COST,
         "shipping": body.model_dump(exclude={"payment_method"}),
         "payment_method": body.payment_method,
         "customer_type": cart.customer_type,
         "status": "cod" if body.payment_method == "cod" else "pending",
         "created_at": datetime.now(timezone.utc),
     }
-    if body.payment_method == "midtrans":
-        order_doc.update(await payments.midtrans_create(order_doc))
-    elif body.payment_method == "xendit":
-        order_doc.update(await payments.xendit_create(order_doc))
+    try:
+        if body.payment_method == "midtrans":
+            order_doc.update(await payments.midtrans_create(order_doc))
+        elif body.payment_method == "xendit":
+            order_doc.update(await payments.xendit_create(order_doc))
+    except Exception:
+        if vcode:  # give the voucher use back when payment creation fails
+            await db.vouchers.update_one({"code": vcode}, {"$inc": {"used": -1}})
+        raise
     await db.orders.insert_one(order_doc)
+    await _track(owner, [p["category"] for p in await db.products.find(
+        {"product_id": {"$in": [i.product_id for i in cart.items]}}, {"category": 1}).to_list(500)], weight=3)
     for i in cart.items:  # reserve stock (9999 = unlimited from website import)
         if i.stock < 9999:
             await db.products.update_one({"product_id": i.product_id}, {"$inc": {"stock": -i.quantity}})
     await db.carts.update_one({"owner": owner}, {"$set": {"items": []}}, upsert=True)
     background.add_task(notify.send_owner_order, order_doc)
     return _order_out(order_doc)
+
+
+RELEASE_STATUSES = ("cancelled", "expired", "failed")
+
+
+async def _release_voucher(order_id: str) -> None:
+    """Give a voucher use back once when an order is cancelled/expired/failed."""
+    o = await db.orders.find_one_and_update(
+        {"order_id": order_id, "voucher_code": {"$nin": [None, ""]}, "voucher_released": {"$ne": True}},
+        {"$set": {"voucher_released": True}})
+    if o:
+        await db.vouchers.update_one({"code": o["voucher_code"], "used": {"$gt": 0}}, {"$inc": {"used": -1}})
 
 
 @api.get("/orders", response_model=List[Order])
@@ -712,6 +774,8 @@ async def refresh_order(order_id: str, owner: str = Depends(get_owner)):
         if new and new != d["status"]:
             await db.orders.update_one({"order_id": order_id}, {"$set": {"status": new, "updated_at": datetime.now(timezone.utc)}})
             d["status"] = new
+            if new in RELEASE_STATUSES:
+                await _release_voucher(order_id)
     return _order_out(d)
 
 
@@ -726,8 +790,11 @@ async def midtrans_notification(request: Request):
     if int(float(p.get("gross_amount", 0))) != order["total"]:
         raise HTTPException(status_code=400, detail="Amount mismatch")
     if order["status"] != "paid":
+        new = payments.midtrans_map(p)
         await db.orders.update_one({"order_id": p["order_id"]}, {"$set": {
-            "status": payments.midtrans_map(p), "payment_raw": p, "updated_at": datetime.now(timezone.utc)}})
+            "status": new, "payment_raw": p, "updated_at": datetime.now(timezone.utc)}})
+        if new in RELEASE_STATUSES:
+            await _release_voucher(p["order_id"])
     return {"ok": True}
 
 
@@ -742,8 +809,11 @@ async def xendit_callback(request: Request, x_callback_token: Optional[str] = He
     if int(p.get("amount", 0)) != order["total"]:
         raise HTTPException(status_code=400, detail="Amount mismatch")
     if order["status"] != "paid":
+        new = payments.xendit_map(p.get("status"))
         await db.orders.update_one({"order_id": p["external_id"]}, {"$set": {
-            "status": payments.xendit_map(p.get("status")), "payment_raw": p, "updated_at": datetime.now(timezone.utc)}})
+            "status": new, "payment_raw": p, "updated_at": datetime.now(timezone.utc)}})
+        if new in RELEASE_STATUSES:
+            await _release_voucher(p["external_id"])
     return {"ok": True}
 
 
@@ -799,6 +869,8 @@ async def admin_order_status(order_id: str, body: OrderStatusIn, _=Depends(requi
         projection={"_id": 0}, return_document=ReturnDocument.AFTER)
     if not d:
         raise HTTPException(status_code=404, detail="Pesanan tidak ditemukan")
+    if body.status == "cancelled":
+        await _release_voucher(order_id)
     return _order_out(d)
 
 
@@ -865,6 +937,323 @@ async def admin_set_tiers(product_id: str, body: ProductTiersIn, _=Depends(requi
     return {"product_id": product_id, "tier_prices": clean}
 
 
+# ---------------------------------------------------------------------------
+# Homepage: banners, flash sale, vouchers, recommendations, settings
+# ---------------------------------------------------------------------------
+async def get_optional_owner(
+    authorization: Optional[str] = Header(default=None),
+    x_guest_id: Optional[str] = Header(default=None),
+) -> Optional[str]:
+    uid = _decode(authorization)
+    if uid:
+        return f"user:{uid}"
+    return f"guest:{x_guest_id}" if x_guest_id else None
+
+
+async def _track(owner: Optional[str], cats: List[str], weight: int = 1, product_id: Optional[str] = None) -> None:
+    if not owner:
+        return
+    upd: dict = {"$set": {"updated_at": datetime.now(timezone.utc)}}
+    inc = {f"cats.{c.replace('.', '_')}": weight for c in cats if c}
+    if inc:
+        upd["$inc"] = inc
+    if product_id:
+        upd["$push"] = {"recent": {"$each": [product_id], "$slice": -30}}
+    await db.activity.update_one({"owner": owner}, upd, upsert=True)
+
+
+class Banner(BaseModel):
+    banner_id: str
+    title: str
+    subtitle: str = ""
+    image: str
+    link_type: str = "none"
+    link_value: str = ""
+    order: int = 0
+    active: bool = True
+
+
+class BannerIn(BaseModel):
+    title: str = Field(min_length=1, max_length=80)
+    subtitle: str = Field(default="", max_length=120)
+    image: str = Field(min_length=1)
+    link_type: str = Field(default="none", pattern="^(none|category|product|search)$")
+    link_value: str = ""
+    order: int = 0
+    active: bool = True
+
+
+class FlashItemIn(BaseModel):
+    product_id: str
+    flash_price: int = Field(ge=1)
+
+
+class FlashSaleIn(BaseModel):
+    title: str = Field(default="Flash Sale", min_length=1, max_length=40)
+    active: bool = True
+    ends_at: datetime
+    items: List[FlashItemIn] = []
+
+
+class VoucherIn(BaseModel):
+    code: str = Field(pattern="^[A-Za-z0-9]{3,20}$")
+    title: str = Field(min_length=1, max_length=60)
+    description: str = Field(default="", max_length=120)
+    mode: str = Field(default="percent", pattern="^(percent|rupiah)$")
+    value: float = Field(gt=0)
+    max_discount: int = Field(default=0, ge=0)
+    min_purchase: int = Field(default=0, ge=0)
+    quota: int = Field(default=0, ge=0)
+    ends_at: Optional[datetime] = None
+    active: bool = True
+    show_on_home: bool = True
+
+
+class VoucherApplyIn(BaseModel):
+    code: str = Field(min_length=1)
+
+
+class FreeShippingIn(BaseModel):
+    enabled: bool = True
+    title: str = Field(default="Gratis Ongkir", max_length=40)
+    subtitle: str = Field(default="", max_length=120)
+    min_purchase: int = Field(default=0, ge=0)
+
+
+class HomeSettingsIn(BaseModel):
+    free_shipping: FreeShippingIn
+    recommend_mode: str = Field(pattern="^(personal|random)$")
+
+
+def _voucher_out(v: dict, claimed: bool = False) -> dict:
+    out = {k: v.get(k) for k in ("code", "title", "description", "mode", "value", "max_discount",
+                                  "min_purchase", "quota", "used", "active", "show_on_home")}
+    out["ends_at"] = promo.aware(v.get("ends_at"))
+    out["claimed"] = claimed
+    return out
+
+
+def _voucher_live(v: dict) -> bool:
+    ends = promo.aware(v.get("ends_at"))
+    return bool(v.get("active")) and (not ends or ends > promo.now()) and (not v.get("quota") or v.get("used", 0) < v["quota"])
+
+
+@api.get("/banners", response_model=List[Banner])
+async def list_banners():
+    return [Banner(**d) for d in await db.banners.find({"active": True}, {"_id": 0}).sort("order", 1).to_list(20)]
+
+
+@api.get("/home-settings")
+async def home_settings():
+    return await promo.get_home(db)
+
+
+@api.get("/flash-sale")
+async def flash_sale(user=Depends(get_optional_user)):
+    flash = await promo.active_flash(db)
+    if not flash:
+        return {"active": False, "items": []}
+    ids = list(flash["prices"].keys())
+    docs = {d["product_id"]: d for d in await db.products.find({"product_id": {"$in": ids}}, {"_id": 0}).to_list(100)}
+    pricing, ctype = await get_pricing(db), (user or {}).get("customer_type", "langsung")
+    items = [_product_out(docs[i], ctype, pricing, flash) for i in ids if i in docs]
+    return {"active": True, "title": flash["title"], "ends_at": flash["ends_at"], "items": items}
+
+
+@api.get("/vouchers")
+async def list_vouchers(owner: Optional[str] = Depends(get_optional_owner)):
+    docs = await db.vouchers.find({"active": True, "show_on_home": True}, {"_id": 0}).sort("created_at", -1).to_list(50)
+    claim = await db.voucher_claims.find_one({"owner": owner}) if owner else None
+    mine = set((claim or {}).get("codes", []))
+    return [_voucher_out(v, v["code"] in mine) for v in docs if _voucher_live(v)]
+
+
+@api.get("/vouchers/mine")
+async def my_vouchers(owner: str = Depends(get_owner)):
+    claim = await db.voucher_claims.find_one({"owner": owner}) or {}
+    docs = await db.vouchers.find({"code": {"$in": claim.get("codes", [])}}, {"_id": 0}).to_list(50)
+    return [_voucher_out(v, True) for v in docs if _voucher_live(v)]
+
+
+@api.post("/vouchers/{code}/claim")
+async def claim_voucher(code: str, owner: str = Depends(get_owner)):
+    v = await db.vouchers.find_one({"code": code.upper()})
+    if not v or not _voucher_live(v):
+        raise HTTPException(status_code=404, detail="Voucher tidak tersedia")
+    await db.voucher_claims.update_one({"owner": owner}, {"$addToSet": {"codes": v["code"]}}, upsert=True)
+    return _voucher_out(v, True)
+
+
+@api.post("/vouchers/apply")
+async def apply_voucher(body: VoucherApplyIn, owner: str = Depends(get_owner)):
+    cart = await _load_cart_detailed(owner)
+    code = body.code.strip().upper()
+    v = await db.vouchers.find_one({"code": code})
+    discount, err = promo.voucher_check(v, cart.subtotal)
+    if err:
+        raise HTTPException(status_code=400, detail=err)
+    return {"code": code, "title": v["title"], "discount": discount}
+
+
+@api.post("/activity/view/{product_id}")
+async def track_view(product_id: str, owner: Optional[str] = Depends(get_optional_owner)):
+    p = await db.products.find_one({"product_id": product_id}, {"category": 1, "categories": 1})
+    if p:
+        await _track(owner, [p.get("category", "")], 1, product_id)
+    return {"ok": True}
+
+
+@api.get("/recommendations", response_model=List[Product])
+async def recommendations(
+    limit: int = Query(20, ge=1, le=60), skip: int = Query(0, ge=0),
+    owner: Optional[str] = Depends(get_optional_owner), user=Depends(get_optional_user),
+):
+    mode = (await promo.get_home(db))["recommend_mode"]
+    base = {"in_stock": {"$ne": False}}
+    docs: list = []
+    if mode == "random":
+        docs = await db.products.aggregate([{"$match": base}, {"$sample": {"size": limit}}, {"$project": {"_id": 0}}]).to_list(limit)
+    else:
+        act = await db.activity.find_one({"owner": owner}) if owner else None
+        cats = [c for c, _ in sorted((act or {}).get("cats", {}).items(), key=lambda kv: -kv[1])[:5]]
+        recent = (act or {}).get("recent", [])[-10:]
+        # one stable ordering: products from favourite categories first, then best sellers
+        docs = await db.products.aggregate([
+            {"$match": {**base, "product_id": {"$nin": recent}}},
+            {"$addFields": {"_fav": {"$cond": [{"$gt": [{"$size": {"$setIntersection": [{"$ifNull": ["$categories", []]}, cats]}}, 0]}, 1, 0]}}},
+            {"$sort": {"_fav": -1, "sold": -1, "created_at": -1, "product_id": -1}},
+            {"$skip": skip}, {"$limit": limit}, {"$project": {"_id": 0, "_fav": 0}},
+        ]).to_list(limit)
+    pricing, flash = await get_pricing(db), await promo.active_flash(db)
+    ctype = (user or {}).get("customer_type", "langsung")
+    return [_product_out(d, ctype, pricing, flash) for d in docs]
+
+
+# --- uploaded files (banner images) ---
+@api.post("/admin/upload")
+async def admin_upload(file: UploadFile = File(...), admin=Depends(require_admin)):
+    if not (file.content_type or "").startswith("image/"):
+        raise HTTPException(status_code=400, detail="File harus berupa gambar")
+    data = await file.read()
+    if len(data) > 8 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Ukuran gambar maksimal 8 MB")
+    ext = (file.filename or "img.jpg").rsplit(".", 1)[-1].lower()[:5] or "jpg"
+    path = f"{storage.APP_NAME}/uploads/{admin['user_id']}/{uuid.uuid4().hex}.{ext}"
+    try:
+        res = await run_in_threadpool(storage.put_object, path, data, file.content_type)
+    except Exception as exc:
+        logger.exception("upload failed")
+        code = getattr(getattr(exc, "response", None), "status_code", 0)
+        raise HTTPException(status_code=502, detail="Kuota penyimpanan habis" if code == 402 else "Upload gagal, coba lagi")
+    await db.uploads.insert_one({"storage_path": res["path"], "owner_id": admin["user_id"], "content_type": file.content_type,
+                                 "original_filename": file.filename, "size": len(data), "is_deleted": False,
+                                 "created_at": datetime.now(timezone.utc)})
+    return {"url": f"/api/files/{res['path']}"}
+
+
+@api.get("/files/{path:path}")
+async def get_file(path: str):
+    rec = await db.uploads.find_one({"storage_path": path, "is_deleted": False})
+    if not rec:  # banner images are public; only files we recorded are served
+        raise HTTPException(status_code=404, detail="File tidak ditemukan")
+    data, ctype = await run_in_threadpool(storage.get_object, path)
+    return Response(content=data, media_type=rec.get("content_type") or ctype,
+                    headers={"Cache-Control": "public, max-age=604800, immutable"})
+
+
+# --- admin: banners ---
+@api.get("/admin/banners", response_model=List[Banner])
+async def admin_banners(_=Depends(require_admin)):
+    return [Banner(**d) for d in await db.banners.find({}, {"_id": 0}).sort("order", 1).to_list(50)]
+
+
+@api.post("/admin/banners", response_model=Banner)
+async def admin_create_banner(body: BannerIn, _=Depends(require_admin)):
+    doc = {**body.model_dump(), "banner_id": f"bn_{uuid.uuid4().hex[:10]}"}
+    await db.banners.insert_one({**doc})
+    return Banner(**doc)
+
+
+@api.put("/admin/banners/{banner_id}", response_model=Banner)
+async def admin_update_banner(banner_id: str, body: BannerIn, _=Depends(require_admin)):
+    d = await db.banners.find_one_and_update({"banner_id": banner_id}, {"$set": body.model_dump()},
+                                             projection={"_id": 0}, return_document=ReturnDocument.AFTER)
+    if not d:
+        raise HTTPException(status_code=404, detail="Banner tidak ditemukan")
+    return Banner(**d)
+
+
+@api.delete("/admin/banners/{banner_id}")
+async def admin_delete_banner(banner_id: str, _=Depends(require_admin)):
+    await db.banners.delete_one({"banner_id": banner_id})
+    return {"ok": True}
+
+
+# --- admin: flash sale ---
+@api.get("/admin/flash-sale")
+async def admin_get_flash(_=Depends(require_admin)):
+    doc = await db.settings.find_one({"key": "flash_sale"}, {"_id": 0}) or {
+        "title": "Flash Sale", "active": False, "ends_at": promo.now() + timedelta(days=1), "items": []}
+    ids = [i["product_id"] for i in doc.get("items", [])]
+    prods = {p["product_id"]: p for p in await db.products.find({"product_id": {"$in": ids}}, {"_id": 0, "product_id": 1, "name": 1, "image": 1, "price": 1}).to_list(100)}
+    items = [{**i, **{k: prods[i["product_id"]][k] for k in ("name", "image", "price")}} for i in doc.get("items", []) if i["product_id"] in prods]
+    return {"title": doc.get("title", "Flash Sale"), "active": bool(doc.get("active")), "ends_at": promo.aware(doc.get("ends_at")), "items": items}
+
+
+@api.put("/admin/flash-sale")
+async def admin_set_flash(body: FlashSaleIn, _=Depends(require_admin)):
+    items = list({i.product_id: i.model_dump() for i in body.items}.values())
+    await db.settings.update_one({"key": "flash_sale"}, {"$set": {
+        "title": body.title, "active": body.active, "ends_at": promo.aware(body.ends_at), "items": items}}, upsert=True)
+    return await admin_get_flash(_)
+
+
+# --- admin: vouchers ---
+@api.get("/admin/vouchers")
+async def admin_vouchers(_=Depends(require_admin)):
+    return [_voucher_out(v) for v in await db.vouchers.find({}, {"_id": 0}).sort("created_at", -1).to_list(200)]
+
+
+def _check_voucher_in(body: VoucherIn) -> dict:
+    if body.mode == "percent" and body.value > 100:
+        raise HTTPException(status_code=400, detail="Potongan persen maksimal 100%")
+    return {**body.model_dump(), "code": body.code.upper(), "ends_at": promo.aware(body.ends_at)}
+
+
+@api.post("/admin/vouchers")
+async def admin_create_voucher(body: VoucherIn, _=Depends(require_admin)):
+    doc = _check_voucher_in(body)
+    if await db.vouchers.find_one({"code": doc["code"]}):
+        raise HTTPException(status_code=400, detail="Kode voucher sudah dipakai")
+    await db.vouchers.insert_one({**doc, "used": 0, "created_at": datetime.now(timezone.utc)})
+    return _voucher_out({**doc, "used": 0})
+
+
+@api.put("/admin/vouchers/{code}")
+async def admin_update_voucher(code: str, body: VoucherIn, _=Depends(require_admin)):
+    doc = _check_voucher_in(body)
+    if doc["code"] != code.upper():
+        raise HTTPException(status_code=400, detail="Kode voucher tidak bisa diubah")
+    d = await db.vouchers.find_one_and_update({"code": code.upper()}, {"$set": doc}, projection={"_id": 0},
+                                              return_document=ReturnDocument.AFTER)
+    if not d:
+        raise HTTPException(status_code=404, detail="Voucher tidak ditemukan")
+    return _voucher_out(d)
+
+
+@api.delete("/admin/vouchers/{code}")
+async def admin_delete_voucher(code: str, _=Depends(require_admin)):
+    await db.vouchers.delete_one({"code": code.upper()})
+    return {"ok": True}
+
+
+# --- admin: home settings (free shipping banner + recommendation mode) ---
+@api.put("/admin/home-settings")
+async def admin_set_home(body: HomeSettingsIn, _=Depends(require_admin)):
+    await db.settings.update_one({"key": "home"}, {"$set": body.model_dump()}, upsert=True)
+    return await promo.get_home(db)
+
+
 app.include_router(api)
 
 app.add_middleware(
@@ -883,6 +1272,10 @@ logger = logging.getLogger(__name__)
 async def _startup():
     app.state.index_task = asyncio.create_task(ensure_indexes())
     await seed_data()
+    try:
+        await run_in_threadpool(storage.init_storage)
+    except Exception:
+        logger.exception("object storage init failed")
 
 
 @app.on_event("shutdown")

@@ -1,0 +1,46 @@
+{
+  "summary": "Iteration 3 tested the homepage promo features: banners, home settings, flash sale, vouchers (claim, apply, checkout), recommendations, admin CRUD and upload. Backend: 15 pytest tests, 14 pass. The 1 failure is a real bug: recommendation pages overlap (duplicate products across skip pages). Frontend (375x667 viewport): all home sections render with a live countdown. Voucher Klaim changes to Diklaim. Search bar opens /search. A banner with link_type search opens /search?q=rak (and panci after editing). Product detail shows pd-flash-bar and the flash unit price. Checkout: invalid voucher shows co-voucher-error, claimed-voucher chip applies the voucher, summary shows the voucher row and reduced total (432.000 + 25.000 - 7.000 = 450.000), the COD order succeeds and order detail shows the voucher row. Admin: all 4 new menu items exist. Voucher create (percent >100 blocked), edit and delete work. Flash sale picker add, save, remove and save work. Banner edit of title and search link, then delete, works. Home settings change to random mode and new free-shipping title are saved and shown on home. Deprecated packages detected: none (no expo-av, expo-barcode-scanner or expo-background-fetch).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/recommendations?skip=", "issue": "Pages overlap. 1) The sort [('sold',-1),('created_at',-1)] has no unique tiebreaker. Almost all products have sold=0 and share created_at from the bulk import, so skip/limit order is not stable. Even a new guest with no activity gets 2 duplicates between skip=0 and skip=20. 2) Personal mode: the popular top-up on page 1 starts at offset 0. On page 2, extra_skip = skip - count(cat products), and count ignores the 'recent' exclusion and the top-up items already served. This gave 6 duplicates between page 1 and page 2. The frontend dedupes but then sends skip=data.recs.length (count after dedupe), so products get skipped or repeated. Random mode ignores skip ($sample), so 'load more' just returns random items."},
+      {"endpoint": "PUT /api/admin/orders/{id} status=cancelled", "issue": "Voucher 'used' is not decremented when a voucher order is cancelled, expired or fails. Quota leaks (server.py:696 increments; it is only rolled back at :723 when payment creation fails)."},
+      {"endpoint": "POST /api/vouchers/apply, /api/checkout", "issue": "There is no per-user usage limit. One user or guest can reuse the same voucher (e.g. PGS10RB) on every order until the global quota runs out. Claiming is also not required to apply a code. This may be intended, but confirm with the business."},
+      {"endpoint": "GET /api/products sort=popular", "issue": "The first 40 'popular' products all have sold=0, so the Produk Populer rail is effectively arbitrary (data issue from the import)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Home recommendations load more", "issue": "Duplicates come from the backend pagination. The frontend filters them, so only 18 new cards appear instead of 20 (fresh guest: 20 -> 38). Next skip uses the deduped count.", "affected_testIDs": ["home-load-more", "recommend-section"]}
+    ],
+    "design_issues": [
+      {"screen": "Home", "issues": [
+        "voucher-claim-{CODE} button is 64x30, below the 44pt touch-target minimum (home-sections.tsx:192 minHeight 30)",
+        "'Lihat Semua' category link has no testID and a small touch target",
+        "Search placeholder hardcodes 'Cari dari 6.618 produk…' (index.tsx:100); it should come from the real product count"
+      ]},
+      {"screen": "Admin vouchers/banners", "issues": ["Delete Voucher / Delete Banner runs immediately with no confirmation", "Voucher value field uses digits(), so a decimal percent (e.g. 2.5%) can't be entered even though the backend accepts a float"]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_pgs_iter3_promo.py", "/app/backend/tests/ui_promo_helper.py", "/app/test_reports/pytest/pytest_iter3.xml"],
+  "action_items": [
+    "Fix /api/recommendations pagination: add a unique tiebreaker to the sort (('product_id',-1)). In personal mode, build one deterministic ordered list (category matches first, then popular, excluding recent) and apply skip/limit to that combined list, e.g. with an aggregation using $facet/$unionWith, or compute with ids.",
+    "Give the voucher use back (used -1) when an order that has voucher_code is cancelled, expired or fails.",
+    "Optional: add a per-user voucher usage limit (e.g. once per owner) if the business wants it.",
+    "Raise the voucher Klaim button minHeight to 44, and add a delete confirmation in admin voucher/banner screens."
+  ],
+  "critical_code_review_comments": [
+    "server.py is 1265 lines (over 700). Split the homepage/promo routes into a separate router module (promo_routes.py).",
+    "_track stores activity under the 'category' field, while recommendations filter on 'categories' $in. This works only because category is included in categories. Keys with '.' get replaced by '_' and would then never match.",
+    "Uploaded files have no delete/cleanup path (uploads collection grows; this test left one tiny TEST_a.png per run)."
+  ],
+  "updated_files": ["/app/backend/tests/test_pgs_iter3_promo.py (new)", "/app/backend/tests/ui_promo_helper.py (new)"],
+  "success_rate": {"backend": "93% (14/15)", "frontend": "100% of tested flows"},
+  "seed_data_creation": "Only temporary TEST data: vouchers TESTV*/TESTUI*/TESTADM1 (deleted), banner TEST_UIBanner (deleted), TEST guest carts (cleared), 3 COD test orders PGS-261108-450607/C8E297/D813C7 (cancelled via admin). Seeded vouchers remain used=0, 3 banners, flash sale active with 8 items (ends 2026-11-10), home settings restored (personal mode, original free-shipping text). The demo user's test claim of PGS10RB was removed.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: cd /app/backend && export $(grep EXPO_PUBLIC_BACKEND_URL /app/frontend/.env|xargs) && python -m pytest tests/test_pgs_iter3_promo.py -n 0. The module fixture snapshots and restores flash sale + home settings. Voucher codes must be alphanumeric (no TEST_ underscore), so use TESTV/TESTUI prefixes. On web, guest id is localStorage 'pgs_guest_id' and token is 'pgs_auth_token'. ui_promo_helper.py setup <claim 0|1> creates a guest cart + TEST voucher. ui_helper.py cancel <order_ids> cancels test orders. System clock is Nov 2026. After running test_claim_with_token, pull PGS10RB from the demo user's voucher_claims.",
+  "rca_of_issue": "Recommendation duplicates. Reproduce: a new X-Guest-Id views one product, then GET /api/recommendations?limit=20&skip=0 and &skip=20 overlap by 6 ids (2 with no activity). Cause: non-unique sort keys combined with the extra_skip calculation in server.py:1100-1104."
+}
