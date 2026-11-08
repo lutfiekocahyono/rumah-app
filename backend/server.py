@@ -7,7 +7,7 @@ import re
 from contextlib import suppress
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import bcrypt
 import jwt
@@ -287,6 +287,14 @@ class Product(BaseModel):
     max_order: int = 0
     variant_options: List[dict] = []
     variants: List[dict] = []  # active variants only: {variant_id, values, name, price, stock, sku, image}
+    specs: Dict[str, str] = {}
+    weight_grams: int = 0
+    length_cm: int = 0
+    width_cm: int = 0
+    height_cm: int = 0
+    preorder: bool = False
+    preorder_days: int = 0
+    processing_days: int = 0
 
 
 class CartItemIn(BaseModel):
@@ -915,7 +923,7 @@ async def checkout(body: CheckoutIn, background: BackgroundTasks, owner: str = D
     store = await db.stores.find_one({"store_id": store_id, "status": "active"})
     if not store:
         raise HTTPException(status_code=400, detail="Toko tidak aktif")
-    options = await SHIP_QUOTE(store, body.destination_id, cart.item_count)
+    options = await SHIP_QUOTE(store, body.destination_id, [{"product_id": i.product_id, "quantity": i.quantity} for i in cart.items])
     courier = next((c for c in options if c["code"] == body.courier), None)
     if not courier:
         raise HTTPException(status_code=409, detail="Kurir yang dipilih tidak tersedia lagi. Tarif ongkir sudah dimuat ulang, silakan pilih kurir lagi.")
@@ -1295,7 +1303,6 @@ marketing.register(api, db, require_admin=require_admin, get_owner=get_owner, ge
 home_feed.register(api, db, get_current_user=get_current_user, require_admin=require_admin, get_optional_owner=get_optional_owner,
                    get_optional_user=get_optional_user, visible=_visible, apply_stock=_apply_stock, product_out=_product_out,
                    all_branches=ALL_BRANCHES)
-product_editor.register(api, db, get_current_user=get_current_user, log_activity=ACCT["log_activity"])
 seller.register(api, db, get_current_user, require_admin, _product_out_for_user, ACCT["notify_user"], ACCT["log_activity"],
                 _release_voucher, _order_out)
 
@@ -1304,7 +1311,8 @@ support.register(api, db, get_current_user, require_admin, ACCT["notify_user"], 
 payments.register_settings(api, db, require_admin)
 branches.register(api, db, get_owner, seller)
 
-SHIP_QUOTE = shipping.register(api, db, require_admin, get_owner, seller.OFFICIAL_IDS, seller.couriers_of)
+SHIP_QUOTE, SHIP_ORIGIN = shipping.register(api, db, require_admin, get_owner, seller.OFFICIAL_IDS, seller.couriers_of)
+product_editor.register(api, db, get_current_user=get_current_user, log_activity=ACCT["log_activity"], origin_label=SHIP_ORIGIN)
 
 app.include_router(api)
 

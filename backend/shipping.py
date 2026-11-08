@@ -195,15 +195,42 @@ def register(api, db, require_admin, get_owner, official_ids, couriers_of):
         _cache[ck] = (time.time() + CACHE_TTL, res)
         return res
 
-    async def quote(store: dict, destination_id: Optional[int], item_qty: int) -> List[dict]:
-        """Courier options for a store. JNE/J&T/SiCepat use the API when key + origin + destination exist."""
-        manual = [dict(c, source="manual") for c in couriers_of(store) if c.get("active", True)]
+    async def cart_rules(items: List[dict]) -> tuple:
+        """Billable weight (grams; volumetric L×W×H/6000 kg when bigger) and the courier rules of the products."""
+        s = await settings()
+        default_w = int(s.get("default_weight_grams", 1000))
+        ids = [i["product_id"] for i in items]
+        prods = {p["product_id"]: p for p in await db.products.find({"product_id": {"$in": ids}}, {
+            "_id": 0, "product_id": 1, "weight_grams": 1, "length_cm": 1, "width_cm": 1, "height_cm": 1,
+            "couriers": 1, "ship_regular": 1, "ship_cargo": 1}).to_list(len(ids) or 1)}
+        weight, allowed, regular, cargo = 0, None, True, bool(items)
+        for i in items:
+            p = prods.get(i["product_id"], {})
+            vol = (p.get("length_cm") or 0) * (p.get("width_cm") or 0) * (p.get("height_cm") or 0) / 6  # cm³/6000 kg -> grams
+            weight += max(int(p.get("weight_grams") or default_w), int(vol)) * max(1, i["quantity"])
+            if p.get("couriers"):
+                allowed = set(p["couriers"]) if allowed is None else allowed & set(p["couriers"])
+            regular = regular and p.get("ship_regular", True)
+            cargo = cargo and p.get("ship_cargo", False)
+        return max(1, weight), allowed, regular, cargo
+
+    async def quote(store: dict, destination_id: Optional[int], items: List[dict]) -> List[dict]:
+        """Courier options for a store and these cart items. JNE/J&T/SiCepat use the API when key + origin + destination exist.
+        Products can limit couriers; cargo couriers only when every product allows cargo."""
+        weight, allowed, regular, cargo = await cart_rules(items)
+
+        def ok(c: dict) -> bool:
+            if c["code"] == "pickup":
+                return True
+            if allowed is not None and c["code"] not in allowed:
+                return False
+            return cargo if is_cargo(c) else regular
+        manual = [dict(c, source="manual") for c in couriers_of(store) if c.get("active", True) and ok(c)]
         s = await settings()
         key = await usable_key()
         origin = (s.get("origins") or {}).get(store["store_id"], {}).get("id")
         if not (key and origin and destination_id):
             return manual
-        weight = max(1, item_qty) * int(s.get("default_weight_grams", 1000))
         auto_codes = [c["code"] for c in manual if c["code"] in AUTO_COURIERS]
         async with httpx.AsyncClient(timeout=12) as client:
             results = await asyncio.gather(*[_one(client, key, origin, destination_id, weight, code) for code in auto_codes])
@@ -226,7 +253,16 @@ def register(api, db, require_admin, get_owner, official_ids, couriers_of):
         if not store:
             raise HTTPException(status_code=404, detail="Toko tidak ditemukan")
         cart = await db.carts.find_one({"owner": owner}) or {}
-        qty = sum(i["quantity"] for i in cart.get("items", []) if i.get("store_id", "pgs-official") == body.store_id)
-        return await quote(store, body.destination_id, qty)
+        items = [i for i in cart.get("items", []) if i.get("store_id", "pgs-official") == body.store_id]
+        return await quote(store, body.destination_id, items)
 
-    return quote
+    async def origin_label(store_id: str) -> Optional[str]:
+        return ((await settings()).get("origins") or {}).get(store_id, {}).get("label")
+
+    return quote, origin_label
+
+
+def is_cargo(c: dict) -> bool:
+    """Cargo couriers are recognised by name/code (e.g. 'JNE Trucking (JTR)', 'Indah Cargo', 'Kargo')."""
+    t = f"{c.get('code', '')} {c.get('name', '')}".lower()
+    return any(w in t for w in ("cargo", "kargo", "trucking", "jtr"))

@@ -397,6 +397,8 @@ export type Product = {
   store_id: string; store_name: string;
   brand?: string; condition?: "new" | "used"; video?: string; min_order?: number; max_order?: number;
   variant_options?: VariantOption[]; variants?: (Omit<VariantRow, "active"> & { name: string })[];
+  specs?: Partial<Record<SpecKey, string>>; weight_grams?: number; length_cm?: number; width_cm?: number; height_cm?: number;
+  preorder?: boolean; preorder_days?: number; processing_days?: number;
 };
 export type VariantOption = { name: string; values: string[] };
 export type VariantRow = { variant_id: string; values: string[]; price: number; stock: number; sku: string; image: string; active: boolean };
@@ -405,9 +407,16 @@ export type ProductForm = {
   status: "active" | "inactive"; description: string; images: string[]; video: string; price: number; discount_price: number;
   stock: number; min_order: number; max_order: number; low_stock_alert: number;
   variants_enabled: boolean; variant_options: VariantOption[]; variants: VariantRow[];
+  specs: Partial<Record<SpecKey, string>>; weight_grams: number; length_cm: number; width_cm: number; height_cm: number;
+  couriers: string[]; ship_regular: boolean; ship_cargo: boolean; preorder: boolean; preorder_days: number; processing_days: number;
 };
+export type SpecKey = "material" | "color" | "size" | "dimensions" | "weight" | "origin_country" | "warranty" | "extra";
 export type ProductDraft = { draft_id: string; product_id?: string | null; store_id: string; data: ProductForm; updated_at: string };
-export type EditorContext = { admin: boolean; stores: { store_id: string; name: string }[]; showcases: string[]; limits: { images: number; image_mb: number; video_mb: number; combos: number } };
+export type EditorContext = {
+  admin: boolean; stores: { store_id: string; name: string }[]; showcases: string[];
+  shipping: Record<string, { origin: string; pickup: boolean; couriers: { code: string; name: string; cargo: boolean }[] }>;
+  limits: { images: number; image_mb: number; video_mb: number; combos: number };
+};
 export type CartItem = { key: string; variant_id?: string | null; variant_name?: string; min_order?: number; max_order?: number; product_id: string; quantity: number; name: string; price: number; base_price: number; original_price: number; image: string; stock: number; next_tier?: PriceTier | null; store_id: string; store_name: string };
 export type Cart = { items: CartItem[]; subtotal: number; savings: number; item_count: number; customer_type: CustomerType };
 export type PaymentMethod = "midtrans" | "xendit" | "cod" | "saldo";

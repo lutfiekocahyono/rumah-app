@@ -38,7 +38,7 @@ def H(t, store=None):
 def form(**kw):
     base = {"name": f"TEST_Produk {uuid.uuid4().hex[:5]}", "category": "dapur", "subcategory": "peralatan-masak",
             "brand": "TEST", "sku": "TSKU", "condition": "new", "status": "active", "description": DESC,
-            "images": [IMG], "price": 20000, "discount_price": 15000, "stock": 10, "min_order": 1, "max_order": 0}
+            "images": [IMG], "price": 20000, "discount_price": 15000, "stock": 10, "min_order": 1, "max_order": 0, "weight_grams": 500}  # weight required since phase 2
     base.update(kw)
     return base
 

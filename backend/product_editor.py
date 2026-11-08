@@ -6,20 +6,22 @@ import logging
 import re
 import uuid
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from fastapi import Depends, File, HTTPException, UploadFile
 from fastapi.concurrency import run_in_threadpool
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 import seller
 import storage
+from shipping import is_cargo
 
 log = logging.getLogger(__name__)
 IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}
 VIDEO_TYPES = {"video/mp4", "video/quicktime"}
 MAX_IMAGE, MAX_VIDEO = 8 * 1024 * 1024, 50 * 1024 * 1024
 MAX_IMAGES, MAX_COMBOS = 12, 100
+SPEC_KEYS = ("material", "color", "size", "dimensions", "weight", "origin_country", "warranty", "extra")
 
 
 def _now() -> datetime:
@@ -63,6 +65,23 @@ class ProductForm(BaseModel):
     variants_enabled: bool = False
     variant_options: List[VariantOption] = Field(default=[], max_length=3)
     variants: List[VariantRow] = Field(default=[], max_length=MAX_COMBOS)
+    # Tahap 2: specifications + shipping
+    specs: Dict[str, str] = {}
+    weight_grams: int = Field(default=0, ge=0, le=500000)
+    length_cm: int = Field(default=0, ge=0, le=500)
+    width_cm: int = Field(default=0, ge=0, le=500)
+    height_cm: int = Field(default=0, ge=0, le=500)
+    couriers: List[str] = Field(default=[], max_length=20)  # empty = every courier of the store
+    ship_regular: bool = True
+    ship_cargo: bool = False
+    preorder: bool = False
+    preorder_days: int = Field(default=0, ge=0, le=90)
+    processing_days: int = Field(default=1, ge=1, le=30)
+
+    @field_validator("specs")
+    @classmethod
+    def _specs(cls, v: Dict[str, str]) -> Dict[str, str]:
+        return {k: str(x).strip()[:300] for k, x in v.items() if k in SPEC_KEYS and str(x).strip()}
 
 
 class DraftIn(BaseModel):
@@ -126,6 +145,15 @@ async def validate(db, f: ProductForm) -> dict:
             e["price"] = "Harga harus lebih dari 0 (min. Rp100)"
         if f.discount_price and f.discount_price >= f.price:
             e["discount_price"] = "Harga diskon harus lebih kecil dari harga normal"
+    if f.weight_grams < 1:
+        e["weight_grams"] = "Berat produk wajib diisi (gram, lebih dari 0)"
+    dims = [f.length_cm, f.width_cm, f.height_cm]
+    if any(dims) and not all(dims):
+        e["dimensions"] = "Isi panjang, lebar, dan tinggi (atau kosongkan semuanya)"
+    if not f.ship_regular and not f.ship_cargo:
+        e["shipping"] = "Pilih minimal satu jenis pengiriman (reguler atau kargo)"
+    if f.preorder and not 1 <= f.preorder_days <= 90:
+        e["preorder_days"] = "Lama pre-order 1–90 hari"
     return e
 
 
@@ -153,6 +181,9 @@ def to_product(f: ProductForm, store: dict) -> dict:
         "stock": stock, "in_stock": stock > 0, "min_order": f.min_order, "max_order": f.max_order,
         "low_stock_alert": f.low_stock_alert,
         "variant_options": [o.model_dump() for o in f.variant_options] if rows else [], "variants": rows,
+        "specs": f.specs, "weight_grams": f.weight_grams, "length_cm": f.length_cm, "width_cm": f.width_cm, "height_cm": f.height_cm,
+        "couriers": f.couriers, "ship_regular": f.ship_regular, "ship_cargo": f.ship_cargo,
+        "preorder": f.preorder, "preorder_days": f.preorder_days if f.preorder else 0, "processing_days": f.processing_days,
         "store_id": store["store_id"], "store_name": store["name"], "updated_at": _now(),
     }
 
@@ -171,10 +202,14 @@ def to_form(p: dict) -> dict:
         low_stock_alert=p.get("low_stock_alert", 0), variants_enabled=has_v,
         variant_options=p.get("variant_options", []) if has_v else [],
         variants=[VariantRow(**{k: v.get(k) for k in VariantRow.model_fields if k in v}) for v in p.get("variants", [])],
+        specs=p.get("specs") or {}, weight_grams=min(p.get("weight_grams") or 0, 500000),
+        length_cm=p.get("length_cm") or 0, width_cm=p.get("width_cm") or 0, height_cm=p.get("height_cm") or 0,
+        couriers=p.get("couriers") or [], ship_regular=p.get("ship_regular", True), ship_cargo=p.get("ship_cargo", False),
+        preorder=p.get("preorder", False), preorder_days=p.get("preorder_days") or 0, processing_days=p.get("processing_days") or 1,
     ).model_dump()
 
 
-def register(api, db, *, get_current_user, log_activity):
+def register(api, db, *, get_current_user, log_activity, origin_label):
 
     async def actor(user=Depends(get_current_user)) -> dict:
         """Super admin edits any store; everyone else edits their own active store."""
@@ -205,7 +240,15 @@ def register(api, db, *, get_current_user, log_activity):
             stores = [{"store_id": ctx["store"]["store_id"], "name": ctx["store"]["name"]}]
         ids = [s["store_id"] for s in stores]
         showcases = sorted({s for s in await db.products.distinct("showcase", {"store_id": {"$in": ids}}) if s})
-        return {"admin": ctx["admin"], "stores": stores, "showcases": showcases, "limits": {
+        shipping = {}  # per store: its active couriers (marked cargo/regular) + shipping origin
+        for s in await db.stores.find({"store_id": {"$in": ids[:50]}}, {"_id": 0}).to_list(50):
+            shipping[s["store_id"]] = {
+                "origin": await origin_label(s["store_id"]) or s.get("address") or "",
+                "couriers": [{"code": c["code"], "name": c["name"], "cargo": is_cargo(c)} for c in seller.couriers_of(s)
+                             if c.get("active", True) and c["code"] != "pickup"],
+                "pickup": any(c["code"] == "pickup" and c.get("active", True) for c in seller.couriers_of(s)),
+            }
+        return {"admin": ctx["admin"], "stores": stores, "showcases": showcases, "shipping": shipping, "limits": {
             "images": MAX_IMAGES, "image_mb": MAX_IMAGE // 1048576, "video_mb": MAX_VIDEO // 1048576, "combos": MAX_COMBOS}}
 
     @api.post("/product-editor/upload")
@@ -291,11 +334,21 @@ def register(api, db, *, get_current_user, log_activity):
         if body.product_id:
             old = await editable(body.product_id, ctx)
             store = await db.stores.find_one({"store_id": old["store_id"]}, {"_id": 0})
+        else:
+            store = await target_store(ctx, body.store_id)
+        # courier choices must exist at the store; cargo only when the store has a cargo courier
+        active = [c for c in seller.couriers_of(store) if c.get("active", True) and c["code"] != "pickup"]
+        f.couriers = [c for c in dict.fromkeys(f.couriers) if c in {x["code"] for x in active}]
+        if f.ship_cargo and not any(is_cargo(c) for c in active):
+            f.ship_cargo = False
+            if not f.ship_regular:
+                raise HTTPException(status_code=422, detail={"message": "Toko belum punya kurir kargo", "errors": {
+                    "shipping": "Toko belum punya kurir kargo. Aktifkan pengiriman reguler atau tambahkan kurir kargo di menu Pengiriman"}})
+        if body.product_id:
             doc = to_product(f, store)
             await db.products.update_one({"product_id": body.product_id}, {"$set": doc})
             pid, action = body.product_id, "Mengubah"
         else:
-            store = await target_store(ctx, body.store_id)
             pid = f"sp_{uuid.uuid4().hex[:10]}"
             doc = {**to_product(f, store), "product_id": pid, "rating": 0, "sold": 0, "views": 0, "created_at": _now(), "published_at": _now()}
             await db.products.insert_one(doc)

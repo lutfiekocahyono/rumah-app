@@ -107,3 +107,9 @@ Iteration 2: import all data from pusatgrosirsidoarjo.com; tiered pricing (pembe
 - Cart lines keyed `product_id::variant_id`; PUT/DELETE /api/cart/items/{key}; checkout enforces min/max order; variant stock adjusted via arrayFilters; variant products keep own stock (no branch store_stock).
 - Frontend: /product-editor/[id] (new|product_id, ?draft=), SellerShell sidebar (≥900px fixed, else drawer), sections Informasi Dasar (rich editor), Foto & Video (multi, drag&drop web, reorder, main, replace, progress), Variasi (table), Harga & Stok, kelengkapan; Simpan Draft + Publikasikan with confirm. Product detail variant picker + RichText.
 - Phase 2 pending: sections 7,8,9, other buttons (Preview, Simpan & Tambah Baru, Batalkan), 12 (autosave, duplicate, import/export, bulk edit, history).
+
+## Iteration 24 — Tahap 2 Spesifikasi & Pengiriman
+- ProductForm: specs{material,color,size,dimensions,weight,origin_country,warranty,extra}, weight_grams (required), L/W/H cm, couriers (empty=all), ship_regular, ship_cargo, preorder(+days 1-90), processing_days.
+- shipping.quote(store, dest, items): billable weight = max(actual, LxWxH/6000 kg) per item; product courier limits intersect; cargo couriers (name/code cargo|kargo|trucking|jtr) only if all products allow cargo.
+- /product-editor/context returns shipping{store:{origin,pickup,couriers[cargo flag]}}.
+- Product page: Spesifikasi table + pre-order/processing info.

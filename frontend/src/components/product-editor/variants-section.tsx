@@ -57,7 +57,7 @@ export function VariantsSection({ form, set, errors, maxCombos }: { form: Produc
   return (
     <Section title="Variasi Produk" icon="color-palette-outline" testID="pe-variants"
       subtitle="Warna, ukuran, atau model. Setiap kombinasi punya harga, stok, SKU, dan foto sendiri."
-      right={<Switch testID="pe-variants-toggle" value={form.variants_enabled} trackColor={{ true: colors.brandPrimary, false: colors.border }}
+      right={<Switch testID="pe-variants-toggle" value={form.variants_enabled} trackColor={{ true: colors.brandPrimary, false: colors.border }} thumbColor={colors.surface}
         onValueChange={(v) => set(v ? { variants_enabled: true, variant_options: form.variant_options.length ? form.variant_options : [{ name: "Warna", values: [] }] } : { variants_enabled: false })} />}>
       {!form.variants_enabled ? <Text style={ui.hint}>Aktifkan jika produk punya pilihan warna, ukuran, atau model.</Text> : (
         <>
@@ -113,7 +113,7 @@ export function VariantsSection({ form, set, errors, maxCombos }: { form: Produc
                         <Pressable testID={`pe-vimg-${k}`} style={[styles.cImg, styles.imgCell]} onPress={() => setPhotoFor(k)}>
                           {r.image ? <Image source={imgUrl(r.image)} style={styles.thumb} contentFit="cover" /> : <Icon name="image-outline" size={20} color={colors.muted} />}
                         </Pressable>
-                        <View style={styles.cOn}><Switch testID={`pe-von-${k}`} value={r.active} onValueChange={(v) => setRow(k, { active: v })} trackColor={{ true: colors.brandPrimary, false: colors.border }} /></View>
+                        <View style={styles.cOn}><Switch testID={`pe-von-${k}`} value={r.active} onValueChange={(v) => setRow(k, { active: v })} trackColor={{ true: colors.brandPrimary, false: colors.border }} thumbColor={colors.surface} /></View>
                       </View>
                     );
                   })}

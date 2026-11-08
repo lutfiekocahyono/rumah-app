@@ -1,0 +1,39 @@
+{
+  "summary": "Tested Product Editor Phase 2 (Spesifikasi & Pengiriman) and re-checked 3 phase-1 bugs. Backend: 30/30 pytest pass (11 new in test_pgs_iter24_specs_shipping.py plus 19 in iter23 after adding weight_grams to the base form). Covered: publish returns 422 for weight_grams=0, partial dimensions, both shipping types off, and preorder_days 0 or 91; specs keep only allowed keys and drop empty ones; product and editor APIs return specs, weight, L/W/H, preorder, preorder_days and processing_days; context.shipping has origin, pickup and couriers (no pickup, each with a cargo flag); a product limited to couriers ['jne'] gets only pickup + jne from /shipping/rates; using a temporary 'Indah Cargo' courier on acct1's store (restored afterwards), a cargo-only product shows the cargo courier with no regular couriers, and adding a regular-only product hides both. All 3 bugs are FIXED: (1) a product set inactive leaves GET /cart and checkout returns 400; (2) cart-variant-{key} has text-decoration none; (3) the pgs-9955 editor API and UI show Dapur / Peralatan Masak. Frontend at 390px: pe-specs fields change with category (fashion: material/color/size/origin/extra; audio-elektronik: color/dimensions/weight/origin/warranty/extra; dapur: all). pe-spec-dimensions and pe-spec-weight fill in automatically and are read-only. pe-volumetric shows when volume weight is bigger than actual weight. Courier pills jne/jnt/sicepat show; pe-ship-cargo is disabled (no cargo courier at pgs-official). The pre-order toggle shows pe-preorder-days (default 7) and hides pe-processing-days. Completeness lists 'Berat produk'. Turning off regular shipping shows pe-shipping-error. Publishing from a draft works through confirm and success to /product/{id}, where pd-specs, pd-preorder and pd-processing all show. Billable volumetric weight with live RajaOngkir was not tested: the code was reviewed only and the formula L*W*H/6 grams is correct.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/product-editor/publish", "issue": "Validation only checks the ship_regular/ship_cargo flags. Publishing with ship_regular=false and ship_cargo=true is accepted even when the store has no cargo courier, so buyers can only use pickup. The UI disables the switch, but the API does not check it."},
+      {"endpoint": "POST /api/product-editor/publish", "issue": "The 'couriers' list is not checked against the store's courier codes. Unknown codes are accepted, and an unknown-only list leaves pickup as the only option."},
+      {"endpoint": "checkout/orders", "issue": "preorder_days and processing_days only appear on the product page. Cart, checkout ETA and order data ignore them, so a buyer of a 30-day pre-order still sees the courier ETA only."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "product-editor (pe-shipping)", "issues": ["On web, the RN Switch thumbs (pe-ship-regular, pe-preorder) are the default teal on the orange brandPrimary track. Set thumbColor/activeThumbColor to match the brand.", "pe-origin shows 'Belum diatur...' for pgs-official because no origin is set in Pengaturan Ongkir and the store has no address. This is data, not code."]},
+      {"screen": "product/[id]", "issues": ["Pre-order products still show the static 'Pengiriman cepat dari Sidoarjo' perk under the pre-order notice, which contradicts it."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_pgs_iter24_specs_shipping.py", "/app/backend/tests/test_pgs_iter23_product_editor.py", "/app/test_reports/pytest/pytest_iter24.xml"],
+  "action_items": [
+    "Optional: in validate(), reject ship_cargo=true (when ship_regular=false) if the target store has no active cargo courier.",
+    "Optional: filter or validate form.couriers against the store's courier codes.",
+    "Optional: add preorder_days/processing_days to the checkout ETA (and the order item), and hide the 'Pengiriman cepat' perk for pre-order products.",
+    "Optional: set Switch thumbColor/activeThumbColor to match the brand."
+  ],
+  "critical_code_review_comments": [
+    "Imported products have no weight_grams, so editing any of them now needs a weight before saving (completeness shows 'Berat produk' unchecked). This is expected, but worth telling sellers.",
+    "If a product has an explicit couriers list, a cargo courier added to the store later is not included automatically. Only couriers=[] means all.",
+    "specKeysFor() matches regexes on the category and subcategory names. A substring like 'tas' or 'mesin' in a subcategory can switch the field set (fashion is checked before elektronik). This is acceptable but fragile."
+  ],
+  "updated_files": ["/app/backend/tests/test_pgs_iter23_product_editor.py (added weight_grams:500 to the base form)", "/app/backend/tests/test_pgs_iter24_specs_shipping.py (new)"],
+  "success_rate": {"backend": "100% (30/30)", "frontend": "100% of tested flows"},
+  "seed_data_creation": "None kept. All TEST_ products, drafts, test buyers and carts were deleted by id. acct1 store couriers were restored to their original value ([]). Admin pricing, home sections and popular pins were not touched.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run pytest with EXPO_PUBLIC_BACKEND_URL exported (pytest.ini uses xdist loadscope). Publish now requires weight_grams>0. The cargo test adds 'indahcargo' to acct1's store and restores it directly in the DB. pgs-official has couriers pickup/jne/jnt/sicepat and no cargo, so pe-ship-cargo is disabled there. UI login: fetch /api/auth/login and set localStorage 'pgs_auth_token'. Creating a draft via API and opening /product-editor/new?draft=ID avoids photo uploads. The publish confirm and success dialogs both use confirm-ok.",
+  "rca_of_issue": "All 3 phase-1 bugs are verified fixed. (1) _load_cart_detailed skips products with status inactive, so they leave both cart and checkout. (2) variantText has no line-through. (3) get_for_edit maps an imported subcategory-as-category to its parent and subcategory."
+}

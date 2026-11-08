@@ -15,6 +15,7 @@ import { BasicInfo } from "@/src/components/product-editor/basic-info";
 import { MediaSection } from "@/src/components/product-editor/media-section";
 import { VariantsSection } from "@/src/components/product-editor/variants-section";
 import { Completeness, PriceStock } from "@/src/components/product-editor/price-stock";
+import { ShippingSection, SpecsSection } from "@/src/components/product-editor/specs-shipping";
 
 export default function ProductEditor() {
   const { id, draft } = useLocalSearchParams<{ id: string; draft?: string }>();
@@ -133,6 +134,8 @@ export default function ProductEditor() {
                   maxImages={ctx.limits.images} imageMb={ctx.limits.image_mb} videoMb={ctx.limits.video_mb} />
                 <VariantsSection form={form} set={set} errors={errors} maxCombos={ctx.limits.combos} />
                 <PriceStock form={form} set={set} errors={errors} />
+                <SpecsSection form={form} set={set} cats={cats} />
+                <ShippingSection form={form} set={set} errors={errors} ctx={ctx} storeId={storeId} />
               </View>
               {twoCol ? <View style={{ width: 300 }}>{side}</View> : null}
             </View>

@@ -13,6 +13,7 @@ import { useAuth } from "@/src/auth-context";
 import { Countdown } from "@/src/components/countdown";
 import { BranchAvailability } from "@/src/components/branch-availability";
 import { RichText } from "@/src/components/rich-text";
+import { ProductSpecs } from "@/src/components/product-specs";
 import { useStore } from "@/src/store-context";
 
 const { width: screenW } = Dimensions.get("window");
@@ -177,6 +178,11 @@ export default function ProductDetail() {
           {product.brand || product.condition === "used" ? (
             <Text style={styles.metaText} testID="pd-brand">{[product.brand && `Merek ${product.brand}`, product.condition === "used" ? "Bekas" : "Baru"].filter(Boolean).join(" · ")}</Text>
           ) : null}
+          {product.preorder ? (
+            <Text style={[styles.metaText, { color: colors.brandPrimary, fontWeight: "600" }]} testID="pd-preorder">Pre-order · dikirim dalam {product.preorder_days} hari</Text>
+          ) : (product.processing_days ?? 0) > 1 ? (
+            <Text style={styles.metaText} testID="pd-processing">Diproses dalam {product.processing_days} hari</Text>
+          ) : null}
 
           {hasVariants ? (
             <View style={{ marginTop: spacing.md, gap: spacing.md }} testID="pd-variants">
@@ -246,6 +252,7 @@ export default function ProductDetail() {
           <View style={styles.sep} />
           <Text style={styles.sectionTitle}>Deskripsi</Text>
           <RichText text={product.description} style={styles.desc} />
+          <ProductSpecs product={product} />
 
           <View style={styles.sep} />
           <Text style={styles.sectionTitle}>Jumlah</Text>
@@ -265,7 +272,7 @@ export default function ProductDetail() {
           <View style={styles.infoRow}>
             <View style={styles.infoItem}>
               <Icon name="rocket" size={18} color={colors.brandPrimary} />
-              <Text style={styles.infoText}>Pengiriman cepat dari Sidoarjo</Text>
+              <Text style={styles.infoText}>{product.preorder ? `Pre-order ${product.preorder_days} hari` : `Dikirim dari ${product.store_name}`}</Text>
             </View>
             <View style={styles.infoItem}>
               <Icon name="shield-checkmark" size={18} color={colors.brandPrimary} />

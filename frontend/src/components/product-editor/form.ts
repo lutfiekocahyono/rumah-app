@@ -4,6 +4,8 @@ export const EMPTY_FORM: ProductForm = {
   name: "", category: "", subcategory: "", brand: "", sku: "", condition: "new", showcase: "", status: "active",
   description: "", images: [], video: "", price: 0, discount_price: 0, stock: 0, min_order: 1, max_order: 0, low_stock_alert: 0,
   variants_enabled: false, variant_options: [], variants: [],
+  specs: {}, weight_grams: 0, length_cm: 0, width_cm: 0, height_cm: 0,
+  couriers: [], ship_regular: true, ship_cargo: false, preorder: false, preorder_days: 0, processing_days: 1,
 };
 export type Errors = Record<string, string>;
 export const MIN_DESC = 30;
@@ -53,6 +55,11 @@ export function validateForm(f: ProductForm, cats: Category[]): Errors {
     if (f.price < 100) e.price = "Harga harus lebih dari 0 (min. Rp100)";
     if (f.discount_price && f.discount_price >= f.price) e.discount_price = "Harga diskon harus lebih kecil dari harga normal";
   }
+  if (f.weight_grams < 1) e.weight_grams = "Berat produk wajib diisi (gram, lebih dari 0)";
+  const dims = [f.length_cm, f.width_cm, f.height_cm];
+  if (dims.some(Boolean) && !dims.every(Boolean)) e.dimensions = "Isi panjang, lebar, dan tinggi (atau kosongkan semuanya)";
+  if (!f.ship_regular && !f.ship_cargo) e.shipping = "Pilih minimal satu jenis pengiriman (reguler atau kargo)";
+  if (f.preorder && (f.preorder_days < 1 || f.preorder_days > 90)) e.preorder_days = "Lama pre-order 1–90 hari";
   return e;
 }
 
@@ -66,7 +73,9 @@ export function checklist(f: ProductForm): { label: string; done: boolean; requi
     { label: "Foto produk", done: f.images.length > 0, required: true },
     { label: `Deskripsi (min. ${MIN_DESC} karakter)`, done: plainLen(f.description) >= MIN_DESC, required: true },
     { label: "Harga", done: priced, required: true },
+    { label: "Berat produk", done: f.weight_grams > 0, required: true },
     { label: "Stok", done: stocked, required: false },
+    { label: "Spesifikasi (min. 2)", done: Object.values(f.specs).filter(Boolean).length >= 2, required: false },
     { label: "Minimal 3 foto", done: f.images.length >= 3, required: false },
     { label: "Merek", done: !!f.brand.trim(), required: false },
     { label: "Video produk", done: !!f.video, required: false },
