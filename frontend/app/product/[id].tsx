@@ -129,34 +129,38 @@ export default function ProductDetail() {
             </Text>
           </View>
 
-          {product.price_matrix?.length ? (
+          {tiers.length > 1 ? (
             <>
               <View style={styles.sep} />
-              <Text style={styles.sectionTitle}>Tabel Harga</Text>
-              <View style={styles.tierTable} testID="price-matrix-table">
-                <View style={[styles.mRow, styles.mHead]}>
-                  <Text style={[styles.mCellQty, styles.mHeadText]}>Jumlah</Text>
-                  {(["langsung", "pengecer", "reseller"] as const).map((c) => (
-                    <Text key={c} style={[styles.mCell, styles.mHeadText, c === myType && styles.mMine]} numberOfLines={2}>
-                      {CUSTOMER_TYPE_LABEL[c]}
-                    </Text>
-                  ))}
+              <Text style={styles.sectionTitle}>Harga Grosir</Text>
+              <View style={styles.gTable} testID="price-matrix-table">
+                <View style={styles.gRow}>
+                  <Text style={[styles.gQty, styles.gHead]}>QUANTITY</Text>
+                  <Text style={[styles.gDisc, styles.gHead]}>DISCOUNT (%)</Text>
+                  <Text style={[styles.gPrice, styles.gHead]}>HARGA</Text>
                 </View>
-                {product.price_matrix.map((r, i) => {
-                  const next = product.price_matrix[i + 1];
-                  const active = qty >= r.min_qty && (!next || qty < next.min_qty);
+                {tiers.map((t, i) => {
+                  const next = tiers[i + 1];
+                  const active = qty >= t.min_qty && (!next || qty < next.min_qty);
+                  const base = tiers[0].price;
+                  const pct = base > 0 ? ((base - t.price) / base) * 100 : 0;
                   return (
-                    <View key={r.min_qty} style={[styles.mRow, active && styles.tierRowActive]} testID={`matrix-row-${r.min_qty}`}>
-                      <Text style={styles.mCellQty}>{next ? `${r.min_qty}-${next.min_qty - 1}` : `≥ ${r.min_qty}`} pcs</Text>
-                      {(["langsung", "pengecer", "reseller"] as const).map((c) => (
-                        <Text key={c} style={[styles.mCell, c === myType && styles.mMine, active && c === myType && styles.tierActiveText]} numberOfLines={1} adjustsFontSizeToFit>
-                          {formatIDR(r[c])}
-                        </Text>
-                      ))}
-                    </View>
+                    <Pressable key={t.min_qty} testID={`matrix-row-${t.min_qty}`} style={[styles.gRow, active && styles.gRowActive]}
+                      onPress={() => setQty(Math.min(product.stock, t.min_qty))}>
+                      <Text style={[styles.gQty, styles.gCell, active && styles.gActiveText]}>
+                        {next ? (next.min_qty - 1 > t.min_qty ? `${t.min_qty} - ${next.min_qty - 1}` : `${t.min_qty}`) : `${t.min_qty}+`}
+                      </Text>
+                      <Text style={[styles.gDisc, styles.gCell, active && styles.gActiveText]}>
+                        {i === 0 || pct <= 0 ? "—" : `${pct.toFixed(2).replace(/\.?0+$/, "")} %`}
+                      </Text>
+                      <Text style={[styles.gPrice, styles.gPriceText, active && styles.gActiveText]} numberOfLines={1} adjustsFontSizeToFit>
+                        {formatIDR(t.price)}
+                      </Text>
+                    </Pressable>
                   );
                 })}
               </View>
+              <Text style={styles.ctypeText}>Harga untuk {CUSTOMER_TYPE_LABEL[myType]} · ketuk baris untuk pilih jumlah</Text>
             </>
           ) : null}
 
@@ -232,7 +236,7 @@ const styles = StyleSheet.create({
 
   body: { padding: spacing.lg },
   priceRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, flexWrap: "wrap" },
-  price: { fontSize: 22, color: colors.brandPrimary, fontWeight: "500" },
+  price: { fontSize: 22, color: colors.priceLink, fontWeight: "600" },
   discountBadge: { backgroundColor: colors.brandTertiary, borderRadius: radius.sm, paddingHorizontal: 6, paddingVertical: 2 },
   discountText: { color: colors.brandPrimary, fontSize: 11, fontWeight: "500" },
   oldPrice: { fontSize: fontSize.sm, color: colors.muted, textDecorationLine: "line-through" },
@@ -248,19 +252,18 @@ const styles = StyleSheet.create({
   qtyRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
   subtotal: { fontSize: fontSize.sm, color: colors.onSurface, fontWeight: "500" },
   ctypeText: { fontSize: 11, color: colors.muted, marginTop: 2 },
-  tierTable: { borderRadius: radius.md, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, overflow: "hidden" },
-  tierRow: { flexDirection: "row", justifyContent: "space-between", paddingHorizontal: spacing.md, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.divider },
-  tierRowActive: { backgroundColor: colors.brandTertiary },
-  tierQty: { fontSize: fontSize.sm, color: colors.onSurfaceSecondary },
-  tierPrice: { fontSize: fontSize.sm, color: colors.onSurface, fontWeight: "500" },
   tierActiveText: { color: colors.brandPrimary },
   rangeText: { fontSize: fontSize.sm, color: colors.onSurfaceSecondary, marginTop: 2 },
-  mRow: { flexDirection: "row", alignItems: "center", paddingHorizontal: spacing.sm, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.divider },
-  mHead: { backgroundColor: colors.surfaceTertiary },
-  mHeadText: { fontSize: 11, color: colors.onSurfaceSecondary, fontWeight: "500" },
-  mCellQty: { width: 72, fontSize: 12, color: colors.onSurfaceSecondary },
-  mCell: { flex: 1, fontSize: 12, color: colors.onSurface, textAlign: "right" },
-  mMine: { color: colors.brandPrimary, fontWeight: "500" },
+  gTable: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
+  gRow: { flexDirection: "row", alignItems: "center", minHeight: 44, paddingHorizontal: spacing.sm, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+  gRowActive: { backgroundColor: colors.priceLink, borderBottomColor: colors.priceLink },
+  gHead: { fontSize: 12, color: colors.onSurface, fontWeight: "600", letterSpacing: 0.5 },
+  gCell: { fontSize: fontSize.sm, color: colors.muted },
+  gQty: { flex: 1 },
+  gDisc: { flex: 1.3 },
+  gPrice: { flex: 1.2 },
+  gPriceText: { fontSize: fontSize.sm, color: colors.priceLink, fontWeight: "600" },
+  gActiveText: { color: colors.onBrandPrimary },
   qtyBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: colors.surfaceTertiary, alignItems: "center", justifyContent: "center" },
   qtyText: { fontSize: fontSize.base, color: colors.onSurface, fontWeight: "500", minWidth: 24, textAlign: "center" },
 

@@ -12,6 +12,9 @@ export function ProductCard({ product, style }: { product: Product; style?: any 
   const router = useRouter();
   const { toggleWishlist, isWished } = useCart();
   const wished = isWished(product.product_id);
+  const tiers = product.price_tiers ?? [];
+  // biggest per-pcs saving the current customer gets from wholesale tiers
+  const saving = tiers.length > 1 ? tiers[0].price - Math.min(...tiers.map((t) => t.price)) : 0;
   return (
     <Pressable
       testID={`product-card-${product.product_id}`}
@@ -20,7 +23,11 @@ export function ProductCard({ product, style }: { product: Product; style?: any 
     >
       <View style={styles.imgWrap}>
         <Image source={product.image} style={styles.img} contentFit="cover" transition={150} />
-        {product.discount > 0 ? (
+        {saving > 0 ? (
+          <View style={styles.hematBadge} testID={`hemat-label-${product.product_id}`}>
+            <Text style={styles.hematText}>Hemat {formatIDR(saving)}/pcs</Text>
+          </View>
+        ) : product.discount > 0 ? (
           <View style={styles.discountBadge}>
             <Text style={styles.discountText}>-{product.discount}%</Text>
           </View>
@@ -68,6 +75,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6, paddingVertical: 2,
   },
   discountText: { color: colors.onBrandPrimary, fontSize: 10, fontWeight: "500" },
+  hematBadge: {
+    position: "absolute", left: spacing.sm, bottom: spacing.sm,
+    backgroundColor: colors.success, borderRadius: radius.sm, paddingHorizontal: 6, paddingVertical: 3,
+  },
+  hematText: { color: colors.onSuccess, fontSize: 11, fontWeight: "600" },
   heart: {
     position: "absolute", top: spacing.sm, right: spacing.sm,
     width: 28, height: 28, borderRadius: 14,

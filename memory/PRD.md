@@ -17,6 +17,7 @@ Iteration 2: import all data from pusatgrosirsidoarjo.com; tiered pricing (pembe
 - 2026-06 (iter 4): reusable one-tap Google button (src/components/google-button.tsx) on Login, Register ("Daftar dengan Google") and Akun guest card; new Google users auto-registered as Pembeli Langsung.
 - 2026-06 (iter 5): admin Pengaturan Harga supports % or Rupiah per pcs (toggle) for customer-type discounts and qty tiers (pricing.type_discount_modes, qty_tiers[{min_qty, mode, value}]); legacy discount_percent still read.
 - 2026-06 (iter 6): product card restyled like website: bold name, "✓ N stok tersedia", one-line blue price range (theme token priceLink) or single price when no range.
+- 2026-06 (iter 7): "Hemat Rp…/pcs" green label on product card image when wholesale tiers apply for the customer; product detail "Harga Grosir" table like website (QUANTITY | DISCOUNT (%) | HARGA, active row solid blue, tap row sets qty); detail price in blue.
 
 ## Pending / needs user
 - Keys: MIDTRANS_SERVER_KEY, XENDIT_SECRET_KEY, XENDIT_WEBHOOK_TOKEN, FONNTE_TOKEN (payments return 503 & WhatsApp skipped until set)
