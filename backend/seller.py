@@ -37,7 +37,7 @@ class StoreIn(BaseModel):
     name: str = Field(min_length=3, max_length=40)
     description: str = Field(default="", max_length=500)
     city: str = Field(min_length=2, max_length=60)
-    phone: str = Field(min_length=8, max_length=20)
+    phone: str = Field(default="", max_length=20)  # optional; can be filled later
     logo: str = ""
     address: str = Field(default="", max_length=300)  # pickup address shown at checkout
     pickup_hours: str = Field(default="", max_length=80)

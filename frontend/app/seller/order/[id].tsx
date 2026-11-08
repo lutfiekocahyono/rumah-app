@@ -75,7 +75,11 @@ export default function SellerOrderDetail() {
         <Card>
           <Text style={adminStyles.section}>{pickup ? "Pemesan (ambil di toko)" : "Kirim ke"}</Text>
           <Text style={styles.name}>{order.shipping.full_name} · {order.shipping.phone}</Text>
-          <Text style={adminStyles.muted}>{order.shipping.address}, {order.shipping.city}</Text>
+          {pickup ? (
+            order.pickup_code ? <Text style={adminStyles.muted} testID="so-pickup-code">Kode ambil: <Text style={{ fontWeight: "700", color: colors.onSurface }}>{order.pickup_code}</Text> — cocokkan dengan pembeli sebelum menyerahkan barang</Text> : null
+          ) : (
+            <Text style={adminStyles.muted}>{order.shipping.address}, {order.shipping.city}</Text>
+          )}
         </Card>
         {err ? <Text style={adminStyles.err} testID="so-error">{err}</Text> : null}
         {s === "pending" ? <Text style={adminStyles.muted}>Menunggu pembayaran pembeli.</Text> : null}

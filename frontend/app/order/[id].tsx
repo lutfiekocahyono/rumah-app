@@ -29,6 +29,7 @@ export default function OrderDetail() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { stores } = useStore();
+  const [extraStore, setExtraStore] = useState<{ store_id: string; address?: string; pickup_hours?: string } | null>(null);
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
   const [checking, setChecking] = useState(false);
@@ -62,8 +63,15 @@ export default function OrderDetail() {
     void check();
   };
 
+  // Pickup from a non-official marketplace store: fetch its public page for address/hours
+  useEffect(() => {
+    if (order?.courier?.code === "pickup" && !stores.some((s) => s.store_id === order.store_id)) {
+      api.storePage(order.store_id).then(setExtraStore).catch(() => {});
+    }
+  }, [order?.store_id, order?.courier?.code, stores]);
+
   if (loading) return <View style={styles.center}><ActivityIndicator color={colors.brandPrimary} /></View>;
-  const pickupStore = stores.find((s) => s.store_id === order?.store_id);
+  const pickupStore = stores.find((s) => s.store_id === order?.store_id) ?? (extraStore?.store_id === order?.store_id ? extraStore : undefined);
   if (!order) {
     return (
       <View style={[styles.center, { gap: spacing.md }]} testID="order-not-found">
@@ -159,7 +167,14 @@ export default function OrderDetail() {
         {order.courier?.code === "pickup" ? (
           <View style={styles.card} testID="order-pickup-card">
             <Text style={styles.cardTitle}>Ambil di toko</Text>
+            {order.pickup_code && !["cancelled", "expired", "failed", "completed"].includes(order.status) ? (
+              <View style={styles.codeBox} testID="order-pickup-code">
+                <Text style={styles.muted}>Kode ambil — tunjukkan ke kasir</Text>
+                <Text style={styles.code} selectable>{order.pickup_code}</Text>
+              </View>
+            ) : null}
             <Text style={styles.itemName}>{order.store_name}</Text>
+            {!pickupStore?.address ? <Text style={styles.muted}>Alamat toko akan diinformasikan toko.</Text> : null}
             {pickupStore?.address ? <Text style={styles.muted}>{pickupStore.address}</Text> : null}
             {pickupStore?.pickup_hours ? <Text style={styles.muted}>Jam ambil: {pickupStore.pickup_hours}</Text> : null}
             {order.ready_at && order.status === "processing" ? (
@@ -168,14 +183,14 @@ export default function OrderDetail() {
             {order.status === "cod" && order.expires_at ? (
               <Text style={styles.muted} testID="order-expires">Menunggu diproses toko. Batal otomatis bila belum diproses sampai {fmtDate(order.expires_at)}.</Text>
             ) : null}
-            <Text style={styles.muted}>Bayar tunai (COD) saat mengambil pesanan.</Text>
+            {order.payment_method === "cod" ? <Text style={styles.muted}>Bayar tunai (COD) saat mengambil pesanan.</Text> : null}
           </View>
         ) : null}
 
         <View style={styles.card}>
           <Text style={styles.cardTitle}>{order.courier?.code === "pickup" ? "Pemesan" : "Dikirim ke"}</Text>
           <Text style={styles.itemName}>{order.shipping.full_name} · {order.shipping.phone}</Text>
-          <Text style={styles.muted}>{order.shipping.address}, {order.shipping.city}</Text>
+          {order.courier?.code !== "pickup" ? <Text style={styles.muted}>{order.shipping.address}, {order.shipping.city}</Text> : null}
         </View>
       </ScrollView>
 
@@ -233,6 +248,8 @@ const styles = StyleSheet.create({
   rowValue: { fontSize: fontSize.sm, color: colors.onSurface, fontWeight: "500" },
   sep: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border },
   actions: { flexDirection: "row", gap: spacing.sm },
+  codeBox: { alignItems: "center", backgroundColor: colors.brandTertiary, borderRadius: radius.md, padding: spacing.md, gap: 2 },
+  code: { fontSize: 28, fontWeight: "800", letterSpacing: 6, color: colors.brandPrimary },
   bottom: { position: "absolute", left: 0, right: 0, bottom: 0, flexDirection: "row", gap: spacing.sm, padding: spacing.lg, backgroundColor: colors.surface, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
   outlineBtn: { flex: 1, minHeight: 48, borderWidth: 1, borderColor: colors.border, borderRadius: radius.pill, alignItems: "center", justifyContent: "center" },
   outlineText: { color: colors.onSurface, fontWeight: "500" },

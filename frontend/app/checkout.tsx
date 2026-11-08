@@ -125,8 +125,8 @@ export default function Checkout() {
 
   const submit = async () => {
     setErr("");
-    if (!fullName.trim() || !phone.trim() || !address.trim() || !city.trim()) {
-      setErr("Lengkapi semua data pengiriman");
+    if (!fullName.trim() || !phone.trim() || (!isPickup && (!address.trim() || !city.trim()))) {
+      setErr(isPickup ? "Lengkapi nama dan nomor HP pemesan" : "Lengkapi semua data pengiriman");
       return;
     }
     if (itemCount === 0) {
@@ -143,7 +143,7 @@ export default function Checkout() {
     }
     setLoading(true);
     try {
-      const order = await api.checkout({ full_name: fullName, phone, address, city, payment_method: toPay === 0 && balanceUsed > 0 ? "saldo" : method, use_balance: useBalance, voucher_code: voucher?.code, store_id: storeId, courier, expected_shipping_cost: shipCost, destination_id: dest?.id ?? null, destination_label: dest?.label ?? "" });
+      const order = await api.checkout({ full_name: fullName, phone, address: isPickup ? "" : address, city: isPickup ? "" : city, payment_method: toPay === 0 && balanceUsed > 0 ? "saldo" : method, use_balance: useBalance, voucher_code: voucher?.code, store_id: storeId, courier, expected_shipping_cost: shipCost, destination_id: isPickup ? null : dest?.id ?? null, destination_label: isPickup ? "" : dest?.label ?? "" });
       await refresh();
       // Remember the shipping area on the saved address so next checkout quotes instantly
       const picked = addresses.find((a) => a.address_id === addrId);
@@ -177,8 +177,8 @@ export default function Checkout() {
       </View>
 
       <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: 160 }} keyboardShouldPersistTaps="handled">
-        <Text style={styles.section}>Alamat Pengiriman</Text>
-        {user ? (
+        <Text style={styles.section}>{isPickup ? "Data Pemesan" : "Alamat Pengiriman"}</Text>
+        {user && !isPickup ? (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm, paddingBottom: spacing.sm }}>
             {addresses.map((a) => (
               <Pressable key={a.address_id} testID={`co-addr-${a.address_id}`} onPress={() => pickAddress(a)} style={[styles.vChip, addrId === a.address_id && { backgroundColor: colors.brandPrimary }]}>
@@ -195,8 +195,14 @@ export default function Checkout() {
         <View style={styles.card}>
           <Input testID="co-name" label="Nama Lengkap" value={fullName} onChangeText={setFullName} />
           <Input testID="co-phone" label="No. HP / WhatsApp" value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
-          <Input testID="co-address" label="Alamat lengkap" value={address} onChangeText={setAddress} multiline />
-          <Input testID="co-city" label="Kota" value={city} onChangeText={(t) => { setCity(t); setCityIsBuyers(true); }} />
+          {isPickup ? (
+            <Text style={styles.paySub} testID="co-pickup-note">Ambil sendiri di toko — alamat pengiriman tidak perlu diisi.</Text>
+          ) : (
+            <>
+              <Input testID="co-address" label="Alamat lengkap" value={address} onChangeText={setAddress} multiline />
+              <Input testID="co-city" label="Kota" value={city} onChangeText={(t) => { setCity(t); setCityIsBuyers(true); }} />
+            </>
+          )}
         </View>
 
         <Text style={[styles.section, { marginTop: spacing.xl }]}>Toko & Kurir</Text>
@@ -211,13 +217,13 @@ export default function Checkout() {
             router.setParams({ store: to });
             if (r.skipped.length) setErr(`${r.skipped.length} barang tidak tersedia di toko baru dan tetap di keranjang toko lama`);
           }} />
-          {autoShip ? (
+          {autoShip && !isPickup ? (
             <View style={{ gap: 4 }}>
               <Text style={styles.paySub}>Kecamatan tujuan (untuk ongkir otomatis JNE / J&T / SiCepat)</Text>
               <DestinationSearch testID="co-dest" search={searchDest} value={dest} onPick={pickDest} />
             </View>
           ) : null}
-          {autoShip && !dest ? <Text style={styles.paySub}>Pilih kecamatan tujuan dulu; sementara tampil tarif standar.</Text> : null}
+          {autoShip && !dest && !isPickup ? <Text style={styles.paySub}>Pilih kecamatan tujuan dulu; sementara tampil tarif standar.</Text> : null}
           {couriers.map((c) => (
             <Pressable key={c.code} testID={`co-courier-${c.code}`} onPress={() => setCourier(c.code)}
               style={{ flexDirection: "row", alignItems: "center", gap: spacing.md, minHeight: 48 }}>

@@ -381,7 +381,7 @@ export type Order = {
   store_id: string; store_name: string; courier?: { code: string; name: string; cost: number; eta: string } | null;
   tracking_number: string; status_history: { status: Order["status"]; at: string; note: string }[];
   balance_used?: number; refunded?: number; complaint_id?: string | null;
-  expires_at?: string | null; ready_at?: string | null;
+  expires_at?: string | null; ready_at?: string | null; pickup_code?: string | null;
 };
 export type AdminStats = { orders_today: number; revenue_today: number; need_action: number; waiting_payment: number; customers: number; products: number };
 export const ORDER_STATUS_LABEL: Record<Order["status"], string> = {

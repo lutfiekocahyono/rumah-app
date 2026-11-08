@@ -48,7 +48,8 @@ export default function SellerHome() {
   const set = (p: Partial<StoreInput>) => setForm((f) => (f ? { ...f, ...p } : f));
   const submit = async () => {
     if (!form) return;
-    if (form.name.trim().length < 3 || form.city.trim().length < 2 || form.phone.trim().length < 8) return setErr("Lengkapi nama toko (min. 3 huruf), kota, dan nomor HP");
+    if (form.name.trim().length < 3 || form.city.trim().length < 2) return setErr("Lengkapi nama toko (min. 3 huruf) dan kota");
+    if (form.phone.trim() && form.phone.trim().length < 8) return setErr("Nomor HP minimal 8 angka, atau kosongkan dulu");
     setBusy(true);
     setErr("");
     try {
@@ -84,9 +85,9 @@ export default function SellerHome() {
               <Field testID="store-name" label="Nama toko" value={form.name} onChangeText={(t) => set({ name: t })} placeholder="Contoh: Toko Berkah Jaya" />
               <Field testID="store-desc" label="Deskripsi toko" value={form.description} onChangeText={(t) => set({ description: t })} multiline />
               <Field testID="store-city" label="Kota" value={form.city} onChangeText={(t) => set({ city: t })} />
-              <Field testID="store-phone" label="No. HP / WhatsApp toko" value={form.phone} onChangeText={(t) => set({ phone: t })} keyboardType="phone-pad" />
-              <Field testID="store-address" label="Alamat toko (untuk Ambil di toko)" value={form.address ?? ""} onChangeText={(t) => set({ address: t })} multiline />
-              <Field testID="store-hours" label="Jam ambil pesanan" value={form.pickup_hours ?? ""} onChangeText={(t) => set({ pickup_hours: t })} placeholder="Contoh: Senin–Sabtu 08.00–16.00" />
+              <Field testID="store-phone" label="No. HP / WhatsApp toko (opsional)" value={form.phone} onChangeText={(t) => set({ phone: t })} keyboardType="phone-pad" />
+              <Field testID="store-address" label="Alamat toko untuk Ambil di toko (opsional)" value={form.address ?? ""} onChangeText={(t) => set({ address: t })} multiline />
+              <Field testID="store-hours" label="Jam ambil pesanan (opsional)" value={form.pickup_hours ?? ""} onChangeText={(t) => set({ pickup_hours: t })} placeholder="Contoh: Senin–Sabtu 08.00–16.00" />
               <PrimaryButton testID="store-submit" label={store ? "Simpan" : "Ajukan Toko"} onPress={submit} loading={busy} />
               <PrimaryButton label="Batal" variant="outline" onPress={() => setForm(null)} />
             </Card>

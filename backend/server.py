@@ -2,6 +2,7 @@ import asyncio
 import os
 import logging
 import uuid
+import secrets
 import re
 from contextlib import suppress
 from datetime import datetime, timedelta, timezone
@@ -313,8 +314,8 @@ class WishlistOut(BaseModel):
 class CheckoutIn(BaseModel):
     full_name: str = Field(min_length=1)
     phone: str = Field(min_length=6)
-    address: str = Field(min_length=5)
-    city: str = Field(min_length=2)
+    address: str = Field(default="", max_length=500)  # required only for courier delivery (checked in checkout)
+    city: str = Field(default="", max_length=100)
     payment_method: str = Field(pattern="^(midtrans|xendit|cod|saldo)$")
     use_balance: bool = False
     voucher_code: Optional[str] = None
@@ -355,6 +356,7 @@ class Order(BaseModel):
     balance_used: int = 0
     refunded: int = 0
     complaint_id: Optional[str] = None
+    pickup_code: Optional[str] = None  # shown by the buyer at the counter
     expires_at: Optional[datetime] = None  # COD pickup: auto-cancel time if the store has not processed it
     ready_at: Optional[datetime] = None  # pickup order marked "Siap diambil"
     created_at: datetime
@@ -850,6 +852,8 @@ async def checkout(body: CheckoutIn, background: BackgroundTasks, owner: str = D
         raise HTTPException(status_code=400, detail="Saldo tidak cukup")
     if (pay_method == "midtrans" and not payments.midtrans_ready()) or (pay_method == "xendit" and not payments.xendit_ready()):
         raise HTTPException(status_code=400, detail="Pembayaran online belum aktif. Pilih Ambil di toko dengan COD")
+    if courier["code"] != "pickup" and (len(body.address.strip()) < 5 or len(body.city.strip()) < 2):
+        raise HTTPException(status_code=400, detail="Lengkapi alamat dan kota pengiriman")
     if pay_method == "cod" and courier["code"] != "pickup":
         raise HTTPException(status_code=400, detail="COD hanya untuk Ambil di toko. Pengiriman kurir wajib bayar online")
     if vcode:  # claim the voucher only after every validation passed, so rejected checkouts don't burn quota
@@ -875,6 +879,7 @@ async def checkout(body: CheckoutIn, background: BackgroundTasks, owner: str = D
         "store_id": store_id,
         "store_name": store["name"],
         "courier": {k: courier.get(k) for k in ("code", "name", "cost", "eta", "source")},
+        **({"pickup_code": f"{secrets.randbelow(900000) + 100000}"} if courier["code"] == "pickup" else {}),
         "tracking_number": "",
         "status_history": [{"status": status0, "at": datetime.now(timezone.utc), "note": "Pesanan dibuat" + (" (dibayar dengan saldo)" if pay_method == "saldo" else "")}],
         "payment_method": pay_method,

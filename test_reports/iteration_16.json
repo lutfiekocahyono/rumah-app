@@ -1,0 +1,32 @@
+{
+  "summary": "Iteration 16: tested the Ambil di Toko detail and the shorter pickup checkout. Backend: 5/5 pytest pass. Pickup+COD with no address/city returns 200 with a 6-digit pickup_code. A courier (jne) order without an address returns 400 'Lengkapi alamat dan kota pengiriman'. jombang and jember can save an empty phone/address/hours. Address and hours, once filled, appear in /api/official-stores and were restored afterwards. Frontend (375x667): every requested flow passes. Checkout with pickup shows 'Data Pemesan' and co-pickup-note. The saved-address chips, co-address, co-city and the destination search are hidden. A pickup order was placed with only name and phone. Switching to JNE shows 'Alamat Pengiriman', the chips and the address fields again (prefilled), and switching back hides them. An empty name gives 'Lengkapi nama dan nomor HP pemesan'. Buyer /order/<id>: order-pickup-card shows the big code (255106) and the store name. It shows 'Alamat toko akan diinformasikan toko.' when the store address is empty, and the address plus 'Jam ambil: ...' once filled; the checkout pickup panel shows them too. order-resi is absent, and neither 'No. resi' nor 'Dikirim ke' appears. The 'Pemesan' card has name and phone only. Seller /seller/order/<id> (sidoarjo): 'Pemesan (ambil di toko)' with so-pickup-code, no address line, no so-resi. Store edit (jombang): all 3 fields labelled '(opsional)'. A 3-digit phone is blocked with an error. Saving with an empty phone (with or without address/hours) works. No deprecated Expo packages were checked or found in the touched files.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "order/[id].tsx pickup card", "issue": "'Bayar tunai (COD) saat mengambil pesanan.' is always shown for pickup orders, even if payment_method is midtrans/xendit/saldo. Once online payment is enabled, a paid pickup order would wrongly tell the buyer to pay cash. Reference: /app/frontend/app/order/[id].tsx:178", "testID": "order-pickup-card", "priority": "LOW"}
+    ],
+    "integration_issues": [
+      {"flow": "checkout pickup", "issue": "Pickup orders still store shipping.destination_label from the buyer's default saved address (e.g. 'GUBENG, ... 60281'), because checkout sends dest.label even when isPickup. It is not shown in the UI, but the stored data is inconsistent. Reference: /app/frontend/app/checkout.tsx:146", "affected_testIDs": ["pay-now-btn"]},
+      {"flow": "order detail pickup address", "issue": "pickupStore is looked up only in useStore().stores (the official stores list). Pickup orders from non-official marketplace stores will always show 'Alamat toko akan diinformasikan toko.' even if that seller filled address/hours. Reference: /app/frontend/app/order/[id].tsx:66", "affected_testIDs": ["order-pickup-card"]}
+    ],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_pgs_iter16_pickup_details.py", "/app/backend/tests/ui_iter16_helper.py", "/app/backend/tests/ui_iter16_store_helper.py", "/app/test_reports/pytest/iter16.xml"],
+  "action_items": [
+    "LOW: show the COD line on the pickup card only when order.payment_method === 'cod'",
+    "LOW: send destination_id/destination_label as null/'' in checkout when isPickup",
+    "LOW (optional): for non-official stores, fetch the store's address/pickup_hours (e.g. include them in the order response or GET /api/stores/{id}) for the pickup card"
+  ],
+  "critical_code_review_comments": [
+    "Backend order of checks is correct: the address check (server.py:855) runs before the COD-courier check, so a COD+jne order without an address returns 'Lengkapi alamat dan kota pengiriman'.",
+    "StoreIn phone/address/pickup_hours default to '' with only max_length. The frontend allows an empty phone but requires >=8 characters when filled; the backend has no minimum when filled (acceptable)."
+  ],
+  "updated_files": ["/app/backend/tests/test_pgs_iter16_pickup_details.py", "/app/backend/tests/ui_iter16_helper.py", "/app/backend/tests/ui_iter16_store_helper.py"],
+  "success_rate": {"backend": "100%", "frontend": "100% of requested flows"},
+  "seed_data_creation": "Temporary: a TEST_Rumah saved address on demo@pgs.id (deleted) and 1 cart item (cleared). Orders PGS-261108-658BB4 (demo, UI) and PGS-261108-7CC7E9 (TEST buyer, pytest) were both cancelled. Store fields were restored: pgs-official phone 6281335551252 with empty address/hours; pgs-jombang and pgs-jember with empty phone/address/hours (jember address/hours were null before, now '').",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run the iter16 pytest file with EXPO_PUBLIC_BACKEND_URL exported (xdist is on by default; fine). In Playwright, do not click courier rows with force=True while they sit under the fixed bottom bar: the click lands on pay-now-btn and places an order. Scroll the row to the center first. ui_iter16_store_helper.py set/restore toggles the pgs-official pickup address/hours.",
+  "rca_of_issue": ""
+}
