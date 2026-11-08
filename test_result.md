@@ -105,3 +105,8 @@
 - backend/support.py: wallet (/api/wallet), complaints (/api/complaints, /seller/complaints, /admin/complaints, /complaints/{id}, /messages, /escalate, /decide), chat (/api/chats, /seller/chats, /chats/unread, /chats/{id}, /chats/{id}/messages)
 - checkout: use_balance + payment_method "saldo"; balance returned on cancel/expired/failed
 - Frontend: /wallet, /complaint (scope=mine|store|admin), /complaint/new?order=, /complaint/[id], /chat (side=store), /chat/[id]; buttons on order detail & seller order detail; menus in Akun, Admin, Seller
+
+## Iteration 27 — Editor Produk Tahap 3 (Duplikat, Autosave, Edit Massal, Impor/Ekspor Excel)
+- backend/product_bulk.py: GET /api/product-editor/products (list, q/status/store_id/skip), POST /api/product-editor/bulk (price_mode set|up_pct|down_pct|up|down, stock_mode set|add|sub, status), GET /api/product-editor/export (?template=true), POST /api/product-editor/import (multipart file .xlsx, ?commit=false preview / true apply; rows with ID update (only changed fields validated, unchanged = "same"), rows without ID create, incomplete new rows -> drafts; sheet Variasi updates variant price/stock/sku/active)
+- product_editor.py: POST /api/product-editor/products/{id}/duplicate -> new draft "(Salinan)", sku cleared
+- Frontend: /product-editor/list (select, bulk bar, dialogs, export, import), editor autosave 4s after change (pe-autosave), Duplikat button (pe-duplicate), resume-draft banner when editing a product with an autosaved draft.

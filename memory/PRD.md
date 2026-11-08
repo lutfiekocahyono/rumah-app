@@ -113,3 +113,11 @@ Iteration 2: import all data from pusatgrosirsidoarjo.com; tiered pricing (pembe
 - shipping.quote(store, dest, items): billable weight = max(actual, LxWxH/6000 kg) per item; product courier limits intersect; cargo couriers (name/code cargo|kargo|trucking|jtr) only if all products allow cargo.
 - /product-editor/context returns shipping{store:{origin,pickup,couriers[cargo flag]}}.
 - Product page: Spesifikasi table + pre-order/processing info.
+
+## Iteration 25 — SEO & Tombol
+- ProductForm: seo_title(<=70), meta_description(<=160), keywords(<=10). SeoSection: title ideas, meta auto, keyword ideas, SERP preview, score 0-100 checklist.
+- Buttons: Batalkan (confirm if unsaved), Preview Produk (modal from unsaved form), Simpan & Tambah Baru (publish then fresh form keeping category/etalase), Simpan Draft, Publikasikan.
+
+## Iteration 27 — Tahap 3
+- Daftar Produk (/product-editor/list): cari, filter, pilih banyak, Edit Massal harga/stok/status, Duplikat, Ekspor/Impor Excel (template, preview sebelum terapkan, baris belum lengkap -> draft).
+- Editor: simpan otomatis draft 4 detik setelah perubahan, tombol Duplikat, banner lanjutkan draft autosave untuk produk yang diedit.

@@ -65,6 +65,11 @@ async function headers(): Promise<Record<string, string>> {
   return h;
 }
 
+/** Query string without empty values. */
+function qs(p: Record<string, string | number | boolean | null | undefined>): string {
+  return Object.entries(p).filter(([, v]) => v !== undefined && v !== null && v !== "").map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`).join("&");
+}
+
 async function req<T>(path: string, init: RequestInit = {}): Promise<T> {
   const url = `${BASE}/api${path}`;
   const res = await fetch(url, { ...init, headers: { ...(await headers()), ...(init.headers || {}) } });
@@ -228,6 +233,18 @@ export const api = {
   editorProduct: (id: string) => req<{ product_id: string; store_id: string; data: ProductForm }>(`/product-editor/products/${id}`),
   editorPublish: (b: { draft_id?: string | null; product_id?: string | null; store_id?: string | null; data: ProductForm }) =>
     req<{ product_id: string; store_id: string; status: "active" | "inactive" }>("/product-editor/publish", { method: "POST", body: JSON.stringify(b) }),
+  editorList: (p: { store_id?: string | null; q?: string; status?: string; skip?: number }) =>
+    req<{ total: number; items: EditorListItem[]; store_id: string }>(`/product-editor/products?${qs({ ...p, limit: 30 })}`),
+  editorDuplicate: (id: string) => req<ProductDraft>(`/product-editor/products/${id}/duplicate`, { method: "POST" }),
+  editorBulk: (b: BulkEdit) => req<{ updated: number; skipped: { product_id: string; name: string; reason: string }[] }>("/product-editor/bulk", { method: "POST", body: JSON.stringify(b) }),
+  editorImport: async (file: LocalFile, storeId: string | null, commit: boolean): Promise<ImportReport> => {
+    const token = await getToken();
+    const res = await uploadForm(`${BASE}/api/product-editor/import?${qs({ store_id: storeId, commit })}`, { headers: token ? { Authorization: `Bearer ${token}` } : {}, files: { file } });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(typeof data.detail === "string" ? data.detail : `HTTP ${res.status}`);
+    return data as ImportReport;
+  },
+  editorExportUrl: (storeId: string | null, template = false) => `${BASE}/api/product-editor/export?${qs({ store_id: storeId, template })}`,
   adminStores: (status?: string) => req<Store[]>(`/admin/stores${status ? `?status=${status}` : ""}`),
   adminSetStoreStatus: (id: string, status: "active" | "rejected" | "suspended", note = "") =>
     req<Store>(`/admin/stores/${id}/status`, { method: "PUT", body: JSON.stringify({ status, note }) }),
@@ -409,8 +426,13 @@ export type ProductForm = {
   variants_enabled: boolean; variant_options: VariantOption[]; variants: VariantRow[];
   specs: Partial<Record<SpecKey, string>>; weight_grams: number; length_cm: number; width_cm: number; height_cm: number;
   couriers: string[]; ship_regular: boolean; ship_cargo: boolean; preorder: boolean; preorder_days: number; processing_days: number;
+  seo_title: string; meta_description: string; keywords: string[];
 };
 export type SpecKey = "material" | "color" | "size" | "dimensions" | "weight" | "origin_country" | "warranty" | "extra";
+export type EditorListItem = { product_id: string; name: string; image: string; sku: string; price: number; original_price: number; stock: number; status: "active" | "inactive"; variants: number; sold: number; store_id: string };
+export type BulkEdit = { store_id?: string | null; product_ids: string[]; price_mode?: "" | "set" | "up_pct" | "down_pct" | "up" | "down"; price_value?: number; stock_mode?: "" | "set" | "add" | "sub"; stock_value?: number; status?: "" | "active" | "inactive" };
+export type ImportRow = { row: number; name: string; action: "update" | "same" | "create" | "draft" | "skip"; message: string };
+export type ImportReport = { committed: boolean; counts: Record<ImportRow["action"], number>; rows: ImportRow[] };
 export type ProductDraft = { draft_id: string; product_id?: string | null; store_id: string; data: ProductForm; updated_at: string };
 export type EditorContext = {
   admin: boolean; stores: { store_id: string; name: string }[]; showcases: string[];

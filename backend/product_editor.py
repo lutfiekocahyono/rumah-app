@@ -77,6 +77,10 @@ class ProductForm(BaseModel):
     preorder: bool = False
     preorder_days: int = Field(default=0, ge=0, le=90)
     processing_days: int = Field(default=1, ge=1, le=30)
+    # SEO
+    seo_title: str = Field(default="", max_length=70)
+    meta_description: str = Field(default="", max_length=160)
+    keywords: List[str] = Field(default=[], max_length=10)
 
     @field_validator("specs")
     @classmethod
@@ -184,6 +188,8 @@ def to_product(f: ProductForm, store: dict) -> dict:
         "specs": f.specs, "weight_grams": f.weight_grams, "length_cm": f.length_cm, "width_cm": f.width_cm, "height_cm": f.height_cm,
         "couriers": f.couriers, "ship_regular": f.ship_regular, "ship_cargo": f.ship_cargo,
         "preorder": f.preorder, "preorder_days": f.preorder_days if f.preorder else 0, "processing_days": f.processing_days,
+        "seo_title": f.seo_title.strip(), "meta_description": f.meta_description.strip(),
+        "keywords": list(dict.fromkeys(k.strip().lower()[:40] for k in f.keywords if k.strip())),
         "store_id": store["store_id"], "store_name": store["name"], "updated_at": _now(),
     }
 
@@ -206,6 +212,7 @@ def to_form(p: dict) -> dict:
         length_cm=p.get("length_cm") or 0, width_cm=p.get("width_cm") or 0, height_cm=p.get("height_cm") or 0,
         couriers=p.get("couriers") or [], ship_regular=p.get("ship_regular", True), ship_cargo=p.get("ship_cargo", False),
         preorder=p.get("preorder", False), preorder_days=p.get("preorder_days") or 0, processing_days=p.get("processing_days") or 1,
+        seo_title=(p.get("seo_title") or "")[:70], meta_description=(p.get("meta_description") or "")[:160], keywords=(p.get("keywords") or [])[:10],
     ).model_dump()
 
 
@@ -310,14 +317,40 @@ def register(api, db, *, get_current_user, log_activity, origin_label):
             raise HTTPException(status_code=404, detail="Produk tidak ditemukan")
         return p
 
+    parents: dict = {}
+
+    async def load_parents() -> None:
+        parents.clear()
+        parents.update({c["category_id"]: c["parent"] for c in await db.categories.find({"parent": {"$nin": [None, ""]}}, {"category_id": 1, "parent": 1}).to_list(5000)})
+
+    def form_of(p: dict) -> dict:
+        """to_form + imported products store the subcategory as their category (call load_parents first)."""
+        data = to_form(p)
+        if parents.get(data["category"]):
+            data["category"], data["subcategory"] = parents[data["category"]], data["category"]
+        return data
+
     @api.get("/product-editor/products/{product_id}")
     async def get_for_edit(product_id: str, ctx=Depends(actor)):
         p = await editable(product_id, ctx)
-        data = to_form(p)
-        cat = await db.categories.find_one({"category_id": data["category"]}, {"parent": 1})
-        if cat and cat.get("parent"):  # imported products store the subcategory as their category
-            data["category"], data["subcategory"] = cat["parent"], data["category"]
-        return {"product_id": product_id, "store_id": p.get("store_id"), "data": data}
+        await load_parents()
+        return {"product_id": product_id, "store_id": p.get("store_id"), "data": form_of(p)}
+
+    @api.post("/product-editor/products/{product_id}/duplicate")
+    async def duplicate(product_id: str, ctx=Depends(actor)):
+        """Copy a product into a new draft (no SKU, new variant ids) so the seller reviews it before publishing."""
+        p = await editable(product_id, ctx)
+        await load_parents()
+        data = form_of(p)
+        data["name"] = f"{data['name']} (Salinan)"[:150]
+        data["sku"] = ""
+        for v in data["variants"]:
+            v["variant_id"], v["sku"] = "", ""
+        doc = {"draft_id": f"dr_{uuid.uuid4().hex[:10]}", "owner": owner_key(ctx), "product_id": None,
+               "store_id": p.get("store_id") or seller.PGS_STORE_ID, "data": data, "updated_at": _now()}
+        await db.product_drafts.insert_one({**doc})
+        await log_activity(ctx["user"]["user_id"], "store", f"Menduplikat produk '{p.get('name', '')}'")
+        return draft_out(doc)
 
     # ---------------- publish ----------------
     @api.post("/product-editor/publish")
@@ -357,3 +390,7 @@ def register(api, db, *, get_current_user, log_activity, origin_label):
             await db.product_drafts.delete_one({"draft_id": body.draft_id, "owner": owner_key(ctx)})
         await log_activity(ctx["user"]["user_id"], "store", f"{action} produk '{f.name.strip()}'")
         return {"product_id": pid, "store_id": store["store_id"], "status": f.status}
+
+    import product_bulk  # imports this module's form helpers
+    product_bulk.register(api, db, actor=actor, target_store=target_store, editable=editable, owner_key=owner_key,
+                          form_of=form_of, load_parents=load_parents, log_activity=log_activity)

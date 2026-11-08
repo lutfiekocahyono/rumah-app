@@ -1,0 +1,41 @@
+{
+  "summary": "Tested product editor Tahap 2 'SEO & Tombol' (iteration 25). Backend: 40 of 41 pytest pass (10 new in test_pgs_iter25_seo.py plus the iter23 and iter24 regression suites, 30/30). seo_title, meta_description and keywords are saved on publish, on edit and in drafts, and GET /api/product-editor/products/{id} returns them. Values at the limit (70 / 160 / 10) are accepted. Values over the limit (71 / 161 / 11) return 422 on publish and on draft save. One minor failure: keywords are de-duplicated before they are trimmed and the check is case-sensitive, so ['sepatu',' sepatu ','Sepatu'] is saved as ['sepatu','sepatu','Sepatu']. Frontend at 390px as sidoarjo@pgs.id: pe-seo-title counter (54/70, 62/70) works. pe-seo-idea-0..2 fill the title. pe-seo-meta-auto fills 134 characters from the description with markdown removed. Keywords can be added with pe-kw-add or Enter, and duplicates are ignored. pe-kw-idea-* adds a chip and pe-kw-del-* removes it. pe-seo-preview updates as you type. pe-seo-score went 0 -> 40 (title + meta) -> 80 (3 keywords). pe-preview shows the unsaved name, 'Mulai Rp15.000', variant prices (Biru 25.000 / Merah 15.000), formatted description, store and specs; pe-preview-close closes it. pe-cancel: with changes, a confirm dialog appears; confirm-cancel stays on the page and confirm-ok goes to /seller. With no changes it leaves straight away. pe-publish-new from a fresh /product-editor/new (validation toast for 6 errors, photo upload through the file chooser, confirm, publish) works: the product is in the DB, the form resets with an empty name, category 'Dapur' and etalase kept, the photo and SEO fields are cleared, and pe-toast-ok shows. BUG: pe-publish-new from a draft (?draft=) goes to /product-editor/new and loses category and etalase, and no pe-toast-ok is shown (the product itself is published and the draft deleted). pe-publish shows the success dialog and goes to /product/{id}. pe-save-draft saves meta_description. All TEST_ products and drafts were cleaned up by id. Admin pricing and home sections were not touched.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/product-editor/publish (keywords)", "issue": "to_product de-duplicates with dict.fromkeys(f.keywords) BEFORE strip, and the check is case-sensitive. ['sepatu',' sepatu ','Sepatu'] is saved as ['sepatu','sepatu','Sepatu']. The frontend lowercases keywords but API clients do not. Fix: strip and lowercase each keyword first, then de-duplicate. Reference: /app/backend/product_editor.py:192"}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Simpan & Tambah Baru from a draft or an existing product", "issue": "When the editor was opened with ?draft= (or for an existing product id), publish() calls router.replace('/product-editor/new'). The useEffect then reloads EMPTY_FORM, so category, subcategory and etalase are NOT kept. The success toast is also lost (pe-toast-ok count 0 after the redirect). Reproduce: open /product-editor/new?draft=ID, tap pe-publish-new, then confirm-ok. Reference: /app/frontend/app/product-editor/[id].tsx:114", "testID": "pe-publish-new", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Product editor / SEO", "issues": [
+        "The keyword chip delete icon pe-kw-del-{k} is 14x15px. With hitSlop 8 the tap area is about 30x31px, below the 44px minimum (seo-section.tsx:94).",
+        "Title idea 3 is cut to 70 characters with '…' in the middle of the store name (e.g. '... Siap Kirim - PGS…'). It is better to drop a suffix such as ' - {store}' than to keep a broken one (seo-section.tsx:22-23)."
+      ]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_pgs_iter25_seo.py", "/app/backend/tests/ui_iter25_helper.py", "/app/test_reports/pytest/pytest_iter25.xml"],
+  "action_items": [
+    "Simpan & Tambah Baru when opened from a draft or an existing product: keep category, subcategory and showcase, and show the success toast after the redirect. For example, pass them as route params, or reset in place with loaded(next) and router.setParams({draft: undefined}) instead of router.replace.",
+    "Backend keywords: normalise (strip + lower) before de-duplicating in to_product (product_editor.py:192).",
+    "Make the touch target of the keyword chip delete button pe-kw-del-{k} at least 44px.",
+    "(Minor) Refresh the drafts list after Simpan & Tambah Baru resets the form in place. (Minor) The preview keeps the last picked variant between opens."
+  ],
+  "critical_code_review_comments": [
+    "product_editor.py:192: dict.fromkeys is applied before strip and is case-sensitive, so keyword de-duplication does not work for untrimmed or mixed-case input.",
+    "[id].tsx:114: the two Simpan & Tambah Baru paths behave differently (in-place reset vs router.replace), which causes the lost category/etalase and the lost toast.",
+    "The SEO keyword length limit (40 characters) is only enforced by truncation in to_product; drafts save keywords as typed. This is acceptable but inconsistent."
+  ],
+  "updated_files": ["/app/backend/tests/test_pgs_iter25_seo.py", "/app/backend/tests/ui_iter25_helper.py"],
+  "success_rate": {"backend": "97.5% (40/41)", "frontend": "~93% (14/15 flows; publish-new from a draft loses category/etalase and the toast)"},
+  "seed_data_creation": "None kept. Temporary TEST_ drafts and products were created and deleted by id (sp_8b412f2c3e, sp_d5537c0acb, sp_ed0f3090f1, dr_828a558689; the other drafts were deleted when they were published). pytest cleans up its own products and drafts.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: export EXPO_PUBLIC_BACKEND_URL=$(grep EXPO_PUBLIC_BACKEND_URL /app/frontend/.env | cut -d= -f2); pytest -o addopts=\"\" tests/test_pgs_iter25_seo.py tests/test_pgs_iter23_product_editor.py tests/test_pgs_iter24_specs_shipping.py. UI: python tests/ui_iter25_helper.py create prints a draft_id and token (draft with Warna Merah 15000 / Biru 25000). Set localStorage pgs_auth_token, visit /seller first, then /product-editor/new?draft=ID. Elements under the fixed bottom bar get intercepted when clicked with force=True: scroll them into the center with scrollIntoView({block:'center'}) and click without force. Photo upload works with page.expect_file_chooser on pe-photo-add. The pe-preview modal slides in, so wait about 1.5s before tapping variants.",
+  "rca_of_issue": "Simpan & Tambah Baru from a draft: publish() runs `if (isNew && !draft) loaded(next) else router.replace('/product-editor/new')`. In the else branch, `next` (with category/etalase) is never applied. The route change re-runs the load effect, which calls loaded({...EMPTY_FORM}), and the screen state (the toast) is reset."
+}

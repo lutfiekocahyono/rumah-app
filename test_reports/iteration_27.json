@@ -1,0 +1,42 @@
+{
+  "summary": "Product Editor Tahap 3 (duplicate, autosave, bulk price/stock/status, Excel import/export) tested end to end. Backend: 15/15 pytest pass, plus one extra admin preview-import check on a legacy PGS product with no weight: it gave 'update', made no DB write, and the price stayed 915000. Frontend (390x844 mobile web): all tested flows pass. Seller list: search, 4 filters, select-all, bulk price, stock and status with the result dialog, % validation, duplicate opening the editor with '(Salinan)'. Ekspor Excel and Unduh Template downloads. Import dialog: a .txt file is rejected; xlsx preview then apply shows Diubah 1 / Draft 1 and the list updates. Admin: 5 store pills, 6.618 products, switching store, search, pagination 30->70->90. Editor: autosave shows '✓ Draft tersimpan otomatis' after about 4s. Repeat edits reuse the same draft. pe-drafts appears after reload. pe-duplicate shows on existing products. pe-resume-draft appears after leaving an edited product, and Lanjutkan opens the draft. Publish, Simpan & Tambah Baru and Simpan Draft all work, and autosave leaves no duplicate or orphan drafts after publish. No critical bugs. Deprecated packages detected: none. SafeAreaView issues detected: none.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/product-editor/import", "issue": "A new row (no ID) that has only a number (e.g. just Stok) and no name, category or photo is still saved as a draft '(tanpa nama)'. Stray cells in a sheet create junk drafts. Consider skipping rows with no name, no images and no description."},
+      {"endpoint": "POST /api/product-editor/import", "issue": "A blank cell means 'unchanged', so an existing discount cannot be removed by clearing 'Harga Diskon' in Excel. Document this in Panduan, or accept 0 as 'remove discount'."},
+      {"endpoint": "POST /api/product-editor/bulk", "issue": "product_ids max_length=500 returns a raw pydantic 422. The UI lets the user select more than 500 rows after scrolling (select-all only selects the rows already loaded). Show a friendly message or cap selection at 500 in the UI."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/product-editor/list (mobile 390px)", "issues": ["The fixed header (store pills, 3 action buttons wrapping to 2 lines, search, filters, select-all) takes about 400px, about half the screen. Only about 4 rows are visible. Consider putting the header in the FlatList ListHeaderComponent so it scrolls away, or making the actions more compact."]},
+      {"screen": "/product-editor/[id] bottom bar (mobile)", "issues": ["The pe-autosave label is cut off ('✓ Draft tersimpan ot…') because it shares a row with Batalkan and Preview. The bottom bar takes about 190px on 390px wide screens."]},
+      {"screen": "/product-editor/[id] cancel confirm", "issues": ["The 'Batalkan perubahan?' dialog says unsaved changes will be lost, but autosave has already kept them as a draft (pe-drafts / pe-resume-draft shows them later). Either delete the autosaved draft when the user confirms, or change the message."]}
+    ],
+    "react_native_issues": [
+      {"component": "expo-file-system", "issue": "src/utils/download.ts:2 imports expo-file-system (File/Paths API), but it is not declared in package.json. It only resolves as a transitive dependency (node_modules 58.0.10). Reference: /app/frontend/src/utils/download.ts:2"}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_pgs_iter27_product_bulk.py", "/app/backend/tests/ui_iter27_helper.py", "/app/test_reports/pytest/pytest_iter27.xml"],
+  "action_items": [
+    "Optional: run `npx expo install expo-file-system` so the dependency used in src/utils/download.ts is declared and pinned explicitly",
+    "Optional: import should skip rows that have no name, images or description instead of saving '(tanpa nama)' drafts",
+    "Optional: cap bulk selection at 500 or show a friendly error; make the list header scroll away on mobile; fix the pe-autosave label truncation; align the cancel-confirm message with autosave behaviour"
+  ],
+  "critical_code_review_comments": [
+    "Autosave race handling is correct: draftRef plus awaiting savingRef in saveDraft and publish means autosave drafts are reused and deleted on publish. Verified via network capture.",
+    "Bulk edit only $sets price/stock/variants/status fields, so legacy catalogue products without weight are not blocked or changed in other fields. Good.",
+    "Import update validation only covers changed fields (the owns() filter), so old incomplete catalogue rows can still get price/stock updates. Good.",
+    "product_bulk.py (415 lines) and product_editor.py (396 lines) are both under 700 lines."
+  ],
+  "updated_files": ["/app/backend/tests/test_pgs_iter27_product_bulk.py", "/app/backend/tests/ui_iter27_helper.py"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "Only TEST_ products and drafts for seller acct1 (Bulk/Imp/UI27). All of them were removed; 0 left over verified. The shared PGS catalogue was not modified (only an admin preview import with commit=false was run).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run with -n 0 (serial). xdist parallel runs cause count assertion races in test_import_roundtrip. Export EXPO_PUBLIC_BACKEND_URL from frontend/.env. For UI: `python tests/ui_iter27_helper.py create > /tmp/ui27.json` prints the seller and admin tokens plus 2 product ids; `clean` removes TEST_UI27 data. Open /seller, wait 3s, set localStorage pgs_auth_token, then reload before deep-linking. Setting the token while the app is still booting caused a one-off 'Not authenticated'. Import on web: page.expect_file_chooser on import-pick, then set_files.",
+  "rca_of_issue": ""
+}

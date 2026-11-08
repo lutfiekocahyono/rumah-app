@@ -137,6 +137,7 @@ export default function SellerHome() {
                 {[
                   { icon: "receipt-outline", label: "Pesanan", to: "/seller/orders" },
                   { icon: "cube-outline", label: "Stok", to: "/seller/stock" },
+                  { icon: "list-outline", label: "Kelola Produk", to: "/product-editor/list" },
                   { icon: "car-outline", label: "Tarif Kurir", to: "/seller/couriers" },
                   { icon: "chatbubbles-outline", label: "Chat", to: "/chat?side=store", badge: unread.store },
                   { icon: "alert-circle-outline", label: "Komplain", to: "/complaint?scope=store" },

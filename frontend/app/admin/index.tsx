@@ -15,6 +15,7 @@ const MENU = [
   { icon: "pricetags-outline", label: "Pengaturan Harga", sub: "Potongan per kategori & jumlah beli", to: "/admin/pricing" },
   { icon: "people-outline", label: "Kategori Pelanggan", sub: "Pengecer, Reseller, Pembeli Langsung", to: "/admin/customers" },
   { icon: "add-circle-outline", label: "Tambah Produk", sub: "Seller Center: foto, video, variasi, harga & stok", to: "/product-editor/new" },
+  { icon: "list-outline", label: "Daftar Produk", sub: "Edit massal, duplikat, impor & ekspor Excel", to: "/product-editor/list" },
   { icon: "cube-outline", label: "Harga Manual per Produk", sub: "Atur harga per jumlah untuk 1 produk", to: "/admin/products" },
   { icon: "images-outline", label: "Banner Promosi", sub: "Gambar, judul & tautan di beranda", to: "/admin/banners" },
   { icon: "flash-outline", label: "Flash Sale", sub: "Produk, harga flash & jam berakhir", to: "/admin/flash-sale" },

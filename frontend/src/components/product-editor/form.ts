@@ -6,6 +6,7 @@ export const EMPTY_FORM: ProductForm = {
   variants_enabled: false, variant_options: [], variants: [],
   specs: {}, weight_grams: 0, length_cm: 0, width_cm: 0, height_cm: 0,
   couriers: [], ship_regular: true, ship_cargo: false, preorder: false, preorder_days: 0, processing_days: 1,
+  seo_title: "", meta_description: "", keywords: [],
 };
 export type Errors = Record<string, string>;
 export const MIN_DESC = 30;
@@ -79,5 +80,6 @@ export function checklist(f: ProductForm): { label: string; done: boolean; requi
     { label: "Minimal 3 foto", done: f.images.length >= 3, required: false },
     { label: "Merek", done: !!f.brand.trim(), required: false },
     { label: "Video produk", done: !!f.video, required: false },
+    { label: "SEO: judul, meta & 3 kata kunci", done: !!f.seo_title.trim() && !!f.meta_description.trim() && f.keywords.length >= 3, required: false },
   ];
 }
