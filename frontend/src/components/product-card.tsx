@@ -36,20 +36,17 @@ export function ProductCard({ product, style }: { product: Product; style?: any 
       </View>
       <View style={styles.info}>
         <Text style={styles.name} numberOfLines={2}>{product.name}</Text>
-        <Text style={styles.price}>{formatIDR(product.my_price || product.price)}</Text>
-        {product.original_price > (product.my_price || product.price) ? (
-          <Text style={styles.oldPrice}>{formatIDR(product.original_price)}</Text>
-        ) : null}
-        {product.price_max > product.price_min ? (
-          <Text style={styles.range} numberOfLines={1} testID={`price-range-${product.product_id}`}>
-            {formatIDR(product.price_min)} - {formatIDR(product.price_max)}
-          </Text>
-        ) : null}
-        {!product.in_stock ? <Text style={styles.oos}>Stok habis</Text> : null}
         <View style={styles.meta}>
-          <Icon name="star" size={12} color={colors.warning} />
-          <Text style={styles.metaText}>{product.rating.toFixed(1)}</Text>
+          <Icon name={product.in_stock ? "checkmark" : "close"} size={14} color={product.in_stock ? colors.onSurfaceSecondary : colors.error} />
+          <Text style={[styles.metaText, !product.in_stock && { color: colors.error }]} testID={`stock-${product.product_id}`}>
+            {!product.in_stock ? "Stok habis" : product.stock >= 9999 ? "Stok tersedia" : `${product.stock} stok tersedia`}
+          </Text>
         </View>
+        <Text style={styles.range} numberOfLines={1} adjustsFontSizeToFit testID={`price-range-${product.product_id}`}>
+          {product.price_max > product.price_min
+            ? `${formatIDR(product.price_min)} - ${formatIDR(product.price_max)}`
+            : formatIDR(product.my_price || product.price)}
+        </Text>
       </View>
     </Pressable>
   );
@@ -78,12 +75,8 @@ const styles = StyleSheet.create({
     alignItems: "center", justifyContent: "center",
   },
   info: { padding: spacing.md, gap: 4 },
-  name: { fontSize: fontSize.sm, color: colors.onSurface, minHeight: 32 },
-  price: { fontSize: fontSize.base, color: colors.brandPrimary, fontWeight: "500", marginTop: 2 },
-  oldPrice: { fontSize: 11, color: colors.muted, textDecorationLine: "line-through" },
-  range: { fontSize: 11, color: colors.onSurfaceSecondary },
-  oos: { fontSize: 10, color: colors.error, fontWeight: "500" },
+  name: { fontSize: fontSize.sm, color: colors.onSurface, fontWeight: "500", minHeight: 36 },
+  range: { fontSize: fontSize.sm, color: colors.priceLink, fontWeight: "500", marginTop: 2 },
   meta: { flexDirection: "row", alignItems: "center", gap: 3, marginTop: 2 },
-  metaText: { fontSize: 11, color: colors.muted },
-  metaDot: { fontSize: 11, color: colors.muted, marginHorizontal: 2 },
+  metaText: { fontSize: 12, color: colors.onSurfaceSecondary },
 });

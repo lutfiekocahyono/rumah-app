@@ -32,6 +32,8 @@ const light = {
   onError: "#FFFFFF",
   info: "#3B82F6",
   onInfo: "#FFFFFF",
+  // price range line (matches pusatgrosirsidoarjo.com blue)
+  priceLink: "#1D5FD6",
 
   border: "#E5E7EB",
   borderStrong: "#D1D5DB",

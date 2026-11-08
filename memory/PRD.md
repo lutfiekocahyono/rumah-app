@@ -16,6 +16,7 @@ Iteration 2: import all data from pusatgrosirsidoarjo.com; tiered pricing (pembe
 - 2026-06 (iter 3): price range (termurah - termahal across all customer types & qty tiers) under price on product cards; full price table (rows = jumlah beli, columns = Pembeli Langsung/Pengecer/Reseller, highlights user's column & active row) on product detail. API adds price_min, price_max, price_matrix.
 - 2026-06 (iter 4): reusable one-tap Google button (src/components/google-button.tsx) on Login, Register ("Daftar dengan Google") and Akun guest card; new Google users auto-registered as Pembeli Langsung.
 - 2026-06 (iter 5): admin Pengaturan Harga supports % or Rupiah per pcs (toggle) for customer-type discounts and qty tiers (pricing.type_discount_modes, qty_tiers[{min_qty, mode, value}]); legacy discount_percent still read.
+- 2026-06 (iter 6): product card restyled like website: bold name, "✓ N stok tersedia", one-line blue price range (theme token priceLink) or single price when no range.
 
 ## Pending / needs user
 - Keys: MIDTRANS_SERVER_KEY, XENDIT_SECRET_KEY, XENDIT_WEBHOOK_TOKEN, FONNTE_TOKEN (payments return 503 & WhatsApp skipped until set)
