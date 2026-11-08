@@ -14,6 +14,7 @@ Iteration 2: import all data from pusatgrosirsidoarjo.com; tiered pricing (pembe
 - 2026-06 (iter 1): MVP shop, cart, mock checkout, wishlist, search, email auth, guest
 - 2026-06 (iter 2): 6,618 products + 80 categories + 3 branches/contacts imported; tiered pricing engine + UI (tier table, next-tier hint, savings); admin panel (dashboard, orders + status, pricing, customer types, per-product tiers); Google login; Midtrans/Xendit/COD checkout + order status refresh + webhooks (/api/payments/midtrans/notification, /api/payments/xendit/callback); Fonnte WhatsApp notify; Pesan via WhatsApp; PGS logo/icon/splash; stock decrement
 - 2026-06 (iter 3): price range (termurah - termahal across all customer types & qty tiers) under price on product cards; full price table (rows = jumlah beli, columns = Pembeli Langsung/Pengecer/Reseller, highlights user's column & active row) on product detail. API adds price_min, price_max, price_matrix.
+- 2026-06 (iter 4): reusable one-tap Google button (src/components/google-button.tsx) on Login, Register ("Daftar dengan Google") and Akun guest card; new Google users auto-registered as Pembeli Langsung.
 
 ## Pending / needs user
 - Keys: MIDTRANS_SERVER_KEY, XENDIT_SECRET_KEY, XENDIT_WEBHOOK_TOKEN, FONNTE_TOKEN (payments return 503 & WhatsApp skipped until set)

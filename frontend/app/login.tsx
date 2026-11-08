@@ -4,6 +4,7 @@ import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Icon from "@react-native-vector-icons/ionicons";
 import { Image } from "expo-image";
+import { GoogleButton } from "@/src/components/google-button";
 
 import { colors, fontSize, radius, spacing } from "@/src/theme";
 import { useAuth } from "@/src/auth-context";
@@ -11,27 +12,16 @@ import { useAuth } from "@/src/auth-context";
 export default function Login() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { login, loginWithGoogle } = useAuth();
+  const { login } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [show, setShow] = useState(false);
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
-  const [gLoading, setGLoading] = useState(false);
 
   const done = () => {
     if (router.canGoBack()) router.back();
     else router.replace("/(tabs)/akun" as any);
-  };
-
-  const google = async () => {
-    setErr("");
-    setGLoading(true);
-    try {
-      if (await loginWithGoogle()) done();
-    } finally {
-      setGLoading(false);
-    }
   };
 
   const submit = async () => {
@@ -93,14 +83,9 @@ export default function Login() {
           <View style={styles.line} />
         </View>
 
-        <Pressable testID="google-login-btn" style={[styles.outlineBtn, { marginBottom: spacing.md }]} onPress={google} disabled={gLoading}>
-          {gLoading ? <ActivityIndicator color={colors.onSurface} /> : (
-            <>
-              <Icon name="logo-google" size={18} color="#EA4335" />
-              <Text style={styles.outlineText}>Masuk dengan Google</Text>
-            </>
-          )}
-        </Pressable>
+        <View style={{ marginBottom: spacing.md }}>
+          <GoogleButton onDone={done} />
+        </View>
 
         <Pressable testID="continue-guest" style={styles.outlineBtn} onPress={() => router.replace("/(tabs)" as any)}>
           <Icon name="person-outline" size={18} color={colors.onSurface} />

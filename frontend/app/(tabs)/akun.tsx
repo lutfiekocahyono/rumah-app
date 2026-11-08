@@ -8,6 +8,7 @@ import { colors, fontSize, radius, spacing } from "@/src/theme";
 import { useAuth } from "@/src/auth-context";
 import { CUSTOMER_TYPE_LABEL } from "@/src/api";
 import { Image } from "expo-image";
+import { GoogleButton } from "@/src/components/google-button";
 
 type MenuItem = { icon: string; label: string; to?: string; onPress?: () => void; danger?: boolean };
 
@@ -86,6 +87,7 @@ export default function Akun() {
                 <Text style={styles.outlineBtnText}>Daftar</Text>
               </Pressable>
             </View>
+            <GoogleButton testID="akun-google-btn" label="Daftar / Masuk dengan Google" />
           </View>
         )}
 

@@ -4,6 +4,7 @@ import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Icon from "@react-native-vector-icons/ionicons";
 import { Image } from "expo-image";
+import { GoogleButton } from "@/src/components/google-button";
 
 import { colors, fontSize, radius, spacing } from "@/src/theme";
 import { useAuth } from "@/src/auth-context";
@@ -46,6 +47,13 @@ export default function Register() {
         <Text style={styles.title}>Buat akun baru</Text>
         <Text style={styles.subtitle}>Daftar gratis dan nikmati promo eksklusif.</Text>
 
+        <GoogleButton testID="google-register-btn" label="Daftar dengan Google" onDone={() => (router.canGoBack() ? router.back() : router.replace("/(tabs)/akun" as any))} />
+        <View style={styles.divider}>
+          <View style={styles.line} />
+          <Text style={styles.dividerText}>atau daftar dengan email</Text>
+          <View style={styles.line} />
+        </View>
+
         <View style={styles.inputWrap}>
           <Icon name="person-outline" size={18} color={colors.muted} />
           <TextInput testID="name-input" placeholder="Nama lengkap" placeholderTextColor={colors.muted} style={styles.input} value={name} onChangeText={setName} />
@@ -85,5 +93,8 @@ const styles = StyleSheet.create({
   primaryBtn: { backgroundColor: colors.brandPrimary, paddingVertical: 14, borderRadius: radius.pill, alignItems: "center", marginTop: spacing.sm },
   primaryText: { color: colors.onBrandPrimary, fontWeight: "500", fontSize: fontSize.base },
   bottomLink: { marginTop: spacing.xl, alignItems: "center" },
+  divider: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginVertical: spacing.lg },
+  line: { flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: colors.border },
+  dividerText: { color: colors.muted, fontSize: fontSize.sm },
   bottomLinkText: { color: colors.muted, fontSize: fontSize.sm },
 });
