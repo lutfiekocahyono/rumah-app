@@ -1,0 +1,39 @@
+{
+  "summary": "Iteration 15 tested: COD only for pickup (pengiriman kurir wajib bayar online), auto-cancel of COD pickup orders after 2x24 jam with manual extend, and the 'Siap Diambil' flow. Backend: 11 of 11 feature tests pass (tests/test_pgs_iter15_cod_pickup_expiry.py, run serially with -n 0). One new bug is confirmed by tests/test_pgs_iter15_voucher_leak.py (2 of 2 fail): when checkout is rejected with COD + courier or Midtrans not ready, the voucher quota is still used up. Frontend (375x667): all requested flows pass. Checkout: COD is shown and selected for pickup with the 2x24 jam note. Choosing JNE hides COD and shows co-online-required; pressing pay shows the error bar. Picking a destination (Patrang) keeps pickup selected. Seller detail: so-expires and so-extend-24/48 work (date moved +24h, then +48h). Proses Pesanan, then so-ready, then so-ready-info, then so-complete gives 'Selesai'. Buyer: order-pickup-card shows the store name; order-expires shows while status is cod; order-ready shows after ready. Notifications 'Pesanan siap diambil' and 'Batas waktu pesanan diperpanjang' are delivered. No deprecated Expo packages found.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/checkout", "issue": "Voucher quota leak. The voucher is claimed (vouchers.used +1, server.py:840) before 3 checks that can reject the order: saldo insufficient (lines 851-855), online payment not ready (line 856-857) and COD + courier (line 858-859). None of these give the voucher use back. Reproduced with a TEST voucher: after COD+JNE and Midtrans+JNE were both rejected with 400, used was 2. Every buyer who tries delivery with a voucher while Midtrans is off uses up quota.", "priority": "HIGH"}
+    ],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "checkout", "issues": ["The COD option sub-text still says 'Bayar tunai saat barang diterima'. COD is now pickup-only, so it should say something like 'Bayar tunai saat ambil di toko'.", "The CTA says 'Bayar Sekarang' even for COD pickup ('Buat Pesanan' fits better).", "With a delivery courier selected and no online payment available, the pay button stays enabled. It only shows the error after tapping; it could be disabled instead."]},
+      {"screen": "seller/order/[id] and order/[id]", "issues": ["Pickup orders still show 'No. resi: belum ada' in the tracking card.", "The seller detail shows the card label 'Kirim ke' for pickup orders; 'Pembeli' / 'Diambil oleh' would be clearer."]},
+      {"screen": "seller/order/[id]", "issues": ["When auth is missing, the raw English error 'Not authenticated' is shown (not Indonesian)."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_pgs_iter15_cod_pickup_expiry.py", "/app/backend/tests/test_pgs_iter15_voucher_leak.py", "/app/backend/tests/ui_iter15_helper.py", "/app/test_reports/pytest/pytest_iter15.xml"],
+  "action_items": [
+    "HIGH: In POST /api/checkout (server.py), either move the online-not-ready, COD-courier and saldo checks (lines 847-859) before the voucher claim at line 840, or give the voucher use back ($inc used -1) before each of those HTTPExceptions. Then re-run tests/test_pgs_iter15_voucher_leak.py.",
+    "Optional: the frontend useEffect in checkout.tsx (line 110) switches the method from cod to midtrans only. If only Xendit is ready, a delivery order keeps method 'cod' and the backend rejects it with 400. Fall back to xendit when midtrans is not ready.",
+    "Older suites that expect COD + courier orders now fail by design (e.g. test_pgs_iter8_cod_shipping.py, iter7/iter9 _order helpers using a courier with cod). Update them to use pickup or saldo.",
+    "Minor UX text fixes listed in design_issues."
+  ],
+  "critical_code_review_comments": [
+    "expire_cod_orders: the conditional update on status 'cod' prevents a race with the seller processing the order. Restock, voucher and saldo are returned through _release_voucher, which is idempotent through restock_once/return_balance_once. Good.",
+    "The extend endpoint uses max(current, now) + hours, is limited to the order's store, accepts hours 1-168 (pydantic), and rejects non-cod orders with 400. Verified.",
+    "The ready endpoint is idempotent (it returns the existing ready_at without a duplicate history entry or notification). Verified.",
+    "The pytest suite shares stock counters on pgs-9955, so run it with '-n 0'. pytest.ini enables xdist by default, and parallel workers make the stock assertions flaky."
+  ],
+  "updated_files": ["/app/backend/tests/test_pgs_iter15_cod_pickup_expiry.py", "/app/backend/tests/test_pgs_iter15_voucher_leak.py", "/app/backend/tests/ui_iter15_helper.py"],
+  "success_rate": {"backend": "85% (11/13 incl. voucher-leak bug tests; 100% of requested feature tests)", "frontend": "100%"},
+  "seed_data_creation": "TEST_ buyers test_cod15_*/test_ui15_b71f90@example.com created. All test orders were cancelled (restocked) except 1 completed UI order (PGS-261108-306931); its 1 unit of pgs-9955 stock was restored by hand through pymongo. pgs-9955 stock at pgs-official is back to 214. The temporary TEST voucher and the TEST wallets were deleted. The backend was restarted once for the auto-cancel test.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Midtrans and Xendit are not configured, so delivery checkout needs saldo (credit TEST wallets via pymongo db.wallets). Run iter15 tests with '-n 0'. Seller pages: log in as sidoarjo@pgs.id at /login, then open /seller/order/<id>. Server clock is Nov 2026.",
+  "rca_of_issue": "Voucher leak: checkout() claims the voucher atomically (find_one_and_update $inc used) before the payment-method validations. The HTTPException raised at lines 852/855/857/859 skips the compensating $inc -1 that only exists in the payment-creation except block (line 894)."
+}

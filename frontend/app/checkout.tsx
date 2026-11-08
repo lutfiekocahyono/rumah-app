@@ -98,12 +98,18 @@ export default function Checkout() {
       if (dest) autoPickFor.current = dest.id;
       setCourier((c) => {
         // After a new destination is picked, choose the cheapest delivery courier; on a reload keep the buyer's choice
-        if (freshDest && shippable.length) return shippable.reduce((a, b) => (b.cost < a.cost ? b : a)).code;
+        if (freshDest && shippable.length && payAvail.midtrans) return shippable.reduce((a, b) => (b.cost < a.cost ? b : a)).code;
         return l.some((x) => x.code === c) ? c : l[0]?.code || "";
       });
     }).catch(() => {}).finally(() => { if (!stale) setRatesLoading(false); });
     return () => { stale = true; };
-  }, [storeId, dest, ratesKey]);
+  }, [storeId, dest, ratesKey, payAvail.midtrans]);
+  // COD only for "Ambil di toko"; courier delivery must be paid online
+  const isPickup = courier === "pickup";
+  useEffect(() => {
+    if (!isPickup && method === "cod") { if (payAvail.midtrans) setMethod("midtrans"); else if (payAvail.xendit) setMethod("xendit"); }
+    if (isPickup && method !== "cod" && !payAvail.midtrans && !payAvail.xendit) setMethod("cod");
+  }, [isPickup, method, payAvail.midtrans, payAvail.xendit]);
   const pickDest = (d: Destination | null) => {
     setDest(d);
     const parts = d?.label.split(",").map((s) => s.trim()) ?? [];
@@ -129,6 +135,10 @@ export default function Checkout() {
     }
     if (!courier) {
       setErr("Pilih kurir pengiriman");
+      return;
+    }
+    if (!isPickup && toPay > 0 && !payAvail.midtrans && !payAvail.xendit) {
+      setErr("Pengiriman kurir wajib bayar online, yang saat ini belum tersedia. Pilih Ambil di toko (COD).");
       return;
     }
     setLoading(true);
@@ -236,11 +246,17 @@ export default function Checkout() {
 
         {toPay > 0 ? <Text style={[styles.section, { marginTop: spacing.xl }]}>Metode Pembayaran</Text> : null}
         {toPay > 0 ? <View style={styles.card}>
+          {!isPickup && !payAvail.midtrans && !payAvail.xendit ? (
+            <Text style={[styles.paySub, { color: colors.error }]} testID="co-online-required">
+              Pengiriman kurir wajib bayar online, yang saat ini belum tersedia. Pilih &quot;Ambil di toko&quot; untuk bayar COD.
+            </Text>
+          ) : null}
+          {isPickup ? <Text style={styles.paySub}>COD (bayar tunai) hanya untuk Ambil di toko. Pesanan batal otomatis bila toko belum memprosesnya dalam 2×24 jam.</Text> : null}
           {([
-            { id: "cod", label: "COD (Bayar di Tempat)", sub: "Bayar tunai saat barang diterima", icon: "cash-outline" },
+            { id: "cod", label: "COD (Bayar di Tempat)", sub: "Bayar tunai saat ambil pesanan di toko", icon: "cash-outline" },
             { id: "midtrans", label: `Bayar Online (Midtrans)${payAvail.midtrans_sandbox ? " · Sandbox" : ""}`, sub: "QRIS · Transfer Bank (VA) · GoPay · ShopeePay", icon: "qr-code-outline" },
             { id: "xendit", label: "Xendit", sub: "QRIS · Transfer Bank (VA) · OVO · DANA · ShopeePay", icon: "wallet-outline" },
-          ] as const).filter((m) => m.id === "cod" || payAvail[m.id]).map((m) => (
+          ] as const).filter((m) => (m.id === "cod" ? isPickup : payAvail[m.id])).map((m) => (
             <Pressable
               key={m.id}
               testID={`pay-${m.id}`}
@@ -318,7 +334,7 @@ export default function Checkout() {
           <Text style={styles.totalValue}>{formatIDR(toPay)}</Text>
         </View>
         <Pressable testID="pay-now-btn" style={[styles.payBtn, ratesLoading && { opacity: 0.6 }]} onPress={submit} disabled={loading || ratesLoading}>
-          {loading ? <ActivityIndicator color={colors.onBrandPrimary} /> : <Text style={styles.payBtnText}>Bayar Sekarang</Text>}
+          {loading ? <ActivityIndicator color={colors.onBrandPrimary} /> : <Text style={styles.payBtnText}>{method === "cod" || toPay === 0 ? "Buat Pesanan" : "Bayar Sekarang"}</Text>}
         </Pressable>
         </View>
       </View>

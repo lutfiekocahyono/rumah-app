@@ -10,6 +10,7 @@ import { ScreenHeader } from "@/src/components/screen-header";
 import { OrderTracking } from "@/src/components/order-tracking";
 import { ConfirmDialog } from "@/src/components/confirm-dialog";
 import { adminStyles, Card, Field, PrimaryButton } from "@/src/components/admin-form";
+import { fmtDate } from "@/src/utils/date";
 
 export default function SellerOrderDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -72,16 +73,41 @@ export default function SellerOrderDetail() {
           <Text style={styles.total}>Total {formatIDR(order.total)} · {order.payment_method.toUpperCase()}</Text>
         </Card>
         <Card>
-          <Text style={adminStyles.section}>Kirim ke</Text>
+          <Text style={adminStyles.section}>{pickup ? "Pemesan (ambil di toko)" : "Kirim ke"}</Text>
           <Text style={styles.name}>{order.shipping.full_name} · {order.shipping.phone}</Text>
           <Text style={adminStyles.muted}>{order.shipping.address}, {order.shipping.city}</Text>
         </Card>
         {err ? <Text style={adminStyles.err} testID="so-error">{err}</Text> : null}
         {s === "pending" ? <Text style={adminStyles.muted}>Menunggu pembayaran pembeli.</Text> : null}
+        {s === "cod" && order.expires_at ? (
+          <Card>
+            <Text style={adminStyles.muted} testID="so-expires">Batal otomatis jika belum diproses: {fmtDate(order.expires_at)}</Text>
+            <View style={{ flexDirection: "row", gap: spacing.sm }}>
+              {[24, 48].map((h) => (
+                <View key={h} style={{ flex: 1 }}>
+                  <PrimaryButton testID={`so-extend-${h}`} label={`Perpanjang ${h} jam`} variant="outline" loading={busy === `extend${h}`} onPress={async () => {
+                    setBusy(`extend${h}`); setErr("");
+                    try { setOrder(await api.sellerExtendOrder(order.order_id, h)); } catch (e: any) { setErr(e.message); } finally { setBusy(""); }
+                  }} />
+                </View>
+              ))}
+            </View>
+          </Card>
+        ) : null}
         {s === "paid" || s === "cod" ? <PrimaryButton testID="so-process" label="Proses Pesanan" loading={busy === "processing"} onPress={() => move("processing")} /> : null}
         {s === "processing" ? (
           pickup ? (
-            <PrimaryButton testID="so-complete" label="Sudah Diambil Pembeli (Selesai)" loading={busy === "completed"} onPress={() => move("completed")} />
+            <>
+              {order.ready_at ? (
+                <Text style={adminStyles.ok} testID="so-ready-info">Siap diambil sejak {fmtDate(order.ready_at)} — pembeli sudah diberi tahu</Text>
+              ) : (
+                <PrimaryButton testID="so-ready" label="Siap Diambil" variant="outline" loading={busy === "ready"} onPress={async () => {
+                  setBusy("ready"); setErr("");
+                  try { setOrder(await api.sellerReadyOrder(order.order_id)); } catch (e: any) { setErr(e.message); } finally { setBusy(""); }
+                }} />
+              )}
+              <PrimaryButton testID="so-complete" label="Sudah Diambil Pembeli (Selesai)" loading={busy === "completed"} onPress={() => move("completed")} />
+            </>
           ) : (
             <Card>
               <Field testID="so-resi" label="Nomor resi pengiriman" value={resi} onChangeText={setResi} autoCapitalize="characters" placeholder="Contoh: JNE1234567890" />

@@ -355,6 +355,8 @@ class Order(BaseModel):
     balance_used: int = 0
     refunded: int = 0
     complaint_id: Optional[str] = None
+    expires_at: Optional[datetime] = None  # COD pickup: auto-cancel time if the store has not processed it
+    ready_at: Optional[datetime] = None  # pickup order marked "Siap diambil"
     created_at: datetime
 
 
@@ -835,11 +837,6 @@ async def checkout(body: CheckoutIn, background: BackgroundTasks, owner: str = D
         discount, verr = promo.voucher_check(await db.vouchers.find_one({"code": vcode}), cart.subtotal)
         if verr:
             raise HTTPException(status_code=400, detail=verr)
-        claimed = await db.vouchers.find_one_and_update(
-            {"code": vcode, "$or": [{"quota": 0}, {"quota": None}, {"$expr": {"$lt": ["$used", "$quota"]}}]},
-            {"$inc": {"used": 1}})
-        if not claimed:
-            raise HTTPException(status_code=400, detail="Kuota voucher sudah habis")
     total = cart.subtotal - discount + SHIPPING_COST
     balance_used = 0
     if body.use_balance or body.payment_method == "saldo":
@@ -852,7 +849,15 @@ async def checkout(body: CheckoutIn, background: BackgroundTasks, owner: str = D
     if pay_method == "saldo" and not balance_used:
         raise HTTPException(status_code=400, detail="Saldo tidak cukup")
     if (pay_method == "midtrans" and not payments.midtrans_ready()) or (pay_method == "xendit" and not payments.xendit_ready()):
-        raise HTTPException(status_code=400, detail="Pembayaran online belum aktif, pilih COD")
+        raise HTTPException(status_code=400, detail="Pembayaran online belum aktif. Pilih Ambil di toko dengan COD")
+    if pay_method == "cod" and courier["code"] != "pickup":
+        raise HTTPException(status_code=400, detail="COD hanya untuk Ambil di toko. Pengiriman kurir wajib bayar online")
+    if vcode:  # claim the voucher only after every validation passed, so rejected checkouts don't burn quota
+        claimed = await db.vouchers.find_one_and_update(
+            {"code": vcode, "$or": [{"quota": 0}, {"quota": None}, {"$expr": {"$lt": ["$used", "$quota"]}}]},
+            {"$inc": {"used": 1}})
+        if not claimed:
+            raise HTTPException(status_code=400, detail="Kuota voucher sudah habis")
     status0 = "paid" if pay_method == "saldo" else "cod" if pay_method == "cod" else "pending"
     order_doc = {
         "order_id": f"PGS-{datetime.now(timezone.utc).strftime('%y%m%d')}-{uuid.uuid4().hex[:6].upper()}",
@@ -875,6 +880,7 @@ async def checkout(body: CheckoutIn, background: BackgroundTasks, owner: str = D
         "payment_method": pay_method,
         "customer_type": cart.customer_type,
         "status": status0,
+        **({"expires_at": datetime.now(timezone.utc) + timedelta(hours=COD_PICKUP_HOURS)} if status0 == "cod" else {}),
         "created_at": datetime.now(timezone.utc),
     }
     if balance_used and not await support.debit(db, user_id, balance_used, order_doc["order_id"]):
@@ -904,6 +910,32 @@ async def checkout(body: CheckoutIn, background: BackgroundTasks, owner: str = D
 
 
 RELEASE_STATUSES = ("cancelled", "expired", "failed")
+COD_PICKUP_HOURS = 48
+
+
+async def expire_cod_orders() -> int:
+    """Cancel COD pickup orders the store did not process within the deadline; stock/voucher/saldo come back."""
+    now = datetime.now(timezone.utc)
+    n = 0
+    async for o in db.orders.find({"status": "cod", "expires_at": {"$lte": now}}, {"order_id": 1, "user_id": 1}):
+        res = await db.orders.update_one({"order_id": o["order_id"], "status": "cod"}, {"$set": {"status": "cancelled", "updated_at": now},
+                                         "$push": {"status_history": {"status": "cancelled", "at": now, "note": "Batal otomatis: tidak diproses toko dalam batas waktu"}}})
+        if not res.modified_count:
+            continue
+        await _release_voucher(o["order_id"])
+        await ACCT["notify_user"](o.get("user_id"), "order", "Pesanan dibatalkan otomatis",
+                                  f"Pesanan {o['order_id']} batal karena belum diproses toko dalam batas waktu.", f"/order/{o['order_id']}")
+        n += 1
+    return n
+
+
+async def _expire_loop() -> None:
+    while True:
+        try:
+            await expire_cod_orders()
+        except Exception:
+            logging.getLogger(__name__).exception("expire_cod_orders failed")
+        await asyncio.sleep(300)
 
 
 async def _release_voucher(order_id: str) -> None:
@@ -1481,6 +1513,7 @@ async def _startup():
     app.state.index_task = asyncio.create_task(ensure_indexes())
     await seed_data()
     await payments.load_config(db)
+    app.state.expire_task = asyncio.create_task(_expire_loop())
     try:
         await run_in_threadpool(storage.init_storage)
     except Exception:

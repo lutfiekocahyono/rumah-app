@@ -341,6 +341,46 @@ def register(api, db, get_current_user, require_admin, product_out_for_user, not
             raise HTTPException(status_code=404, detail="Pesanan tidak ditemukan")
         return order_out(d)
 
+    class ExtendIn(BaseModel):
+        hours: int = Field(ge=1, le=168)
+
+    @api.post("/seller/orders/{order_id}/extend")
+    async def seller_extend_order(order_id: str, body: ExtendIn, ctx=Depends(require_seller)):
+        """Give a COD pickup order more time before it auto-cancels."""
+        d = await db.orders.find_one({"order_id": order_id, "store_id": ctx["store"]["store_id"]})
+        if not d:
+            raise HTTPException(status_code=404, detail="Pesanan tidak ditemukan")
+        if d["status"] != "cod" or not d.get("expires_at"):
+            raise HTTPException(status_code=400, detail="Hanya pesanan COD yang belum diproses yang bisa diperpanjang")
+        cur = d["expires_at"].replace(tzinfo=timezone.utc) if d["expires_at"].tzinfo is None else d["expires_at"]
+        new = max(cur, _now()) + timedelta(hours=body.hours)
+        res = await db.orders.find_one_and_update({"order_id": order_id}, {"$set": {"expires_at": new, "updated_at": _now()},
+            "$push": {"status_history": {"status": "cod", "at": _now(), "note": f"Batas waktu diperpanjang {body.hours} jam oleh {ctx['store']['name']}"}}},
+            projection={"_id": 0}, return_document=ReturnDocument.AFTER)
+        await notify_user(d.get("user_id"), "order", "Batas waktu pesanan diperpanjang",
+                          f"Pesanan {order_id} diperpanjang {body.hours} jam oleh toko.", f"/order/{order_id}")
+        return order_out(res)
+
+    @api.post("/seller/orders/{order_id}/ready")
+    async def seller_ready_order(order_id: str, ctx=Depends(require_seller)):
+        """Pickup order is packed and waiting at the store."""
+        d = await db.orders.find_one({"order_id": order_id, "store_id": ctx["store"]["store_id"]})
+        if not d:
+            raise HTTPException(status_code=404, detail="Pesanan tidak ditemukan")
+        if (d.get("courier") or {}).get("code") != "pickup" or d["status"] != "processing":
+            raise HTTPException(status_code=400, detail="Tandai siap diambil setelah pesanan Ambil di toko diproses")
+        if d.get("ready_at"):
+            return order_out({k: v for k, v in d.items() if k != "_id"})
+        s = ctx["store"]
+        res = await db.orders.find_one_and_update({"order_id": order_id}, {"$set": {"ready_at": _now(), "updated_at": _now()},
+            "$push": {"status_history": {"status": "processing", "at": _now(), "note": "Siap diambil di toko"}}},
+            projection={"_id": 0}, return_document=ReturnDocument.AFTER)
+        where = f" di {s.get('address')}" if s.get("address") else ""
+        hours = f" Jam ambil: {s['pickup_hours']}." if s.get("pickup_hours") else ""
+        await notify_user(d.get("user_id"), "order", "Pesanan siap diambil",
+                          f"Pesanan {order_id} sudah siap diambil di {s['name']}{where}.{hours}", f"/order/{order_id}")
+        return order_out(res)
+
     @api.put("/seller/orders/{order_id}/status")
     async def seller_order_status(order_id: str, body: SellerOrderStatusIn, ctx=Depends(require_seller)):
         sid = ctx["store"]["store_id"]

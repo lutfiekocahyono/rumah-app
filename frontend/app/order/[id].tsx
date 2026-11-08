@@ -9,6 +9,8 @@ import * as WebBrowser from "expo-web-browser";
 import { colors, fontSize, radius, spacing, formatIDR } from "@/src/theme";
 import { api, ORDER_STATUS_LABEL, type Order } from "@/src/api";
 import { OrderTracking } from "@/src/components/order-tracking";
+import { fmtDate } from "@/src/utils/date";
+import { useStore } from "@/src/store-context";
 
 const METHOD_LABEL = { midtrans: "Midtrans", xendit: "Xendit", cod: "COD (Bayar di Tempat)", saldo: "Saldo" };
 const COMPLAINT_DAYS = 7;
@@ -26,6 +28,7 @@ export default function OrderDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { stores } = useStore();
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
   const [checking, setChecking] = useState(false);
@@ -60,6 +63,7 @@ export default function OrderDetail() {
   };
 
   if (loading) return <View style={styles.center}><ActivityIndicator color={colors.brandPrimary} /></View>;
+  const pickupStore = stores.find((s) => s.store_id === order?.store_id);
   if (!order) {
     return (
       <View style={[styles.center, { gap: spacing.md }]} testID="order-not-found">
@@ -152,8 +156,24 @@ export default function OrderDetail() {
           {order.refunded ? <Row label="Sudah di-refund ke saldo" value={formatIDR(order.refunded)} /> : null}
         </View>
 
+        {order.courier?.code === "pickup" ? (
+          <View style={styles.card} testID="order-pickup-card">
+            <Text style={styles.cardTitle}>Ambil di toko</Text>
+            <Text style={styles.itemName}>{order.store_name}</Text>
+            {pickupStore?.address ? <Text style={styles.muted}>{pickupStore.address}</Text> : null}
+            {pickupStore?.pickup_hours ? <Text style={styles.muted}>Jam ambil: {pickupStore.pickup_hours}</Text> : null}
+            {order.ready_at && order.status === "processing" ? (
+              <Text style={[styles.muted, { color: colors.success, fontWeight: "600" }]} testID="order-ready">Pesanan siap diambil sejak {fmtDate(order.ready_at)}</Text>
+            ) : null}
+            {order.status === "cod" && order.expires_at ? (
+              <Text style={styles.muted} testID="order-expires">Menunggu diproses toko. Batal otomatis bila belum diproses sampai {fmtDate(order.expires_at)}.</Text>
+            ) : null}
+            <Text style={styles.muted}>Bayar tunai (COD) saat mengambil pesanan.</Text>
+          </View>
+        ) : null}
+
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Dikirim ke</Text>
+          <Text style={styles.cardTitle}>{order.courier?.code === "pickup" ? "Pemesan" : "Dikirim ke"}</Text>
           <Text style={styles.itemName}>{order.shipping.full_name} · {order.shipping.phone}</Text>
           <Text style={styles.muted}>{order.shipping.address}, {order.shipping.city}</Text>
         </View>

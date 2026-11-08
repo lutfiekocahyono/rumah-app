@@ -21,10 +21,12 @@ export function OrderTracking({ order }: { order: Order }) {
           <Text style={styles.text}>{order.courier.name} · {order.courier.cost ? formatIDR(order.courier.cost) : "Gratis"}{order.courier.eta ? ` · ${order.courier.eta}` : ""}</Text>
         </View>
       ) : null}
-      <View style={styles.row}>
-        <Icon name="barcode-outline" size={18} color={colors.brandPrimary} />
-        <Text style={styles.text} testID="order-resi">No. resi: {order.tracking_number || "belum ada"}</Text>
-      </View>
+      {order.courier?.code !== "pickup" ? (
+        <View style={styles.row}>
+          <Icon name="barcode-outline" size={18} color={colors.brandPrimary} />
+          <Text style={styles.text} testID="order-resi">No. resi: {order.tracking_number || "belum ada"}</Text>
+        </View>
+      ) : null}
       {history.length ? (
         <View style={styles.timeline}>
           {history.map((h, i) => (
