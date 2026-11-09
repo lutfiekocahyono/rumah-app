@@ -4,6 +4,8 @@ import os
 
 import httpx
 
+import fonnte
+
 log = logging.getLogger("notify")
 
 FONNTE_URL = "https://api.fonnte.com/send"
@@ -37,8 +39,8 @@ def format_order(o: dict) -> str:
 
 
 async def send_owner_order(order: dict) -> None:
-    token = os.environ.get("FONNTE_TOKEN", "")
-    target = os.environ.get("OWNER_WHATSAPP", "")
+    token, _ = await fonnte.get_token()
+    target = await fonnte.owner_whatsapp()
     if not token or not target:
         log.warning("WhatsApp notification skipped (FONNTE_TOKEN/OWNER_WHATSAPP not set) order=%s", order["order_id"])
         return

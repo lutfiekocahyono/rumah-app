@@ -6,17 +6,19 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Icon from "@react-native-vector-icons/ionicons";
 
 import { colors, fontSize, radius, spacing, formatIDR } from "@/src/theme";
-import { api, imgUrl, type EditorContext, type EditorListItem } from "@/src/api";
+import { api, imgUrl, type EditorContext, type EditorListItem, type EstimateKind } from "@/src/api";
 import { useAuth } from "@/src/auth-context";
 import { SellerShell } from "@/src/components/seller-shell";
 import { Pill } from "@/src/components/product-editor/ui";
 import { BulkDialog, type BulkKind } from "@/src/components/product-editor/bulk-dialog";
 import { ImportDialog } from "@/src/components/product-editor/import-dialog";
 import { WeightEstimateDialog } from "@/src/components/product-editor/weight-estimate-dialog";
+import { CategoryFixDialog } from "@/src/components/product-editor/category-fix-dialog";
 import { downloadAuthed } from "@/src/utils/download";
 
 const FILTERS = [{ id: "", label: "Semua" }, { id: "active", label: "Aktif" }, { id: "inactive", label: "Nonaktif" }, { id: "empty", label: "Stok habis" },
-  { id: "no_weight", label: "Belum ada berat" }, { id: "estimated_weight", label: "Berat perkiraan" }];
+  { id: "no_weight", label: "Belum ada berat" }, { id: "estimated_weight", label: "Berat perkiraan" },
+  { id: "no_dims", label: "Belum ada ukuran dus" }, { id: "estimated_dims", label: "Ukuran perkiraan" }];
 
 function Row({ p, on, toggle, onEdit, onDuplicate, dup }: { p: EditorListItem; on: boolean; toggle: () => void; onEdit: () => void; onDuplicate: () => void; dup: boolean }) {
   return (
@@ -36,6 +38,9 @@ function Row({ p, on, toggle, onEdit, onDuplicate, dup }: { p: EditorListItem; o
           {!p.weight_grams ? <Text style={styles.badge} testID={`pl-noweight-${p.product_id}`}>Belum ada berat</Text>
             : p.weight_estimated ? <Text style={[styles.badge, { color: colors.onSurface, borderColor: colors.warning }]} testID={`pl-estweight-${p.product_id}`}>⚠ Berat perkiraan {p.weight_grams} g</Text>
             : <Text style={styles.muted}>· {p.weight_grams} g</Text>}
+          {!p.dims?.[0] ? <Text style={styles.badge} testID={`pl-nodims-${p.product_id}`}>Belum ada ukuran dus</Text>
+            : p.dims_estimated ? <Text style={[styles.badge, { color: colors.onSurface, borderColor: colors.warning }]} testID={`pl-estdims-${p.product_id}`}>⚠ Ukuran perkiraan {p.dims.join("×")} cm</Text>
+            : <Text style={styles.muted}>· {p.dims.join("×")} cm</Text>}
         </View>
       </Pressable>
       <Pressable testID={`pl-duplicate-${p.product_id}`} style={styles.iconBtn} onPress={onDuplicate} disabled={dup} accessibilityLabel="Duplikat produk">
@@ -66,9 +71,17 @@ export default function ProductList() {
   const [dup, setDup] = useState("");
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [weight, setWeight] = useState<{ missing: number; estimated: number } | null>(null);
-  const [estimating, setEstimating] = useState(false);
+  const [dimsInfo, setDimsInfo] = useState<{ missing: number; estimated: number } | null>(null);
+  const [estimating, setEstimating] = useState<EstimateKind | null>(null);
+  const [uncat, setUncat] = useState(0);
+  const [fixingCat, setFixingCat] = useState(false);
   const busy = useRef(false);
-  const refreshWeight = useCallback(() => { if (storeId) api.weightSummary(admin ? storeId : null).then(setWeight).catch(() => {}); }, [storeId, admin]);
+  const refreshWeight = useCallback(() => {
+    if (!storeId) return;
+    api.weightSummary(admin ? storeId : null).then(setWeight).catch(() => {});
+    api.weightSummary(admin ? storeId : null, "dims").then(setDimsInfo).catch(() => {});
+    api.uncatSummary(admin ? storeId : null).then((r) => setUncat(r.count)).catch(() => {});
+  }, [storeId, admin]);
   useEffect(refreshWeight, [refreshWeight]);
 
   useEffect(() => { api.editorContext().then((c) => { setCtx(c); setStoreId((c.stores.find((s) => s.store_id === "pgs-official") ?? c.stores[0])?.store_id ?? null); }).catch((e) => setMsg({ ok: false, text: e.message })); }, []);
@@ -129,6 +142,18 @@ export default function ProductList() {
               <Icon name="cloud-upload-outline" size={18} color={colors.brandPrimary} /><Text style={styles.outlineText}>Impor Excel</Text>
             </Pressable>
           </View>
+          {uncat ? (
+            <View style={styles.weightBox} testID="pl-uncat-banner">
+              <Icon name="folder-open-outline" size={18} color={colors.warning} />
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text style={styles.name} testID="pl-uncat-count">{uncat.toLocaleString("id-ID")} produk masih berkategori “Lainnya”</Text>
+                <Text style={styles.muted}>Pindahkan ke kategori yang tepat supaya mudah ditemukan pembeli di Katalog.</Text>
+                <View style={styles.actions}>
+                  <Pressable testID="pl-uncat-fix" style={styles.linkBtn} onPress={() => setFixingCat(true)}><Text style={styles.outlineText}>Rapikan kategori</Text></Pressable>
+                </View>
+              </View>
+            </View>
+          ) : null}
           {weight && (weight.missing || weight.estimated) ? (
             <View style={styles.weightBox} testID="pl-weight-banner">
               <Icon name="barbell-outline" size={18} color={colors.warning} />
@@ -137,8 +162,22 @@ export default function ProductList() {
                 <Text style={styles.muted}>Berat dipakai menghitung ongkir. Isi lewat Edit Massal, Excel (kolom Berat), atau perkiraan otomatis.</Text>
                 <View style={styles.actions}>
                   {weight.missing ? <Pressable testID="pl-weight-show" style={styles.linkBtn} onPress={() => setFilter("no_weight")}><Text style={styles.outlineText}>Tampilkan</Text></Pressable> : null}
-                  {weight.missing ? <Pressable testID="pl-weight-estimate" style={styles.linkBtn} onPress={() => setEstimating(true)}><Text style={styles.outlineText}>Perkiraan otomatis</Text></Pressable> : null}
+                  {weight.missing ? <Pressable testID="pl-weight-estimate" style={styles.linkBtn} onPress={() => setEstimating("weight")}><Text style={styles.outlineText}>Perkiraan otomatis</Text></Pressable> : null}
                   {weight.estimated ? <Pressable testID="pl-weight-review" style={styles.linkBtn} onPress={() => setFilter("estimated_weight")}><Text style={styles.outlineText}>Cek berat perkiraan</Text></Pressable> : null}
+                </View>
+              </View>
+            </View>
+          ) : null}
+          {dimsInfo && (dimsInfo.missing || dimsInfo.estimated) ? (
+            <View style={styles.weightBox} testID="pl-dims-banner">
+              <Icon name="cube-outline" size={18} color={colors.warning} />
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text style={styles.name} testID="pl-dims-counts">{dimsInfo.missing.toLocaleString("id-ID")} produk belum ada ukuran dus{dimsInfo.estimated ? ` · ${dimsInfo.estimated.toLocaleString("id-ID")} ukuran perkiraan` : ""}</Text>
+                <Text style={styles.muted}>Ukuran dus (P×L×T cm) membuat ongkir barang besar lebih akurat. Isi lewat Edit Massal, Excel (kolom Panjang/Lebar/Tinggi), atau perkiraan otomatis.</Text>
+                <View style={styles.actions}>
+                  {dimsInfo.missing ? <Pressable testID="pl-dims-show" style={styles.linkBtn} onPress={() => setFilter("no_dims")}><Text style={styles.outlineText}>Tampilkan</Text></Pressable> : null}
+                  {dimsInfo.missing ? <Pressable testID="pl-dims-estimate" style={styles.linkBtn} onPress={() => setEstimating("dims")}><Text style={styles.outlineText}>Perkiraan otomatis</Text></Pressable> : null}
+                  {dimsInfo.estimated ? <Pressable testID="pl-dims-review" style={styles.linkBtn} onPress={() => setFilter("estimated_dims")}><Text style={styles.outlineText}>Cek ukuran perkiraan</Text></Pressable> : null}
                 </View>
               </View>
             </View>
@@ -188,12 +227,14 @@ export default function ProductList() {
               <Pressable testID="pl-bulk-stock" style={styles.outline} onPress={() => setBulk("stock")}><Icon name="layers-outline" size={16} color={colors.brandPrimary} /><Text style={styles.outlineText}>Ubah Stok</Text></Pressable>
               <Pressable testID="pl-bulk-status" style={styles.outline} onPress={() => setBulk("status")}><Icon name="eye-outline" size={16} color={colors.brandPrimary} /><Text style={styles.outlineText}>Status</Text></Pressable>
               <Pressable testID="pl-bulk-weight" style={styles.outline} onPress={() => setBulk("weight")}><Icon name="barbell-outline" size={16} color={colors.brandPrimary} /><Text style={styles.outlineText}>Isi Berat</Text></Pressable>
+              <Pressable testID="pl-bulk-dims" style={styles.outline} onPress={() => setBulk("dims")}><Icon name="cube-outline" size={16} color={colors.brandPrimary} /><Text style={styles.outlineText}>Ukuran Dus</Text></Pressable>
             </View>
           </View>
         ) : null}
       </View>
       <BulkDialog kind={bulk} ids={[...sel]} storeId={admin ? storeId : null} onClose={() => setBulk(null)} onDone={() => { void load(true); refreshWeight(); }} />
-      <WeightEstimateDialog visible={estimating} storeId={admin ? storeId : null} onClose={() => setEstimating(false)} onDone={() => { void load(true); refreshWeight(); }} />
+      <WeightEstimateDialog visible={!!estimating} kind={estimating ?? "weight"} storeId={admin ? storeId : null} onClose={() => setEstimating(null)} onDone={() => { void load(true); refreshWeight(); }} />
+      <CategoryFixDialog visible={fixingCat} storeId={admin ? storeId : null} onClose={() => setFixingCat(false)} onDone={() => { void load(true); refreshWeight(); }} />
       <ImportDialog visible={importing} storeId={admin ? storeId : null} storeName={storeName} onClose={() => setImporting(false)} onDone={() => { void load(true); refreshWeight(); }} />
     </SellerShell>
   );

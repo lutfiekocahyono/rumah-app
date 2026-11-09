@@ -1,0 +1,42 @@
+{
+  "summary": "Iteration 44 tested Rapikan Kategori Lainnya, location gate + Analisa Pelanggan, Fonnte settings and the dims/bulk-dialog fixes. Backend: 39/39 pytest pass. Covered: uncategorized summary/preview/apply (skip+override, invalid override 400, second apply 400, no product_events), the weight/dims routes still work, dims estimate rules, POST /location (guest/customer saved, admin/store_admin not saved, lat>90 422), admin customer-locations (403 for customer and store_admin), and Fonnte GET/PUT/test/test-otp with a fake token (real api.fonnte.com returns 'token invalid') plus dev_code in mode uji. Frontend at 390px: guest with location allowed sees no lock and the position is sent once, then again after moving (watchPosition works). Guest with location denied sees location-lock with allow/help/login, and the tab bar is blocked. /login, /register and /forgot-password are not locked. The lock goes away for admin and store_admin but stays for a customer (demo). The location-privacy sentence shows on Akun. Analisa Pelanggan works (stats, ca-range chips, ca-guests toggle, Leaflet iframe map, ca-row). The Fonnte page works end to end. The catfix dialog works (summary, search, picker with search/back, untick, confirm text, Kembali) without saving. In the bulk dims dialog the error clears when typing, but the inputs still overflow their boxes (see ui_bugs). No deprecated Expo packages found.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/product-editor/uncategorized/preview", "issue": "Some suggestions are wrong. 'Sapu Mobil F002-1' -> kebersihan: the kebersihan regex (category_suggest.py:33) matches 'sapu' before the 'sapu mobil' interior-mobil rule (line 40), so that rule never runs. 'Pampers StarCare Dewasa' (adult) -> perawatan-bayi. 'Tas Giselle Bag' and kids 'Sepatu Sport Hits Ukuran 32' -> fashion-pria. 'Lemari Elegant Mini' -> furniture instead of pabrik-lemari-plastik. Patterns have no leading word boundary (e.g. 'mic\\b' matches 'ceramic'; also 'jug', 'mug', 'wok'). Low impact because the owner reviews every row."},
+      {"endpoint": "GET/PUT /api/admin/fonnte", "issue": "Setting owner_whatsapp to '' quietly falls back to the OWNER_WHATSAPP env value (6281335551252), so the owner cannot really clear the number. Check this is intended."},
+      {"endpoint": "POST /api/product-editor/dims/preview", "issue": "Rolled mattresses ('Kasur Roll Premium Spring Bed ...') and foam mattresses take their size from the name (e.g. 182x202x29). Rolled goods ship much smaller, so consider adding 'kasur roll' to _SOFT or a roll-box rule."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Bulk dims dialog (Input compact)", "issue": "At 390px each <input> is 174px wide but its bordered box is only ~103px (Panjang input x33-207 inside box x32-135; Tinggi input reaches x=430, past the 390 viewport and the dialog edge at 374). Visible symptom: the focus outline of the Panjang field spreads over the Lebar field. Root cause: ui.input (src/components/product-editor/ui.tsx:76) has flex:1 but no minWidth:0/width:'100%', so RN-web keeps the input's built-in width.", "testID": "bulk-dim-0/1/2", "priority": "medium"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Location lock screen (tablet/desktop width)", "issues": ["At wide viewports (e.g. 1920px) the 'Izinkan lokasi' button (and 'Buka Pengaturan' outline) is left-aligned while everything else is centered. Cause: alignSelf:'stretch' + maxWidth:420 inside an alignItems:center column (location-gate.tsx:132,134). Use alignSelf:'center' + width:'100%'. Fine at 390px."]},
+      {"screen": "Catfix dialog", "issues": ["There is no 'untick all / tick all' control. An owner who wants to save only a few rows out of 218 has to untick every other row one by one."]},
+      {"screen": "Admin Fonnte", "issues": ["After Simpan, the owner field keeps the raw input ('0812 3456 7890') instead of the normalized number the server returns (6281234567890).", "The old fonnte-test-result for the typed token stays on screen after saving."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iter44_catfix_location_fonnte.py", "/app/test_reports/pytest/iter44.xml"],
+  "action_items": [
+    "Fix bulk-dialog input overflow: add minWidth:0 (and width:'100%') to ui.input in src/components/product-editor/ui.tsx:76 so bulk-dim-0/1/2 fit inside their boxes at 390px.",
+    "Center the lock-screen buttons on wide viewports (location-gate.tsx styles.btn/outline: alignSelf 'center').",
+    "Optional: refine the category KEYWORDS order and word boundaries (put 'sapu mobil|karpet mobil|kipas mobil' before the kebersihan rule; adult pampers; leading \\b on short tokens).",
+    "Optional: add an 'untick all' toggle to the catfix dialog; after saving Fonnte settings, show the normalized owner number in the owner field."
+  ],
+  "critical_code_review_comments": [
+    "customer_location.py:39 compares history_at against now.replace(tzinfo=None). This relies on Motor returning naive datetimes; if the client is ever made tz_aware it will raise TypeError. Two pings in a row passed now.",
+    "category_suggest uncategorized() counts any product whose category is not a valid id (not only 'lainnya'). That is intended, but the banner text always says 'Lainnya'.",
+    "Unmatched routes (e.g. /cart, 404 page) do not render the lock screen. Negligible."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter44_catfix_location_fonnte.py"],
+  "success_rate": {"backend": "100% (39/39)", "frontend": "~95% (all flows work; bulk dims input overflow still present)"},
+  "seed_data_creation": "Backend test applied the category fix to 3 'lainnya' products. My test override wrongly set one of them, pgs-27622 'Alat Peras Buah Manual', to 'dekorasi'; I reverted it to category 'lainnya', categories [] and removed subcategory. Two products stay moved with their suggested category: pgs-33108 Alat Perajang -> peralatan-dapur, pgs-51561 Alat Pemanggang Gas Roaster -> peralatan-masak. Uncategorized count is now 218. All TEST_/UI guest customer_locations and location_history docs were deleted by owner id. The demo user's location doc was removed (it did not exist before). Fonnte settings cleared (token_enc '', owner_whatsapp '' -> env fallback).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "The test file now overrides with the item's own suggested category, so it does not set wrong categories. Each run moves 3 more products out of Lainnya. Run it as a whole (xdist loadscope); running subsets with -k breaks the dependent Fonnte and uncategorized steps. UI: use browser.new_context(permissions=['geolocation'], geolocation=...) for the allowed case and a plain new_context for the denied case (state 'prompt' -> lock). Screenshots go to /app/.screenshots/.",
+  "rca_of_issue": "Bulk dims overflow: RN-web TextInput renders an <input> with a built-in width of about 174px. Inside a flex row, a flex:1 child without minWidth:0 will not shrink below that width, so the input spills out of its bordered wrapper (overflow visible) and its focus outline covers the next field."
+}

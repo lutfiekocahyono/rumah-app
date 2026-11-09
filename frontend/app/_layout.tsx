@@ -15,6 +15,7 @@ import { CartProvider } from "@/src/cart-context";
 import { StoreProvider } from "@/src/store-context";
 import { AppChrome } from "@/src/components/app-chrome";
 import { PushManager } from "@/src/components/push-manager";
+import { LocationGate } from "@/src/components/location-gate";
 import { colors } from "@/src/theme";
 
 LogBox.ignoreAllLogs(true);
@@ -41,6 +42,7 @@ export default function RootLayout() {
                   <StoreProvider>
                   <CartProvider>
                     <StatusBar style="dark" />
+                    <LocationGate>
                     <AppChrome>
                     <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.surface } }}>
                       <Stack.Screen name="(tabs)" />
@@ -57,6 +59,7 @@ export default function RootLayout() {
                     </Stack>
                     <PushManager />
                     </AppChrome>
+                    </LocationGate>
                   </CartProvider>
                   </StoreProvider>
                 </AuthProvider>

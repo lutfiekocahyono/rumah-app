@@ -228,10 +228,21 @@ export const api = {
   editorList: (p: { store_id?: string | null; q?: string; status?: string; skip?: number }) =>
     req<{ total: number; items: EditorListItem[]; store_id: string }>(`/product-editor/products?${qs({ ...p, limit: 30 })}`),
   editorDuplicate: (id: string) => req<ProductDraft>(`/product-editor/products/${id}/duplicate`, { method: "POST" }),
-  weightSummary: (store_id?: string | null) => req<{ missing: number; estimated: number }>(`/product-editor/weight/summary?${qs({ store_id })}`),
-  weightPreview: (store_id?: string | null) => req<WeightPreview>(`/product-editor/weight/preview?${qs({ store_id })}`, { method: "POST" }),
-  weightApply: (id: string, skip: string[], overrides: Record<string, number>) =>
-    req<{ saved: number }>(`/product-editor/weight/${id}/apply`, { method: "POST", body: JSON.stringify({ skip, overrides }) }),
+  weightSummary: (store_id?: string | null, kind: EstimateKind = "weight") => req<{ missing: number; estimated: number }>(`/product-editor/${kind}/summary?${qs({ store_id })}`),
+  weightPreview: (store_id?: string | null, kind: EstimateKind = "weight") => req<WeightPreview>(`/product-editor/${kind}/preview?${qs({ store_id })}`, { method: "POST" }),
+  weightApply: (id: string, skip: string[], overrides: Record<string, number | number[]>, kind: EstimateKind = "weight") =>
+    req<{ saved: number }>(`/product-editor/${kind}/${id}/apply`, { method: "POST", body: JSON.stringify({ skip, overrides }) }),
+  uncatSummary: (store_id?: string | null) => req<{ count: number }>(`/product-editor/uncategorized/summary?${qs({ store_id })}`),
+  uncatPreview: (store_id?: string | null) => req<CategoryPreview>(`/product-editor/uncategorized/preview?${qs({ store_id })}`, { method: "POST" }),
+  uncatApply: (id: string, skip: string[], overrides: Record<string, string>) =>
+    req<{ saved: number }>(`/product-editor/uncategorized/${id}/apply`, { method: "POST", body: JSON.stringify({ skip, overrides }) }),
+  saveLocation: (lat: number, lng: number, accuracy: number | null, platform: string) =>
+    req<{ saved: boolean }>("/location", { method: "POST", body: JSON.stringify({ lat, lng, accuracy, platform }) }),
+  customerLocations: (days: number, guests: boolean) => req<CustomerLocations>(`/admin/customer-locations?${qs({ days, guests })}`),
+  adminFonnte: () => req<FonnteStatus>("/admin/fonnte"),
+  adminSetFonnte: (b: { token?: string; owner_whatsapp?: string }) => req<FonnteStatus>("/admin/fonnte", { method: "PUT", body: JSON.stringify(b) }),
+  adminTestFonnte: (token?: string) => req<FonnteTest>("/admin/fonnte/test", { method: "POST", body: JSON.stringify({ token: token || null }) }),
+  adminTestFonnteOtp: (phone: string) => req<{ ok: boolean; message: string }>("/admin/fonnte/test-otp", { method: "POST", body: JSON.stringify({ phone }) }),
   editorBulk: (b: BulkEdit) => req<{ updated: number; skipped: { product_id: string; name: string; reason: string }[] }>("/product-editor/bulk", { method: "POST", body: JSON.stringify(b) }),
   editorImport: async (file: LocalFile, storeId: string | null, commit: boolean): Promise<ImportReport> => {
     const token = await getToken();
@@ -467,7 +478,7 @@ export type ProductForm = {
   status: "active" | "inactive"; description: string; images: string[]; video: string; price: number; discount_price: number;
   stock: number; min_order: number; max_order: number; low_stock_alert: number;
   variants_enabled: boolean; variant_options: VariantOption[]; variants: VariantRow[];
-  specs: Partial<Record<SpecKey, string>>; weight_grams: number; weight_estimated?: boolean; length_cm: number; width_cm: number; height_cm: number;
+  specs: Partial<Record<SpecKey, string>>; weight_grams: number; weight_estimated?: boolean; dims_estimated?: boolean; length_cm: number; width_cm: number; height_cm: number;
   couriers: string[]; ship_regular: boolean; ship_cargo: boolean; preorder: boolean; preorder_days: number; processing_days: number;
   seo_title: string; meta_description: string; keywords: string[];
   tier_prices: Partial<Record<CustomerType, PriceTier[]>>;
@@ -498,9 +509,18 @@ export type PriceLog = {
   source: string; source_label: string; at: string;
   changes: { field: string; label: string; kind: "price" | "stock"; variant: string; before: number | string | null; after: number | string }[];
 };
-export type EditorListItem = { product_id: string; name: string; image: string; sku: string; price: number; original_price: number; stock: number; status: "active" | "inactive"; variants: number; sold: number; store_id: string; weight_grams: number; weight_estimated: boolean };
-export type BulkEdit = { store_id?: string | null; product_ids: string[]; price_mode?: "" | "set" | "up_pct" | "down_pct" | "up" | "down"; price_value?: number; stock_mode?: "" | "set" | "add" | "sub"; stock_value?: number; status?: "" | "active" | "inactive"; weight_grams?: number; weight_only_missing?: boolean };
-export type WeightPreview = { preview_id: string; total: number; items: { product_id: string; name: string; image: string; grams: number; rule: string }[]; groups: { rule: string; count: number }[] };
+export type EditorListItem = { product_id: string; name: string; image: string; sku: string; price: number; original_price: number; stock: number; status: "active" | "inactive"; variants: number; sold: number; store_id: string; weight_grams: number; weight_estimated: boolean; dims: number[]; dims_estimated: boolean };
+export type BulkEdit = { store_id?: string | null; product_ids: string[]; price_mode?: "" | "set" | "up_pct" | "down_pct" | "up" | "down"; price_value?: number; stock_mode?: "" | "set" | "add" | "sub"; stock_value?: number; status?: "" | "active" | "inactive"; weight_grams?: number; weight_only_missing?: boolean; dims?: number[]; dims_only_missing?: boolean };
+export type EstimateKind = "weight" | "dims";
+export type CategoryPreview = { preview_id: string; total: number; groups: { category_id: string; count: number }[];
+  items: { product_id: string; name: string; image: string; suggested: string; confidence: "tinggi" | "sedang" | "rendah"; reason: string }[] };
+export type CustomerLocation = { owner: string; guest: boolean; name: string; email: string; phone: string; lat: number; lng: number;
+  accuracy: number | null; updated_at: string; first_seen: string; pings: number; orders: number; spent: number; customer_type?: string };
+export type CustomerLocations = { stats: { total: number; customers: number; guests: number; active_24h: number; active_7d: number; buyers: number }; items: CustomerLocation[] };
+export type FonnteStatus = { has_token: boolean; source: "" | "admin" | "env"; token_hint: string; owner_whatsapp: string; otp_mode: "uji" | "asli";
+  updated_at: string | null; last_test: (FonnteTest & { at: string }) | null };
+export type FonnteTest = { ok: boolean; reason: string; device: string; device_status: string; name: string; quota: string; expired: string; package: string };
+export type WeightPreview = { preview_id: string; total: number; items: { product_id: string; name: string; image: string; grams?: number; dims?: number[]; rule: string }[]; groups: { rule: string; count: number }[] };
 export type ImportRow = { row: number; name: string; action: "update" | "same" | "create" | "draft" | "skip"; message: string };
 export type ImportReport = { committed: boolean; counts: Record<ImportRow["action"], number>; rows: ImportRow[]; format: "xlsx" | "csv";
   columns: { sheet: string; header: string; field: string | null; label: string }[]; missing: string[] };

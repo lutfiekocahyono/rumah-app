@@ -161,3 +161,15 @@ Iteration 2: import all data from pusatgrosirsidoarjo.com; tiered pricing (pembe
 - Halaman pencarian = "Katalog Produk": default semua produk urut Terbaru; tab bawah "Katalog" (/katalog) menggantikan Kategori; kotak cari membuka /search?focus=1. Filter kategori tetap di lembar Filter.
 - Notifikasi: perubahan berat saja (editor/Excel) tidak lagi memicu "info diperbarui" (abaikan pergantian thumbnail & pemecahan kategori impor).
 - Catatan: 220 produk impor berkategori "lainnya" (tidak ada di daftar kategori) — editor minta pilih kategori dulu; Excel tetap bisa.
+
+## Iteration 43 (Jun 2026)
+- Ukuran dus (P×L×T cm): Edit Massal "Ukuran Dus" (hanya yang kosong / timpa), Excel (kolom Panjang/Lebar/Tinggi), filter "Belum ada ukuran dus" / "Ukuran perkiraan", banner jumlah, perkiraan otomatis per jenis produk dengan pratinjau + konfirmasi + tanda dims_estimated. Endpoint umum /api/product-editor/{weight|dims}/summary|preview|{id}/apply.
+- Perbaikan aturan perkiraan: "Isi N Pcs" tidak lagi dikali (hanya "per dus/karton/koli/lusin", maks 30 kg & 120 cm per sisi), speaker trolley, dispenser kulkas (jar), tisu. Tanda perkiraan ditentukan server saat simpan di editor.
+
+## Iteration 44 (Jun 2026)
+- Rapikan kategori "Lainnya" (220 produk impor): banner di Daftar Produk → dialog usulan kategori per produk (kata kunci + produk mirip), ganti kategori per baris, centang/buang semua, konfirmasi sebelum simpan. Tanpa notifikasi pembeli. category_suggest.py, /api/product-editor/uncategorized/summary|preview|{id}/apply.
+- Lokasi pelanggan: izin diminta langsung (expo-location), posisi dikirim selama app terbuka (maks tiap 2 menit / pindah 200 m). Tanpa izin → layar kunci (Izinkan lokasi, petunjuk pengaturan, link masuk admin). Admin, admin cabang & login/daftar/lupa password tidak dikunci. customer_location.py (/api/location, /api/admin/customer-locations).
+- Admin → Analisa Pelanggan (/admin/customers-map): statistik, filter waktu, tamu, peta Leaflet/OSM (WebView native, iframe web), daftar.
+- Admin → WhatsApp Fonnte (/admin/fonnte): token terenkripsi, nomor pemilik, uji koneksi (/device), uji kirim OTP. Token Admin = OTP asli; tanpa token = mode uji. fonnte.py, dipakai account.py & notify.py.
+- Perkiraan ukuran dus: ukuran tertulis di nama (+2 cm, kecuali barang lipat), chest freezer, sofa angin. Input P/L/T Edit Massal muat di HP.
+- Kalimat privasi lokasi di Akun.

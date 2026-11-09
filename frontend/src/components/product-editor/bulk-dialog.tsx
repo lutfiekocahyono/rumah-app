@@ -5,13 +5,13 @@ import { colors, fontSize, radius, spacing } from "@/src/theme";
 import { api, type BulkEdit } from "@/src/api";
 import { Input, Pill, digitsOf, rupiah } from "./ui";
 
-export type BulkKind = "price" | "stock" | "status" | "weight";
+export type BulkKind = "price" | "stock" | "status" | "weight" | "dims";
 const PRICE_MODES = [
   { id: "set", label: "Atur jadi (Rp)" }, { id: "up_pct", label: "Naik %" }, { id: "down_pct", label: "Turun %" },
   { id: "up", label: "Naik Rp" }, { id: "down", label: "Turun Rp" },
 ] as const;
 const STOCK_MODES = [{ id: "set", label: "Atur jadi" }, { id: "add", label: "Tambah" }, { id: "sub", label: "Kurangi" }] as const;
-const TITLE: Record<BulkKind, string> = { price: "Ubah Harga Massal", stock: "Ubah Stok Massal", status: "Ubah Status Massal", weight: "Isi Berat Massal" };
+const TITLE: Record<BulkKind, string> = { price: "Ubah Harga Massal", stock: "Ubah Stok Massal", status: "Ubah Status Massal", weight: "Isi Berat Massal", dims: "Isi Ukuran Dus Massal" };
 
 /** Apply one change (price, stock or status) to all selected products, then show what was skipped. */
 export function BulkDialog({ kind, ids, storeId, onClose, onDone }: {
@@ -22,11 +22,12 @@ export function BulkDialog({ kind, ids, storeId, onClose, onDone }: {
   const [status, setStatus] = useState<"active" | "inactive">("active");
   const [value, setValue] = useState(0);
   const [onlyMissing, setOnlyMissing] = useState(true);
+  const [dims, setDims] = useState([0, 0, 0]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [result, setResult] = useState<{ updated: number; skipped: { product_id: string; name: string; reason: string }[] } | null>(null);
 
-  useEffect(() => { if (kind) { setValue(0); setErr(""); setResult(null); } }, [kind]);
+  useEffect(() => { if (kind) { setValue(0); setDims([0, 0, 0]); setErr(""); setResult(null); } }, [kind]);
 
   const pct = kind === "price" && (priceMode === "up_pct" || priceMode === "down_pct");
   const apply = async () => {
@@ -35,6 +36,7 @@ export function BulkDialog({ kind, ids, storeId, onClose, onDone }: {
     if (kind === "price" && !pct && priceMode !== "set" && value < 1) return setErr("Isi nominal perubahan harga");
     if (kind === "stock" && stockMode !== "set" && value < 1) return setErr("Isi jumlah stok");
     if (kind === "weight" && (value < 1 || value > 500000)) return setErr("Isi berat 1–500.000 gram");
+    if (kind === "dims" && dims.some((x) => x < 1 || x > 500)) return setErr("Isi panjang, lebar, dan tinggi 1–500 cm");
     setBusy(true);
     setErr("");
     try {
@@ -43,6 +45,7 @@ export function BulkDialog({ kind, ids, storeId, onClose, onDone }: {
       if (kind === "stock") Object.assign(body, { stock_mode: stockMode, stock_value: value });
       if (kind === "status") body.status = status;
       if (kind === "weight") Object.assign(body, { weight_grams: value, weight_only_missing: onlyMissing });
+      if (kind === "dims") Object.assign(body, { dims, dims_only_missing: onlyMissing });
       const out = { updated: 0, skipped: [] as { product_id: string; name: string; reason: string }[] };
       for (let i = 0; i < ids.length; i += 500) { // server accepts 500 per request
         const r = await api.editorBulk({ ...body, product_ids: ids.slice(i, i + 500) });
@@ -82,6 +85,22 @@ export function BulkDialog({ kind, ids, storeId, onClose, onDone }: {
                   <View style={s.pills}>{STOCK_MODES.map((m) => <Pill key={m.id} testID={`bulk-stock-${m.id}`} label={m.label} on={stockMode === m.id} onPress={() => setStockMode(m.id)} />)}</View>
                   <Input testID="bulk-value" label="Jumlah" keyboardType="number-pad" value={value ? String(value) : ""} onChangeText={(t) => setValue(Math.min(999999, digitsOf(t)))}
                     placeholder="0" hint="Produk bervariasi: berlaku untuk setiap variasi" />
+                </>
+              ) : kind === "dims" ? (
+                <>
+                  <View style={[s.row, { gap: spacing.sm }]}>
+                    {(["Panjang", "Lebar", "Tinggi"] as const).map((lab, n) => (
+                      <View key={lab} style={{ flex: 1 }}>
+                        <Input compact testID={`bulk-dim-${n}`} label={`${lab} (cm)`} keyboardType="number-pad" value={dims[n] ? String(dims[n]) : ""}
+                          onChangeText={(t) => { setErr(""); setDims((d) => d.map((x, i) => (i === n ? Math.min(500, digitsOf(t)) : x))); }} />
+                      </View>
+                    ))}
+                  </View>
+                  <Text style={s.sub}>Ukuran dus/kemasan untuk ongkir (berat volume). Dianggap sudah dicek (tanda perkiraan dihapus).</Text>
+                  <View style={s.pills}>
+                    <Pill testID="bulk-weight-missing" label="Hanya yang belum ada ukuran" on={onlyMissing} onPress={() => setOnlyMissing(true)} />
+                    <Pill testID="bulk-weight-all" label="Timpa semua yang dipilih" on={!onlyMissing} onPress={() => setOnlyMissing(false)} />
+                  </View>
                 </>
               ) : kind === "weight" ? (
                 <>

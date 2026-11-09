@@ -152,6 +152,7 @@ export default function Akun() {
           </Pressable>
         ) : null}
 
+        <Text style={styles.footer} testID="location-privacy">Privasi lokasi: lokasi Anda hanya dipakai untuk layanan cabang, ongkir, dan analisa pelanggan internal Pusat Grosir Sidoarjo, tidak dibagikan ke pihak lain.</Text>
         <Text style={styles.footer}>Pusat Grosir Sidoarjo · v1.0.0</Text>
       </ScrollView>
       <ConfirmDialog visible={askLogout} title="Keluar dari akun?" confirmLabel="Keluar" onCancel={() => setAskLogout(false)}

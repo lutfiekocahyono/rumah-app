@@ -69,10 +69,15 @@ export function ShippingSection({ form, set, errors, ctx, storeId }: { form: Pro
         <Input testID="pe-weight" label="Berat (gram)" required keyboardType="number-pad" value={form.weight_grams ? String(form.weight_grams) : ""}
           onChangeText={(t) => set({ weight_grams: Math.min(500000, digitsOf(t)), weight_estimated: false })} error={errors.weight_grams} placeholder="Mis. 1200"
           hint={form.weight_estimated ? "Berat perkiraan otomatis — cek & ubah bila perlu (mempengaruhi ongkir)" : undefined} />
-        <Input testID="pe-length" label="Panjang (cm)" keyboardType="number-pad" value={form.length_cm ? String(form.length_cm) : ""} onChangeText={(t) => set({ length_cm: Math.min(500, digitsOf(t)) })} />
-        <Input testID="pe-width" label="Lebar (cm)" keyboardType="number-pad" value={form.width_cm ? String(form.width_cm) : ""} onChangeText={(t) => set({ width_cm: Math.min(500, digitsOf(t)) })} />
-        <Input testID="pe-height" label="Tinggi (cm)" keyboardType="number-pad" value={form.height_cm ? String(form.height_cm) : ""} onChangeText={(t) => set({ height_cm: Math.min(500, digitsOf(t)) })} />
+        <Input testID="pe-length" label="Panjang (cm)" keyboardType="number-pad" value={form.length_cm ? String(form.length_cm) : ""} onChangeText={(t) => set({ length_cm: Math.min(500, digitsOf(t)), dims_estimated: false })} />
+        <Input testID="pe-width" label="Lebar (cm)" keyboardType="number-pad" value={form.width_cm ? String(form.width_cm) : ""} onChangeText={(t) => set({ width_cm: Math.min(500, digitsOf(t)), dims_estimated: false })} />
+        <Input testID="pe-height" label="Tinggi (cm)" keyboardType="number-pad" value={form.height_cm ? String(form.height_cm) : ""} onChangeText={(t) => set({ height_cm: Math.min(500, digitsOf(t)), dims_estimated: false })} />
       </View>
+      {form.dims_estimated ? (
+        <Pressable testID="pe-dims-estimated" onPress={() => set({ dims_estimated: false })} style={{ alignSelf: "flex-start", minHeight: 44, justifyContent: "center" }}>
+          <Text style={[ui.hint, { color: colors.onSurface }]}>⚠ Ukuran dus perkiraan · ketuk untuk menandai sudah benar</Text>
+        </Pressable>
+      ) : null}
       {form.weight_estimated ? (
         <Pressable testID="pe-weight-estimated" onPress={() => set({ weight_estimated: false })} style={{ alignSelf: "flex-start", minHeight: 36, justifyContent: "center" }}>
           <Text style={[ui.hint, { color: colors.warning }]}>⚠ Berat perkiraan · ketuk untuk menandai sudah benar</Text>

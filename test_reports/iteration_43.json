@@ -1,0 +1,36 @@
+{
+  "summary": "Tested the carton-size (P×L×T cm) estimate feature in the backend and the UI, plus weight regression. Backend: 17 of 18 pytest tests pass (tests/test_pgs_iter43_dims_estimate.py). Working: dims summary (missing=6618), preview (6618 items, every dims value an int 1..500), apply with skip and override [40,30,20] (saved=5, dims_estimated=true), second apply returns 400, a weight preview id applied as dims returns 400 and the reverse also returns 400, unknown kind returns 404, list filters no_dims/estimated_dims with and without q, bulk dims_only_missing skips products that already have a size ('Sudah punya ukuran dus'), bulk without the flag overwrites and clears dims_estimated, invalid dims return 400, an Excel change to Panjang (cm) clears dims_estimated, and 0 product_events/price_history were created. Weight endpoints still work. The one failure is an estimate-rule quality issue (trolley speakers). Frontend (390px): dims banner counts, Tampilkan, Perkiraan otomatis dialog (an invalid '40x30' gets a red border and the count drops by 1, untick drops it by 1, Simpan 6.616 -> confirm -> saved 6.616, banner updates), row badges '⚠ Ukuran perkiraan P×L×T cm', select 2 rows -> Ukuran Dus dialog with 3 inputs (only-missing skips both with a reason; overwrite updates 2 and the badge disappears), and in the editor '⚠ Ukuran dus perkiraan' disappears after editing Panjang. Publish via the API with the edited length clears dims_estimated and creates 0 events. UI issue: the 3 dims inputs in the bulk dialog overflow the dialog on mobile. Estimate-rule issue: the 'Isi N Pcs' multiplier gives absurd cartons and weights.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/product-editor/dims/preview (weight_estimate._match)", "issue": "The _DUS 'isi N' multiplier treats piece counts as items per carton: 'Amplop Lebaran Karakter/ Pack (Isi 40Pcs)' -> 85×68×51 cm and 120 kg; 'Tissue Greensoft Pop Up (Isi 60 Pcs) + Free Dispenser' -> Dispenser ×48 -> 127×127×363 cm and 384 kg; 'Roka Apollo Cokelat Ecer (Isi 50 Pcs)' -> 91×73×55 cm and 144 kg; 'Mesin Pengering Food Tray Isi 72' -> Kompor ×48 -> 164×145×55. 569 items get a multiplier: 7 have a side >150 cm and 27 weigh >50 kg. The owner confirms in bulk, so these would make shipping cost far too high. The same multiplier is also used for weight."},
+      {"endpoint": "weight_estimate.NAME_RULES", "issue": "'Speaker Wooden Trolley WT8B/WT10B/WT6A Niko' match the small 'Speaker' rule (35×30×45, 4 kg) because the 'speaker\\s*(trolley|...)' rule only matches when 'trolley' comes right after 'speaker'. 'Dispenser Kulkas 3/4 Liter' (a drink jar) matches 'Kulkas' (60×60×130, 35 kg). 'Stand Tower AC Portable' falls back to the generic size."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "BulkDialog dims inputs", "issue": "At 390px each Panjang/Lebar/Tinggi input is 174px wide in a 111px column (Input has minWidth 140 unless compact). The inputs overlap each other and Tinggi runs off the dialog's right edge (x 256->430, dialog ends at 374). Fix: pass `compact` to the 3 bulk-dim Inputs in bulk-dialog.tsx:94.", "testID": "bulk-dim-0/1/2", "priority": "MEDIUM"},
+      {"component": "BulkDialog error", "issue": "The validation error 'Isi panjang, lebar, dan tinggi 1–500 cm' stays visible after valid values are typed, until Terapkan is pressed again.", "testID": "bulk-error", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_pgs_iter43_dims_estimate.py", "/app/test_reports/pytest/pytest_iter43.xml"],
+  "action_items": [
+    "bulk-dialog.tsx:94: add `compact` to the bulk-dim Inputs so the 3 fields fit on mobile",
+    "weight_estimate._match: limit the 'isi N' multiplier. Ignore 'Isi N Pcs' piece counts, or cap the carton side and weight per category; at least do not multiply big appliances such as Dispenser or Kompor",
+    "NAME_RULES: match 'speaker ... trolley' anywhere in the name (e.g. r'speaker.*(trolley|meeting|portable)'); stop 'dispenser kulkas' (a drink jar) matching the Kulkas rule",
+    "Optional: clear the bulk-dialog error when the inputs change"
+  ],
+  "critical_code_review_comments": [
+    "Publish trusts the client-sent dims_estimated flag (to_product keeps f.dims_estimated when length_cm>0). The editor clears it on edit, but an API client could change the dims and keep the flag. Excel and bulk clear it on the server.",
+    "parseDims in weight-estimate-dialog silently clamps values >500 to 500 (e.g. '600x30x20' is saved as 500×30×20) instead of marking the field invalid"
+  ],
+  "updated_files": ["/app/backend/tests/test_pgs_iter43_dims_estimate.py"],
+  "success_rate": {"backend": "94% (17/18; the 1 failure is estimate-rule quality)", "frontend": "95% (all flows work; 1 layout bug)"},
+  "seed_data_creation": "None kept. The test teardown and a full products snapshot (/tmp/products_backup.bson) restored all 6618 products exactly (6617 were touched by the UI 'Simpan 6.616' and the bulk/editor tests). Deleted all weight_previews and product_events (0 before), my 21 activity_logs entries and 1 product_drafts autosave (dr_bede5b2951). Baseline confirmed: dims_estimated 0, weight_grams 0, only pgs-44248/pgs-10611 have length/width/height = 0 (as before). Did not call product-digest/run and did not click the price bulk buttons.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: cd /app/backend && EXPO_PUBLIC_BACKEND_URL=... pytest tests/test_pgs_iter43_dims_estimate.py -p no:xdist -o addopts='' -s. The module snapshots all pgs-official products and restores them. Applying the dims estimate in the UI saves about 6616 products, so back up the products first and restore with ReplaceOne. Editor autosave creates product_drafts. Delete those by draft_id. Editor publish needs weight_grams (Berat is required)."
+}

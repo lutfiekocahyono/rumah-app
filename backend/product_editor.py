@@ -78,6 +78,7 @@ class ProductForm(BaseModel):
     specs: Dict[str, str] = {}
     weight_grams: int = Field(default=0, ge=0, le=500000)
     weight_estimated: bool = False  # berat hasil perkiraan otomatis, belum dicek pemilik
+    dims_estimated: bool = False  # ukuran dus hasil perkiraan otomatis
     length_cm: int = Field(default=0, ge=0, le=500)
     width_cm: int = Field(default=0, ge=0, le=500)
     height_cm: int = Field(default=0, ge=0, le=500)
@@ -227,6 +228,7 @@ def to_product(f: ProductForm, store: dict) -> dict:
         "low_stock_alert": f.low_stock_alert,
         "variant_options": [o.model_dump() for o in f.variant_options] if rows else [], "variants": rows,
         "specs": f.specs, "weight_grams": f.weight_grams, "weight_estimated": f.weight_estimated and f.weight_grams > 0, "length_cm": f.length_cm, "width_cm": f.width_cm, "height_cm": f.height_cm,
+        "dims_estimated": f.dims_estimated and f.length_cm > 0,
         "couriers": f.couriers, "ship_regular": f.ship_regular, "ship_cargo": f.ship_cargo,
         "preorder": f.preorder, "preorder_days": f.preorder_days if f.preorder else 0, "processing_days": f.processing_days,
         "seo_title": f.seo_title.strip(), "meta_description": f.meta_description.strip(),
@@ -252,6 +254,7 @@ def to_form(p: dict) -> dict:
         variants=[VariantRow(**{k: v.get(k) for k in VariantRow.model_fields if k in v}) for v in p.get("variants", [])],
         specs=p.get("specs") or {}, weight_grams=min(p.get("weight_grams") or 0, 500000), weight_estimated=bool(p.get("weight_estimated")),
         length_cm=p.get("length_cm") or 0, width_cm=p.get("width_cm") or 0, height_cm=p.get("height_cm") or 0,
+        dims_estimated=bool(p.get("dims_estimated")),
         couriers=p.get("couriers") or [], ship_regular=p.get("ship_regular", True), ship_cargo=p.get("ship_cargo", False),
         preorder=p.get("preorder", False), preorder_days=p.get("preorder_days") or 0, processing_days=p.get("processing_days") or 1,
         seo_title=(p.get("seo_title") or "")[:70], meta_description=(p.get("meta_description") or "")[:160], keywords=(p.get("keywords") or [])[:10],
@@ -421,6 +424,13 @@ def register(api, db, *, get_current_user, log_activity, origin_label):
                 raise HTTPException(status_code=422, detail={"message": "Toko belum punya kurir kargo", "errors": {
                     "shipping": "Toko belum punya kurir kargo. Aktifkan pengiriman reguler atau tambahkan kurir kargo di menu Pengiriman"}})
         f.brand = await canonical_brand(db, f.brand)
+        if body.product_id:  # the estimate mark only survives while the value itself is unchanged (server decides, not the client)
+            same_w = f.weight_grams == (old.get("weight_grams") or 0)
+            same_d = [f.length_cm, f.width_cm, f.height_cm] == [old.get(k) or 0 for k in ("length_cm", "width_cm", "height_cm")]
+            f.weight_estimated = same_w and f.weight_estimated and bool(old.get("weight_estimated"))
+            f.dims_estimated = same_d and f.dims_estimated and bool(old.get("dims_estimated"))
+        else:
+            f.weight_estimated = f.dims_estimated = False
         if body.product_id:
             doc = to_product(f, store)
             await db.products.update_one({"product_id": body.product_id}, {"$set": doc})
@@ -441,5 +451,7 @@ def register(api, db, *, get_current_user, log_activity, origin_label):
     import product_bulk  # imports this module's form helpers
     product_bulk.register(api, db, actor=actor, target_store=target_store, editable=editable, owner_key=owner_key,
                           form_of=form_of, load_parents=load_parents, log_activity=log_activity)
+    import category_suggest
     import weight_estimate
+    category_suggest.register(api, db, actor=actor, target_store=target_store, log_activity=log_activity)  # before {kind} routes
     weight_estimate.register(api, db, actor=actor, target_store=target_store, log_activity=log_activity)

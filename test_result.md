@@ -183,3 +183,9 @@
 ## Iteration 42 — Katalog Produk + weight-only no-notify fix
 - /search renamed "Katalog Produk" (catalog-title); shows ALL products by default sorted Terbaru; filters/sort unchanged. New tab route /katalog (app/(tabs)/katalog.tsx re-exports search) — no back button, no autofocus. Bottom nav item tab-katalog "Katalog" replaces tab-kategori, highlighted on /katalog, /search, /kategori, /category. Search boxes push /search?focus=1 (autofocus + back). Placeholder "Cari di Katalog Produk…". /kategori route still exists (home "Lihat Semua" categories).
 - product_notify.on_info: no longer compares `image` (editor swaps thumbnail for full cover) nor raw category/subcategory (editor splits imported category into main+sub); compares leaf category instead. Verified: 30 random imported products weight-only via editor and 30 via Excel -> 0 events; real description change -> info event.
+
+## Iteration 43 — Ukuran dus massal + perkiraan
+- weight_estimate.py generalized: /api/product-editor/{weight|dims}/summary, /{kind}/preview, /{kind}/{preview_id}/apply (dims overrides as [P,L,T]; sets length/width/height_cm + dims_estimated=true on still-missing). DIMS table per product type; per dus/isi N scales each side by N^(1/3).
+- Bulk: BulkIn.dims [P,L,T] 1..500 (+dims_only_missing) -> sets dims, dims_estimated=false; invalid -> 400; skipped reason "Sudah punya ukuran dus". Excel import changing Panjang/Lebar/Tinggi clears dims_estimated. Editor: changing any dimension clears; badge pe-dims-estimated.
+- List: filters no_dims / estimated_dims, row badges pl-nodims-*, pl-estdims-*, banner pl-dims-banner (pl-dims-counts, pl-dims-show, pl-dims-estimate, pl-dims-review), bulk button pl-bulk-dims (bulk-dim-0/1/2). Estimate dialog kind=dims: rows input "P×L×T" (weight-input-*).
+- No product currently has dims or weight; leave it that way.

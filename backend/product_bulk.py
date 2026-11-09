@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field, ValidationError
 import history
 import product_notify
 from pricing import scale_tiers
-from weight_estimate import MISSING as MISSING_WEIGHT
+from weight_estimate import MISSING as MISSING_WEIGHT, MISSING_DIMS
 from product_editor import ProductForm, TierRow, canonical_brand, to_form, to_product, validate
 
 MAX_ROWS = 10000
@@ -130,6 +130,8 @@ class BulkIn(BaseModel):
     status: str = Field(default="", pattern="^(|active|inactive)$")
     weight_grams: int = Field(default=0, ge=0, le=500000)  # >0: set this packed weight (marks it as checked, not estimated)
     weight_only_missing: bool = False  # only products that have no weight yet
+    dims: List[int] = Field(default=[], max_length=3)  # [P, L, T] cm, all 1..500 -> set box size (marks it as checked)
+    dims_only_missing: bool = False
 
 
 def list_row(p: dict) -> dict:
@@ -137,7 +139,8 @@ def list_row(p: dict) -> dict:
     return {"product_id": p["product_id"], "name": p.get("name", ""), "image": p.get("image", ""), "sku": p.get("sku", ""),
             "price": p.get("price", 0), "original_price": p.get("original_price") or p.get("price", 0), "stock": p.get("stock", 0),
             "status": p.get("status", "active"), "variants": len(vs), "sold": p.get("sold", 0), "store_id": p.get("store_id"),
-            "weight_grams": p.get("weight_grams") or 0, "weight_estimated": bool(p.get("weight_estimated"))}
+            "weight_grams": p.get("weight_grams") or 0, "weight_estimated": bool(p.get("weight_estimated")),
+            "dims": [p.get("length_cm") or 0, p.get("width_cm") or 0, p.get("height_cm") or 0], "dims_estimated": bool(p.get("dims_estimated"))}
 
 
 def register(api, db, *, actor: Callable, target_store: Callable, editable: Callable, owner_key: Callable, form_of: Callable, load_parents: Callable, log_activity):
@@ -164,6 +167,10 @@ def register(api, db, *, actor: Callable, target_store: Callable, editable: Call
             query.setdefault("$and", []).append(MISSING_WEIGHT)  # keep the search $or intact
         elif status == "estimated_weight":
             query["weight_estimated"] = True
+        elif status == "no_dims":
+            query.setdefault("$and", []).append(MISSING_DIMS)
+        elif status == "estimated_dims":
+            query["dims_estimated"] = True
         total = await db.products.count_documents(query)
         docs = await db.products.find(query, {"_id": 0}).sort([("updated_at", -1), ("product_id", 1)]).skip(max(0, skip)).limit(limit).to_list(limit)
         return {"total": total, "items": [list_row(d) for d in docs], "store_id": store["store_id"]}
@@ -196,7 +203,9 @@ def register(api, db, *, actor: Callable, target_store: Callable, editable: Call
 
     @api.post("/product-editor/bulk")
     async def bulk_edit(body: BulkIn, ctx=Depends(actor)):
-        if not (body.price_mode or body.stock_mode or body.status or body.weight_grams):
+        if body.dims and (len(body.dims) != 3 or not all(1 <= x <= 500 for x in body.dims)):
+            raise HTTPException(status_code=400, detail="Isi panjang, lebar, tinggi 1–500 cm")
+        if not (body.price_mode or body.stock_mode or body.status or body.weight_grams or body.dims):
             raise HTTPException(status_code=400, detail="Pilih perubahan yang ingin diterapkan")
         if body.price_mode == "set" and body.price_value < 100:
             raise HTTPException(status_code=400, detail="Harga minimal Rp100")
@@ -211,8 +220,10 @@ def register(api, db, *, actor: Callable, target_store: Callable, editable: Call
                 continue
             f = ProductForm(**to_form(p))
             set_weight = body.weight_grams and not (body.weight_only_missing and (p.get("weight_grams") or 0) > 0)
-            if body.weight_grams and not set_weight and not (body.price_mode or body.stock_mode or body.status):
-                skipped.append({"product_id": pid, "name": p.get("name", ""), "reason": "Sudah punya berat"})
+            has_dims = all((p.get(k) or 0) > 0 for k in ("length_cm", "width_cm", "height_cm"))
+            set_dims = bool(body.dims) and not (body.dims_only_missing and has_dims)
+            if (body.weight_grams or body.dims) and not (set_weight or set_dims) and not (body.price_mode or body.stock_mode or body.status):
+                skipped.append({"product_id": pid, "name": p.get("name", ""), "reason": "Sudah punya berat" if body.weight_grams else "Sudah punya ukuran dus"})
                 continue
             if body.price_mode:
                 err = new_price(f, body.price_mode, body.price_value)
@@ -227,6 +238,8 @@ def register(api, db, *, actor: Callable, target_store: Callable, editable: Call
                 upd["status"] = body.status
             if set_weight:
                 upd["weight_grams"], upd["weight_estimated"] = body.weight_grams, False
+            if set_dims:
+                upd.update(dict(zip(("length_cm", "width_cm", "height_cm"), body.dims)), dims_estimated=False)
             if upd["stock"] > p.get("stock", 0):
                 upd["restocked_at"] = _now()
             await db.products.update_one({"product_id": pid}, {"$set": upd})
@@ -508,6 +521,8 @@ def register(api, db, *, actor: Callable, target_store: Callable, editable: Call
                     continue
                 if "weight_grams" in changed:
                     form.weight_estimated = False
+                if {"length_cm", "width_cm", "height_cm"} & set(changed):
+                    form.dims_estimated = False
                 if commit:
                     doc = to_product(form, store)
                     if doc["stock"] > p.get("stock", 0):

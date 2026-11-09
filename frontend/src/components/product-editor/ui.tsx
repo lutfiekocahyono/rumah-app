@@ -73,7 +73,7 @@ export const ui = StyleSheet.create({
   inputWrap: { flexDirection: "row", alignItems: "center", backgroundColor: colors.surfaceSecondary, borderRadius: radius.sm, borderWidth: 1, borderColor: colors.border },
   inputErr: { borderColor: colors.error },
   prefix: { paddingLeft: spacing.md, color: colors.muted, fontSize: fontSize.sm },
-  input: { flex: 1, paddingHorizontal: spacing.md, paddingVertical: 10, minHeight: 44, color: colors.onSurface, fontSize: fontSize.sm },
+  input: { flex: 1, minWidth: 0, width: "100%", paddingHorizontal: spacing.md, paddingVertical: 10, minHeight: 44, color: colors.onSurface, fontSize: fontSize.sm },
   errRow: { flexDirection: "row", alignItems: "center", gap: 4 },
   err: { color: colors.error, fontSize: 12, flex: 1 },
   row: { flexDirection: "row", flexWrap: "wrap", gap: spacing.md },

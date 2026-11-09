@@ -27,6 +27,8 @@ const MENU = [
   { icon: "card-outline", label: "Pengaturan Pembayaran", sub: "Kunci Midtrans (Sandbox / Production)", to: "/admin/payments" },
   { icon: "navigate-outline", label: "Pengaturan Ongkir Otomatis", sub: "API key RajaOngkir & lokasi asal tiap toko", to: "/admin/shipping" },
   { icon: "sync-outline", label: "Integrasi Accurate Online", sub: "Kunci API, uji koneksi, gudang & pratinjau barang", to: "/admin/accurate" },
+  { icon: "map-outline", label: "Analisa Pelanggan", sub: "Peta & posisi semua pelanggan yang mengizinkan lokasi", to: "/admin/customers-map" },
+  { icon: "logo-whatsapp", label: "WhatsApp Fonnte", sub: "Token OTP & notifikasi pesanan, uji koneksi & kirim OTP", to: "/admin/fonnte" },
   { icon: "phone-portrait-outline", label: "Notifikasi Push HP", sub: "Aktif/nonaktif push info produk (setelah rilis)", to: "/admin/push" },
 ];
 

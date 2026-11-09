@@ -15,6 +15,7 @@ from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, EmailStr, Field
 from pymongo import ReturnDocument
 
+import fonnte
 import mailer
 import storage
 
@@ -43,9 +44,6 @@ def _pw_ok(pw: str, hashed: Optional[str]) -> bool:
     except Exception:
         return False
 
-
-def otp_test_mode() -> bool:
-    return os.environ.get("OTP_TEST_MODE", "false").lower() == "true"
 
 
 def normalize_phone(p: str) -> str:
@@ -191,15 +189,16 @@ def register(api, db, get_current_user, user_out, make_token):
             raise HTTPException(status_code=400, detail="Nomor HP sudah dipakai akun lain")
         await rate_limit("phone-otp", user["user_id"], 5, 3600)
         code = await issue_code(user["user_id"], "phone_verify", {"phone": phone})
-        token = os.environ.get("FONNTE_TOKEN", "")
-        if otp_test_mode() or not token:
+        token, source = await fonnte.get_token()
+        if fonnte.otp_test_mode(source):
             return {"message": "Mode uji: kode ditampilkan di layar", "phone": phone, "dev_code": code}
         try:
-            async with httpx.AsyncClient(timeout=10) as c:
-                await c.post("https://api.fonnte.com/send", headers={"Authorization": token}, data={
-                    "target": phone, "message": f"Kode verifikasi Pusat Grosir Sidoarjo: {code}\nBerlaku 10 menit. Jangan bagikan kode ini."})
+            r = await fonnte.send(token, phone, f"Kode verifikasi Pusat Grosir Sidoarjo: {code}\nBerlaku 10 menit. Jangan bagikan kode ini.")
         except Exception:
             log.exception("Fonnte OTP failed")
+            raise HTTPException(status_code=502, detail="Gagal mengirim WhatsApp, coba lagi")
+        if not r.get("status"):
+            log.error("Fonnte OTP rejected: %s", r)
             raise HTTPException(status_code=502, detail="Gagal mengirim WhatsApp, coba lagi")
         return {"message": f"Kode dikirim ke WhatsApp {phone}", "phone": phone}
 

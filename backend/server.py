@@ -25,6 +25,8 @@ import accurate
 import accurate_sync
 import product_notify
 import push
+import fonnte
+import customer_location
 import order_tasks
 from order_tasks import COD_PICKUP_HOURS, RELEASE_STATUSES
 import promo
@@ -1378,6 +1380,8 @@ accurate.register(api, db, require_admin)
 accurate_sync.register(api, db, require_admin)
 _product_digest_loop = product_notify.register(api, db, require_admin, get_current_user)
 push.register(api, db, get_current_user, require_admin)
+fonnte.register(api, db, require_admin, account.normalize_phone)
+customer_location.register(api, db, get_owner=get_owner, require_admin=require_admin)
 
 app.include_router(api)
 
