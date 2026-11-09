@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { View, Text, StyleSheet, Pressable, Keyboard, Platform } from "react-native";
-import { usePathname, useRouter } from "expo-router";
+import { useGlobalSearchParams, usePathname, useRouter } from "expo-router";
 import { SafeAreaInsetsContext, useSafeAreaInsets } from "react-native-safe-area-context";
 import Icon from "@react-native-vector-icons/ionicons";
 
@@ -10,7 +10,7 @@ import { useCart } from "@/src/cart-context";
 // login / daftar / pembayaran stay plain so buyers can focus on finishing
 const PLAIN = [/^\/login/, /^\/register/, /^\/forgot-password/, /^\/checkout/];
 // these already have their own search box at the top (branch store page: only "Cari di <toko>")
-const OWN_SEARCH = [/^\/$/, /^\/search/, /^\/katalog/, /^\/scan/, /^\/shop\//];
+const OWN_SEARCH = [/^\/$/, /^\/search/, /^\/katalog/, /^\/scan/, /^\/shop\//, /^\/akun\/?$/, /^\/keranjang\/?$/];
 
 const ITEMS = [
   { key: "home", label: "Beranda", icon: "home", to: "/", match: (p: string) => p === "/" },
@@ -74,6 +74,7 @@ function BottomNav({ path, bottom }: { path: string; bottom: number }) {
 /** Search box on top + navigation bar at the bottom of every page (except login & payment). */
 export function AppChrome({ children }: { children: React.ReactNode }) {
   const path = usePathname() || "/";
+  const { toko } = useGlobalSearchParams<{ toko?: string }>();
   const insets = useSafeAreaInsets();
   const [kb, setKb] = useState(false);
   useEffect(() => {
@@ -83,7 +84,8 @@ export function AppChrome({ children }: { children: React.ReactNode }) {
     return () => { a.remove(); b.remove(); };
   }, []);
   const plain = PLAIN.some((r) => r.test(path));
-  const showTop = !plain && !OWN_SEARCH.some((r) => r.test(path));
+  // category opened from a branch store page (?toko=): no catalog search, the buyer stays in that store
+  const showTop = !plain && !OWN_SEARCH.some((r) => r.test(path)) && !(toko && path.startsWith("/category/"));
   const showBottom = !plain && !kb;
   // screens add their own safe-area padding: give them 0 where our bars already cover the notch / home indicator
   const inner = { ...insets, top: showTop ? 0 : insets.top, bottom: showBottom ? 0 : insets.bottom };

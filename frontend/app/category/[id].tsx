@@ -69,9 +69,11 @@ export default function CategoryPage() {
           <Text style={styles.title}>{cat?.name ?? "Kategori"}</Text>
           {shopName ? <Text testID="cat-shop-name" style={styles.sub}>di {shopName}</Text> : null}
         </View>
-        <Pressable testID="cat-search" hitSlop={8} onPress={() => router.push("/search?focus=1" as any)}>
-          <Icon name="search" size={22} color={colors.onSurface} />
-        </Pressable>
+        {toko ? <View style={{ width: 22 }} /> : (
+          <Pressable testID="cat-search" hitSlop={8} onPress={() => router.push("/search?focus=1" as any)}>
+            <Icon name="search" size={22} color={colors.onSurface} />
+          </Pressable>
+        )}
       </View>
 
       <View style={styles.chipsWrap}>
