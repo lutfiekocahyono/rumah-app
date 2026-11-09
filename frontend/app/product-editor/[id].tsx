@@ -57,7 +57,8 @@ export default function ProductEditor() {
   const draftRef = useRef<string | null>(draft ?? null); // always the latest draft id (autosave may finish between renders)
   const savingRef = useRef<Promise<unknown> | null>(null);
   const setDraft = (d: string | null) => { draftRef.current = d; setDraftId(d); };
-  const loaded = (f: ProductForm) => { setForm(f); setSaved(JSON.stringify(f)); };
+  const [formKey, setFormKey] = useState(0); // new key per loaded form: BasicInfo forgets the auto-category of the previous one
+  const loaded = (f: ProductForm) => { setForm(f); setSaved(JSON.stringify(f)); setFormKey((k) => k + 1); };
 
   const flash = (ok: boolean, text: string) => { setToast({ ok, text }); setTimeout(() => setToast(null), 3500); };
 
@@ -211,7 +212,7 @@ export default function ProductEditor() {
             <View style={[styles.cols, twoCol && { flexDirection: "row", alignItems: "flex-start" }]}>
               <View style={{ flex: 1, gap: spacing.lg, minWidth: 0 }}>
                 {!twoCol ? side : null}
-                <BasicInfo form={form} set={set} errors={errors} cats={cats} ctx={ctx} storeId={storeId} onStore={setStoreId} />
+                <BasicInfo key={formKey} form={form} set={set} errors={errors} cats={cats} ctx={ctx} storeId={storeId} onStore={setStoreId} />
                 <MediaSection images={form.images} video={form.video} error={errors.images}
                   onImages={(f) => setForm((x) => (x ? { ...x, images: f(x.images) } : x))} onVideo={(u) => set({ video: u })}
                   maxImages={ctx.limits.images} imageMb={ctx.limits.image_mb} videoMb={ctx.limits.video_mb} />

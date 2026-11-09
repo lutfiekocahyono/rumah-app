@@ -1,0 +1,35 @@
+{
+  "summary": "Tested automatic category suggestion in the new-product editor. Backend: 14/14 pytest pass. GET /api/product-editor/category-suggest returns 401 without a token and 403 for a customer. 'Panci Stainless 24cm' gives dapur/peralatan-masak (tinggi, kata 'Panci') for both admin and jombang. 'Rice Cooker Miyako' gives audio-elektronik/elektronik-rumah-tangga. An unknown name, a name shorter than 3 characters, or an empty name gives category ''. Publishing a new product with the suggested category persists dapur/peralatan-masak. Frontend, admin@pgs.id via pl-add -> /product-editor/new: typing the name fills pe-category 'Dapur' and pe-subcategory 'Peralatan Masak' after ~0.6s (still empty at 300ms), and pe-cat-auto is visible. Renaming to 'Rice Cooker Miyako' updates to Audio & Elektronik / Elektronik Rumah Tangga. A manual pick via pe-cat-fashion hides the hint, and later name edits do not overwrite it. Editing existing product pgs-10611 and renaming it to 'Panci...' keeps Audio & Elektronik / Audio, with no hint. jombang@pgs.id: auto works. Manually picking sub pe-cat-peralatan-dapur stops the auto-follow. A draft with no category gets the auto category, and publishing via pe-publish -> confirm-ok returned 200; the DB has category=dapur, subcategory=peralatan-masak. One medium bug: switching to a saved draft via a pe-draft-<id> chip while auto-follow is active overwrites the draft's saved category. All TEST_ products and drafts were cleaned up.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/product-editor/category-suggest", "issue": "The similar-products fallback can give odd results. 'TEST_Draft Manual Fashion' -> furniture/pabrik-lemari-plastik (confidence 'sedang') even though 'Fashion' is itself a main category name. Consider matching category names as keywords too."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "BasicInfo auto-category (basic-info.tsx:53-66)", "issue": "The 'auto' state is local to BasicInfo and is never reset when the parent loads another form on the same screen (router.setParams({draft}) from the pe-draft-<id> chips or pe-resume-open; BasicInfo is not remounted). Repro: as admin on /product-editor/new, type 'Rice Cooker Miyako' (auto fills) and tap the pe-draft-<id> chip of a draft saved with category Fashion. The draft's category is immediately replaced by Furniture / Lemari Plastik (suggested from the draft name), pe-cat-auto shows, and later name edits keep overwriting it. Opening the same draft by direct URL keeps Fashion (correct).", "testID": "pe-category / pe-draft-<id>", "priority": "MEDIUM"},
+      {"component": "BasicInfo auto-category hint", "issue": "When the name changes to something with no suggestion (e.g. 'Xyzqw Blorpt'), the previous auto category stays and pe-cat-auto still says 'diisi otomatis dari nama produk (kata “Rice Cooker”)'. The hint no longer matches the name. Consider clearing the auto category, or the hint, when the suggestion is empty.", "testID": "pe-cat-auto", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iter69_category_suggest.py", "/app/backend/tests/ui_iter69_helper.py", "/app/test_reports/pytest/iter69.xml"],
+  "action_items": [
+    "Reset the auto-category state whenever a new form is loaded on the same screen (draft chip, resume draft, Simpan & Tambah Baru). For example, add key={draftId ?? productId ?? 'new'} on <BasicInfo>, or track the auto-filled category value and follow only while form.category === lastAutoCategory.",
+    "Optional: when category-suggest returns an empty category for the current name, clear the stale auto category and hide pe-cat-auto."
+  ],
+  "critical_code_review_comments": [
+    "basic-info.tsx: follow = !form.category || !!auto. Because auto is never cleared by external form loads, a stale auto=true lets suggestions overwrite categories loaded from drafts.",
+    "[id].tsx 'Simpan & Tambah Baru' deliberately keeps the category. If it was auto-filled, auto stays set, so the next product's name will replace the kept category. That is probably fine, but it is inconsistent with the manual-pick case, where the category is kept and never re-suggested.",
+    "category_suggest.py: the in-process cache rebuilds an index of up to 50k products every 10 minutes on the first request, so that request is slower. Acceptable."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter69_category_suggest.py", "/app/backend/tests/ui_iter69_helper.py"],
+  "success_rate": {"backend": "100% (14/14)", "frontend": "90% (all requested flows pass; 1 medium bug in the draft-switch edge case)"},
+  "seed_data_creation": "None kept. Created and deleted: TEST_Panci Stainless 24cm (pytest, jombang), TEST_Panci Stainless 24cm UI (sp_6800753f2f, via UI), and drafts dr_05e6f63490 / dr_ae9b0cd2dd. The DB was checked afterwards: 0 TEST_Panci products and 0 drafts.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run pytest with EXPO_BACKEND_URL=<EXPO_PUBLIC_BACKEND_URL from frontend/.env> -p no:xdist -o addopts=''. For UI login, set localStorage 'pgs_auth_token' to a token from /api/auth/login. Go directly to /product-editor/new; going through /product-editor/list for jombang gave intermittent 401 'Not authenticated' on /product-editor/context in 2 of 5 runs, probably uvicorn reloading after test files were created in /app/backend/tests. Hide the location-lock modal by setting display:none on its position:fixed ancestors. jombang cannot read pgs-official products in the editor (they are shared), so use admin to get a source form for publish payloads.",
+  "rca_of_issue": "Draft-switch overwrite: [id].tsx loads drafts with router.setParams and replaces the form without unmounting BasicInfo. BasicInfo's useState 'auto' survives from the previous typing, so follow stays true, and the effect on [form.name, follow] calls category-suggest for the draft's name and writes set({category, subcategory}). Mitigation: key BasicInfo by form identity, or reset auto in the parent's loaded()."
+}

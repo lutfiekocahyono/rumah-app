@@ -251,3 +251,5 @@ Iteration 2: import all data from pusatgrosirsidoarjo.com; tiered pricing (pembe
 - [Done] Kotak cari katalog global & ikon kaca pembesar disembunyikan di semua /category/* (satu kotak cari dalam halaman). Label filter stok tetap 'Tersedia di <cabang pilihan>' karena filter in_stock memang memakai stok cabang pilihan pembeli (diverifikasi: Dapur Sidoarjo 2774).
 
 - [Done] Filter 'Ada harga grosir' = ada harga bertingkat mulai 2+ pcs (min_qty>1); cabang dengan daftar harga sendiri memakai tier_prices di store_stock cabang itu, Sidoarjo memakai tier katalog.
+
+- [Done] Usulan kategori otomatis di editor produk: GET /api/product-editor/category-suggest?name= (kata kunci + produk mirip, indeks cache 10 menit). Kategori kosong diisi otomatis dari nama (hint pe-cat-auto) dan terus mengikuti nama sampai admin memilih manual; produk lama/draft berkategori tidak ditimpa (BasicInfo key per form).

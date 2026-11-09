@@ -1,10 +1,10 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { View, Text, Pressable, StyleSheet, Modal, TextInput, FlatList } from "react-native";
 import Icon from "@react-native-vector-icons/ionicons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { colors, fontSize, radius, spacing } from "@/src/theme";
-import type { Category, EditorContext, ProductForm } from "@/src/api";
+import { api, type Category, type EditorContext, type ProductForm } from "@/src/api";
 import { FieldError, Input, Pill, Section, ui } from "./ui";
 import { BrandInput } from "./brand-input";
 import { RichEditor } from "./rich-editor";
@@ -49,6 +49,25 @@ export function BasicInfo({ form, set, errors, cats, ctx, storeId, onStore }: {
   const mains = useMemo(() => cats.filter((c) => !c.parent), [cats]);
   const subs = useMemo(() => cats.filter((c) => c.parent === form.category), [cats, form.category]);
   const nameOf = (id: string) => cats.find((c) => c.category_id === id)?.name;
+  // empty category: fill it from the product name; keeps following the name until the admin picks one himself
+  const [auto, setAuto] = useState<{ reason: string; confidence: string } | null>(null);
+  const follow = !form.category || !!auto;
+  useEffect(() => {
+    const name = form.name.trim();
+    if (!follow || name.length < 3) return;
+    let live = true;
+    const t = setTimeout(() => api.categorySuggest(name).then((r) => {
+      if (!live) return;
+      if (!r.category) { // no clue in the new name: drop the old automatic choice instead of keeping a stale one
+        if (auto) { set({ category: "", subcategory: "" }); setAuto(null); }
+        return;
+      }
+      set({ category: r.category, subcategory: r.subcategory });
+      setAuto({ reason: r.reason, confidence: r.confidence });
+    }).catch(() => {}), 600);
+    return () => { live = false; clearTimeout(t); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.name, follow]);
   return (
     <Section title="Informasi Dasar" icon="information-circle-outline" testID="pe-basic" subtitle="Nama, kategori, dan deskripsi yang jelas membuat produk mudah ditemukan.">
       {ctx?.admin && ctx.stores.length ? (
@@ -79,6 +98,14 @@ export function BasicInfo({ form, set, errors, cats, ctx, storeId, onStore }: {
           <FieldError msg={errors.subcategory} />
         </View>
       </View>
+      {auto && form.category ? (
+        <View style={styles.autoHint} testID="pe-cat-auto">
+          <Icon name="sparkles-outline" size={14} color={colors.brandPrimary} />
+          <Text style={[ui.hint, { flex: 1 }]}>
+            Kategori diisi otomatis dari nama produk ({auto.reason}{auto.confidence === "rendah" ? ", mohon periksa" : ""}). Ketuk kolom kategori untuk menggantinya.
+          </Text>
+        </View>
+      ) : null}
       <View style={ui.row}>
         <BrandInput value={form.brand} onChange={(t) => set({ brand: t })} />
         <Input testID="pe-sku" label="SKU produk" value={form.sku} maxLength={40} onChangeText={(t) => set({ sku: t.toUpperCase() })} placeholder="Contoh: KAOS-001" autoCapitalize="characters" />
@@ -114,12 +141,13 @@ export function BasicInfo({ form, set, errors, cats, ctx, storeId, onStore }: {
       <RichEditor value={form.description} onChange={(t) => set({ description: t })} error={errors.description} />
       <CategoryPicker visible={!!picker} title={picker === "sub" ? "Pilih subkategori" : "Pilih kategori utama"} list={picker === "sub" ? subs : mains}
         onClose={() => setPicker("")}
-        onPick={(c) => { set(picker === "sub" ? { subcategory: c.category_id } : { category: c.category_id, subcategory: "" }); setPicker(""); }} />
+        onPick={(c) => { set(picker === "sub" ? { subcategory: c.category_id } : { category: c.category_id, subcategory: "" }); setPicker(""); setAuto(null); }} />
     </Section>
   );
 }
 
 const styles = StyleSheet.create({
+  autoHint: { flexDirection: "row", alignItems: "flex-start", gap: 6, padding: spacing.sm, borderRadius: radius.md, backgroundColor: colors.brandTertiary },
   overlay: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.35)" },
   sheet: { backgroundColor: colors.surface, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, padding: spacing.lg, gap: spacing.md, width: "100%", maxWidth: 640, alignSelf: "center" },
   catRow: { flexDirection: "row", alignItems: "center", minHeight: 48, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border, paddingHorizontal: spacing.sm },

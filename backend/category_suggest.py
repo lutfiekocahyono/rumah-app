@@ -107,6 +107,25 @@ def register(api, db, *, actor, target_store, log_activity):
     async def valid_ids() -> Dict[str, dict]:
         return {c["category_id"]: c for c in await db.categories.find({}, {"_id": 0, "category_id": 1, "name": 1, "parent": 1}).to_list(5000)}
 
+    cache: dict = {}
+
+    @api.get("/product-editor/category-suggest")
+    async def category_suggest(name: str = "", ctx=Depends(actor)):
+        """Usulan kategori saat menambah produk, dari nama produk (admin tetap bisa menggantinya)."""
+        name = name.strip()[:150]
+        if len(name) < 3:
+            return {"suggested": "", "category": "", "subcategory": "", "confidence": "rendah", "reason": ""}
+        now = datetime.now(timezone.utc)
+        if not cache or now - cache["at"] > timedelta(minutes=10):  # the word index of ~6.000 products is rebuilt every 10 min
+            cats = await valid_ids()
+            docs = await db.products.find({"category": {"$in": [c for c in cats if c != "lainnya"]}}, {"_id": 0, "name": 1, "category": 1}).to_list(50000)
+            cache.update(at=now, cats=cats, index=Index(docs))
+        cats = cache["cats"]
+        s = suggest(name, cache["index"], set(cats) - {"lainnya"})
+        c = cats.get(s["suggested"]) or {}
+        parent = c.get("parent")  # the editor has main category + sub-category
+        return {**s, "category": parent or c.get("category_id", ""), "subcategory": c.get("category_id", "") if parent else ""}
+
     def uncategorized(ids) -> dict:
         return {"$or": [{"category": {"$nin": list(ids)}}, {"category": {"$exists": False}}]}
 
