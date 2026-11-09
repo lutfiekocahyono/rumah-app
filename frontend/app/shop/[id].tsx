@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { View, Text, StyleSheet, FlatList, ActivityIndicator, Dimensions, Pressable, Image, Linking, RefreshControl } from "react-native";
+import { View, Text, StyleSheet, FlatList, ActivityIndicator, Dimensions, Pressable, Image, Linking, RefreshControl, TextInput, ScrollView } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Icon from "@react-native-vector-icons/ionicons";
@@ -24,7 +24,7 @@ function InfoRow({ icon, text, testID }: { icon: string; text: string; testID: s
   );
 }
 
-function Header({ s }: { s: Shop }) {
+function Header({ s, q, setQ, cat, setCat }: { s: Shop; q: string; setQ: (v: string) => void; cat: string; setCat: (v: string) => void }) {
   return (
     <View style={{ marginBottom: spacing.sm }}>
       <View style={styles.bannerWrap} testID="shop-banner">
@@ -68,6 +68,28 @@ function Header({ s }: { s: Shop }) {
         </View>
       ) : null}
       <Text style={[styles.h, { paddingHorizontal: spacing.lg, marginTop: spacing.md }]}>Produk Toko</Text>
+      {s.product_count ? (
+        <View style={{ gap: spacing.sm, marginTop: spacing.sm }}>
+          <View style={styles.searchBox}>
+            <Icon name="search" size={18} color={colors.muted} />
+            <TextInput testID="shop-search" value={q} onChangeText={setQ} placeholder={`Cari di ${s.name}…`} placeholderTextColor={colors.muted}
+              style={styles.searchInput} returnKeyType="search" />
+            {q ? <Pressable testID="shop-search-clear" hitSlop={10} onPress={() => setQ("")}><Icon name="close-circle" size={18} color={colors.muted} /></Pressable> : null}
+          </View>
+          {s.categories.length > 1 ? (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.xs, paddingHorizontal: spacing.lg }}>
+              {[{ category_id: "", name: "Semua", count: s.product_count ?? 0 }, ...s.categories].map((c) => {
+                const on = cat === c.category_id;
+                return (
+                  <Pressable key={c.category_id || "all"} testID={`shop-cat-${c.category_id || "all"}`} onPress={() => setCat(c.category_id)} style={[styles.chip, on && styles.chipOn]}>
+                    <Text style={[styles.chipText, on && { color: colors.onBrandPrimary }]}>{c.name} ({c.count})</Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          ) : null}
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -82,6 +104,9 @@ export default function ShopPage() {
   const [more, setMore] = useState(false);
   const [done, setDone] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [q, setQ] = useState("");
+  const [cat, setCat] = useState("");
+  const filtered = !!(q.trim() || cat);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -93,11 +118,21 @@ export default function ShopPage() {
   }, [id]);
   useEffect(() => { void load(); }, [load]);
 
+  // search / category inside this store
+  const first = React.useRef(true);
+  useEffect(() => {
+    if (first.current) { first.current = false; return; }
+    if (!id) return;
+    let live = true;
+    const t = setTimeout(() => api.shopProducts(id, 0, q.trim(), cat).then((p) => { if (live) { setItems(p); setDone(p.length < 40); } }).catch(() => {}), 300);
+    return () => { live = false; clearTimeout(t); };
+  }, [id, q, cat]);
+
   const loadMore = async () => {
     if (more || done || !id || !items.length) return;
     setMore(true);
     try {
-      const p = await api.shopProducts(id, items.length);
+      const p = await api.shopProducts(id, items.length, q.trim(), cat);
       setItems((c) => { const seen = new Set(c.map((x) => x.product_id)); return [...c, ...p.filter((x) => !seen.has(x.product_id))]; });
       if (p.length < 40) setDone(true);
     } finally { setMore(false); }
@@ -115,9 +150,16 @@ export default function ShopPage() {
           contentContainerStyle={{ gap: GAP, paddingBottom: insets.bottom + spacing.xl }}
           onEndReached={loadMore}
           onEndReachedThreshold={0.5}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await load(); setRefreshing(false); }} />}
-          ListHeaderComponent={<Header s={store} />}
-          ListEmptyComponent={
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); setQ(""); setCat(""); await load(); setRefreshing(false); }} />}
+          keyboardShouldPersistTaps="handled"
+          ListHeaderComponent={<Header s={store} q={q} setQ={setQ} cat={cat} setCat={setCat} />}
+          ListEmptyComponent={filtered ? (
+            <View style={styles.empty} testID="shop-no-match">
+              <Icon name="search-outline" size={32} color={colors.muted} />
+              <Text style={styles.emptyH}>Produk tidak ditemukan di toko ini</Text>
+              <Pressable testID="shop-reset" style={styles.btn} onPress={() => { setQ(""); setCat(""); }}><Text style={styles.btnText}>Tampilkan semua produk toko</Text></Pressable>
+            </View>
+          ) :
             <View style={styles.empty} testID="shop-empty">
               <Icon name="cube-outline" size={36} color={colors.muted} />
               <Text style={styles.emptyH}>{store.official ? "Cabang ini belum punya produk khusus" : "Toko ini belum punya produk"}</Text>
@@ -157,5 +199,10 @@ const styles = StyleSheet.create({
   section: { backgroundColor: colors.surface, paddingVertical: spacing.md, gap: spacing.sm, marginTop: spacing.sm },
   h: { fontSize: fontSize.base, fontWeight: "700", color: colors.onSurface, paddingHorizontal: spacing.lg },
   empty: { alignItems: "center", gap: spacing.sm, padding: spacing.xl },
+  searchBox: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginHorizontal: spacing.lg, paddingHorizontal: spacing.md, minHeight: 44, borderRadius: radius.pill, backgroundColor: colors.surfaceTertiary, borderWidth: 1, borderColor: colors.border },
+  searchInput: { flex: 1, color: colors.onSurface, paddingVertical: 10, fontSize: fontSize.sm },
+  chip: { minHeight: 36, paddingHorizontal: spacing.md, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border, justifyContent: "center", backgroundColor: colors.surface },
+  chipOn: { backgroundColor: colors.brandPrimary, borderColor: colors.brandPrimary },
+  chipText: { fontSize: 13, color: colors.onSurface, fontWeight: "600" },
   emptyH: { fontSize: fontSize.base, fontWeight: "600", color: colors.onSurface, textAlign: "center" },
 });

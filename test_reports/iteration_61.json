@@ -1,0 +1,31 @@
+{
+  "summary": "Retest of iteration-60 fixes. Backend: test_iter60_suggest_shop_search.py (10 passed, 1 skipped because no brand contains 'kes', which is expected) plus new test_iter61_suggest_dedupe.py (4/4 passed: brands that start with the typed text come first for ma/mas/an, duplicate names are dropped regardless of case or spaces). Frontend at 390x844: (1) typing 'mas' and tapping sugg-brand-Maspion shows search-active-brand-Maspion (32px tall, y=135) above search-results (y=171) and Filter (1); tapping the tag removes it and the count goes back to Filter. (2) typing 'kes' and tapping sugg-cat-kesehatan shows search-active-category 'Kesehatan' (32px); tapping removes it. (3) Suggestions close on wheel-scroll and on touchstart over the results. (4) /shop/pgs-jombang with TEST products shows shop-search with a 1px border (#E5E7EB), surfaceTertiary background, 44px tall; search, clear and category chips work. TEST products deleted afterwards (product_count is back to 0). All requested fixes pass.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/products/suggest", "issue": "Duplicate names are removed after the product list is cut to 6, so the response can return fewer than 6 products even when more unique matches exist."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "search.tsx search-results", "issue": "Clicking the results with a desktop mouse does not close suggestions, because only onTouchStart and onScroll are handled. Touch and scroll do close them.", "testID": "search-results", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iter60_suggest_shop_search.py", "/app/backend/tests/test_iter61_suggest_dedupe.py", "/app/test_reports/pytest/iter61.xml"],
+  "action_items": [
+    "Optional: in suggest_products, remove duplicate names before limiting the list to 6 (for example, fetch more and then slice), so the list stays full.",
+    "Optional: also close suggestions on a mouse press over the results on desktop web (for example onPressIn or onMouseDown)."
+  ],
+  "critical_code_review_comments": [
+    "search.tsx: 'Hapus semua filter' calls setFilters(NO_FILTERS) but does not clear catName. There is no visible effect today because the tag also needs filters.category, but the state is left stale."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter61_suggest_dedupe.py"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "Created TEST products for jombang (Zqdupe x3 via pytest, Kesxtest/TEST_Dapur x3 via ui_iter60_helper.py) and deleted all of them by product_id.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "The backend URL is EXPO_PUBLIC_BACKEND_URL in frontend/.env (not EXPO_BACKEND_URL). To make the Jombang shop search box appear, run 'python ui_iter60_helper.py create|delete' from backend/tests. Run pytest with -n0."
+}

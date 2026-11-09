@@ -9,6 +9,7 @@ import { api, type Product } from "@/src/api";
 import { ProductCard } from "@/src/components/product-card";
 import { useStore } from "@/src/store-context";
 import { Chip, FilterSheet, NO_FILTERS, activeCount, toQuery, type SearchFilters } from "@/src/components/search-filters";
+import { SearchSuggestions } from "@/src/components/search-suggestions";
 
 const { width: screenW } = Dimensions.get("window");
 const CARD_GAP = spacing.md;
@@ -33,6 +34,8 @@ export default function Search() {
   const [loading, setLoading] = useState(false);
   const [more, setMore] = useState(false);
   const [done, setDone] = useState(true);
+  const [sugg, setSugg] = useState(false);
+  const [catName, setCatName] = useState(""); // category picked from a suggestion, shown as a removable tag
   const req = useRef(0);
 
   const nFilters = activeCount(filters);
@@ -76,12 +79,19 @@ export default function Search() {
             testID="search-input"
             placeholder="Cari di Katalog Produk…"
             placeholderTextColor={colors.muted}
-            value={q} onChangeText={setQ} autoFocus={!inTab && params.focus === "1"}
+            value={q} onChangeText={(t) => { setQ(t); setSugg(true); }} autoFocus={!inTab && params.focus === "1"}
+            onFocus={() => setSugg(true)} onSubmitEditing={() => setSugg(false)} returnKeyType="search"
             style={{ flex: 1, color: colors.onSurface, paddingVertical: 10 }}
           />
-          {q ? <Pressable testID="search-clear" hitSlop={12} onPress={() => setQ("")}><Icon name="close-circle" size={20} color={colors.muted} /></Pressable> : null}
+          {q ? <Pressable testID="search-clear" hitSlop={12} onPress={() => { setQ(""); setSugg(false); }}><Icon name="close-circle" size={20} color={colors.muted} /></Pressable> : null}
         </View>
       </View>
+      {sugg ? (
+        <SearchSuggestions q={q}
+          onBrand={(b) => { setSugg(false); setQ(""); setFilters((f) => ({ ...f, brands: f.brands.includes(b) ? f.brands : [...f.brands, b] })); }}
+          onCategory={(id, name) => { setSugg(false); setQ(""); setCatName(name); setFilters((f) => ({ ...f, category: id })); }}
+          onSearch={(t) => { setSugg(false); setQ(t); }} />
+      ) : null}
 
       <View style={styles.bar}>
         <Pressable testID="search-filter-btn" style={[styles.filterBtn, nFilters > 0 && styles.filterBtnOn]} onPress={() => setSheet(true)}>
@@ -92,8 +102,13 @@ export default function Search() {
           {SORTS.map((s) => <Chip key={s.key} label={s.label} on={sort === s.key} onPress={() => setSort(s.key)} testID={`search-sort-${s.key}`} />)}
         </ScrollView>
       </View>
-      {filters.brands.length ? (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0 }} contentContainerStyle={styles.activeRow}>
+      {filters.brands.length || (filters.category && catName) ? (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0, flexShrink: 0 }} contentContainerStyle={styles.activeRow}>
+          {filters.category && catName ? (
+            <Pressable style={styles.tag} onPress={() => { setCatName(""); setFilters((f) => ({ ...f, category: "" })); }} testID="search-active-category">
+              <Text style={styles.tagText}>{catName}</Text><Icon name="close" size={14} color={colors.brandPrimary} />
+            </Pressable>
+          ) : null}
           {filters.brands.map((b) => (
             <Pressable key={b} style={styles.tag} onPress={() => removeBrand(b)} testID={`search-active-brand-${b}`}>
               <Text style={styles.tagText}>{b}</Text><Icon name="close" size={14} color={colors.brandPrimary} />
@@ -108,11 +123,15 @@ export default function Search() {
         <View style={styles.empty}>
           <Icon name="sad-outline" size={48} color={colors.muted} />
           <Text style={styles.emptyText}>Produk tidak ditemukan</Text>
-          {nFilters ? <Pressable testID="search-clear-filters" onPress={() => setFilters(NO_FILTERS)} hitSlop={8}><Text style={styles.link}>Hapus semua filter</Text></Pressable> : null}
+          {nFilters ? <Pressable testID="search-clear-filters" onPress={() => { setCatName(""); setFilters(NO_FILTERS); }} hitSlop={8}><Text style={styles.link}>Hapus semua filter</Text></Pressable> : null}
         </View>
       ) : (
         <FlatList
           testID="search-results"
+          onScrollBeginDrag={() => setSugg(false)}
+          onScroll={() => { if (sugg) setSugg(false); }}
+          scrollEventThrottle={200}
+          onTouchStart={() => { if (sugg) setSugg(false); }}
           data={results}
           keyExtractor={(p) => p.product_id}
           numColumns={2}

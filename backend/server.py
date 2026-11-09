@@ -824,6 +824,28 @@ async def product_facets(category: Optional[str] = None, q: Optional[str] = None
                                   for k, n in top.items()], key=lambda x: -x["count"])}
 
 
+@api.get("/products/suggest")
+async def suggest_products(q: str = "", x_store_id: Optional[str] = Header(default=None)):
+    """Saran saat mengetik: nama produk, merek, kategori yang cocok untuk cabang pembeli."""
+    q = q.strip()[:60]
+    if len(q) < 2:
+        return {"products": [], "brands": [], "categories": []}
+    base = await _visible(ALL_BRANCHES, x_store_id or "")
+    rx = {"$regex": re.escape(q), "$options": "i"}
+    starts = {"$regex": "^" + re.escape(q), "$options": "i"}
+    prods = await db.products.find({**base, "name": starts}, {"_id": 0, "product_id": 1, "name": 1, "image": 1}).sort("sold", -1).to_list(12)
+    if len(prods) < 12:
+        seen = [p["product_id"] for p in prods]
+        prods += await db.products.find({**base, "name": rx, "product_id": {"$nin": seen}}, {"_id": 0, "product_id": 1, "name": 1, "image": 1}).sort("sold", -1).to_list(12 - len(prods))
+    brands = [b["_id"] for b in await db.products.aggregate([
+        {"$match": {**base, "brand": rx}}, {"$group": {"_id": "$brand", "n": {"$sum": 1}}}, {"$sort": {"n": -1}}, {"$limit": 12}]).to_list(12)]
+    brands = sorted(brands, key=lambda b: 0 if b.lower().startswith(q.lower()) else 1)[:4]  # names starting with the text first
+    seen_names: set = set()
+    prods = [p for p in prods if not (p["name"].strip().lower() in seen_names or seen_names.add(p["name"].strip().lower()))][:6]
+    cats = await db.categories.find({"name": rx}, {"_id": 0, "category_id": 1, "name": 1}).to_list(3)
+    return {"products": prods, "brands": brands, "categories": cats}
+
+
 @api.get("/products/count")
 async def count_products(x_store_id: Optional[str] = Header(default=None)):
     """Number of products buyers of this branch can browse, for the search placeholder."""

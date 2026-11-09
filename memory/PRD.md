@@ -213,3 +213,7 @@ Iteration 2: import all data from pusatgrosirsidoarjo.com; tiered pricing (pembe
 
 ## Iteration 60 — Cari dengan Foto DIBATALKAN (owner: tidak akurat)
 - Removed image_search.py, /cari-foto, PhotoSearchButton, api.imageSearch, background index loop, image_vectors collection, products.img_sig/img_tries, fastembed/onnxruntime packages. app.json permission texts restored. Do not rebuild unless owner asks.
+
+## Iteration 61 — Saran pencarian & Cari dalam toko
+- GET /api/products/suggest?q= (branch-visible products <=6 deduped, brands <=4 prefix-first, categories <=3). Frontend SearchSuggestions under search box (product -> detail, brand/category -> removable filter tag, "Cari semua").
+- Store page: GET /stores/{id}/page returns categories of own products; /own-products?q=&category=. Shop page search box + category chips + no-match reset.

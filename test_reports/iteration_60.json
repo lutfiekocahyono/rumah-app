@@ -1,0 +1,41 @@
+{
+  "summary": "Tested Saran Kata Pencarian (/products/suggest plus SearchSuggestions UI) and Pencarian Dalam Toko (store page categories, own-products q/category, shop UI). Backend: new pytest 10 passed, 1 skipped (no brand contains 'kes'). The test_search_filters.py regression suite passed 16/16. Suggest returns {products<=6, brands<=4, categories<=3}, and q shorter than 2 characters returns empty lists. Prefix matches come before contains matches. It is regex-safe. A Jombang-only product never appears for pgs-jember, pgs-official or a request with no header. Store page categories counts are correct. own-products q/category filters (alone and combined) work, with in-stock items first. Frontend at 390x844: Beranda search-input-open opens /search with the input focused. Typing 'kes' shows search-suggestions with sugg-cat-*, 6 sugg-product-* and sugg-search-all. Tapping sugg-product opens /product/{id}. Tapping sugg-brand-Maspion clears the input, sets Filter (1) and shows Maspion results. sugg-search-all closes the list and shows results. The Katalog tab has the same box, no autofocus and no back button. A category suggestion applies the filter. Sort chips (price_asc) and the filter sheet work. Shop /shop/pgs-jombang with 3 TEST products: shop-search is debounced (one request after typing 'panci') and keeps focus. shop-cat-kesehatan, shop-cat-dapur and shop-cat-all filter and reset correctly. shop-no-match and shop-reset work. pgs-jember shows no search box and shows shop-empty. Two bugs: (1) the active brand tag row (search-active-brand-*) collapses to 4px height and is hidden under the results, so it cannot be seen or tapped. (2) Scrolling the results does not hide suggestions in the web preview (onScrollBeginDrag is not fired by wheel, mouse drag or CDP touch). No deprecated Expo packages were found.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/products/suggest", "issue": "Products are sorted only by sold, so newly added items with a matching prefix can be pushed out by older ones. Example: 'Kesxtest...' is missing for q=kes while 6 'Keset' items fill the list. Duplicate names appear when the catalog has duplicate products (e.g. 2x 'Sabun Cuci Piring Pouch 630 ML'). Brand matching is contains-only, with no prefix-first ordering (q=sa -> Samono, Saito, Bellarosa, Indisah)."},
+      {"endpoint": "GET /api/products/suggest", "issue": "Category suggestions come from all categories, including subcategories, with no check that the buyer's branch has products in them. Low impact."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "search.tsx active brand tag row", "issue": "The horizontal ScrollView holding the search-active-brand-* tags renders with height ~4px (parent container 8px, overflow hidden). The 32px tag is clipped and covered by the FlatList, so the user cannot see or remove the brand from the tag; tapping its position opens a product card instead. RCA: the ScrollView has style {flexGrow:0} but keeps the default flexShrink:1 in the column-flex root next to the flex:1 results list. Fix: style={{ flexGrow: 0, flexShrink: 0 }} (or wrap it in a View with a fixed minHeight). Reference: /app/frontend/app/search.tsx:105", "testID": "search-active-brand-*", "priority": "HIGH"},
+      {"component": "search.tsx suggestions hide on scroll", "issue": "FlatList onScrollBeginDrag={() => setSugg(false)} does not fire in the web preview (tested with wheel, mouse drag and CDP touch drag; suggestions stayed visible). It probably works on native. Add a web fallback, e.g. onScroll / onTouchStart or onMomentumScrollBegin, to close suggestions. Reference: /app/frontend/app/search.tsx:125", "testID": "search-results", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/shop/[id]", "issues": ["The shop-search box background is colors.surfaceSecondary rgb(249,250,251), the same as the screen background, and it has no border, so the search box is almost invisible. Use surfaceTertiary (like the /search input) or add a border. Reference: /app/frontend/app/shop/[id].tsx:202"]},
+      {"screen": "/search", "issues": ["An active category filter (chosen from a sugg-cat-* suggestion) has no visible tag; only 'Filter (1)' shows it. Consider a removable category tag like the brand tag.", "The suggestions list pushes the results down rather than overlaying them; with 8 rows only ~200px of results stay visible. Acceptable, but note it."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iter60_suggest_shop_search.py", "/app/backend/tests/ui_iter60_helper.py", "/app/test_reports/pytest/iter60.xml"],
+  "action_items": [
+    "Fix the active brand tag row in search.tsx:105: add flexShrink:0 to the horizontal ScrollView so the search-active-brand-* tags are visible and tappable.",
+    "Make suggestions close when the results scroll on web: add onScroll or onTouchStart as well as onScrollBeginDrag on the search-results FlatList.",
+    "Give the shop-search box contrast: change its background to surfaceTertiary or add a border.",
+    "Optional: rank suggest products prefix-first and then by sold, de-duplicate identical names, and rank brands prefix-first."
+  ],
+  "critical_code_review_comments": [
+    "store_page categories use $unwind of 'categories' only; legacy own products that have only a 'category' field would be missing from the chips. Seller create/update always sets categories, so this is OK for now.",
+    "On pull-to-refresh, shop/[id].tsx calls setQ('')/setCat('') and load() together. When a filter was active this fires a duplicate own-products request; harmless.",
+    "suggest categories query uses db.categories without branch/product-count awareness."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter60_suggest_shop_search.py", "/app/backend/tests/ui_iter60_helper.py"],
+  "success_rate": {"backend": "100% (10/10 + 16/16 regression, 1 skipped)", "frontend": "~85% (2 bugs: brand tag hidden, scroll-hide on web)"},
+  "seed_data_creation": "Created 3 Jombang-only TEST products for pytest and 3 more for UI (sp_a61507c965, sp_8fefa901e2, sp_68feccc869). All were deleted by id (200); /stores/pgs-jombang/own-products is back to [] with product_count 0.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Use ui_iter60_helper.py create|delete to seed or clean up Jombang-only products for shop UI tests. Set localStorage pgs_store_id=pgs-jombang and pgs_store_manual=1 and grant geolocation, otherwise a location modal blocks the UI. The brand 'Maspion' appears for q=mas. test_search_filters.py needs env EXPO_PUBLIC_BACKEND_URL.",
+  "rca_of_issue": "Brand tag hidden: in search.tsx the horizontal ScrollView (style flexGrow:0) shrinks under the flex:1 FlatList because RN-web ScrollView defaults to flexShrink:1. Measured: tag y=135 h=32, ScrollView h=4, results list starts at y=135 and covers it."
+}
