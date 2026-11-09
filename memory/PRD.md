@@ -224,3 +224,7 @@ Iteration 2: import all data from pusatgrosirsidoarjo.com; tiered pricing (pembe
 
 ## Iteration 63 — Bagikan Halaman Toko
 - /shop/[id] header share button: native Share sheet; web touch -> navigator.share; desktop -> copy link. Link /shop/{id}?toko={id} switches buyer branch on open (official stores).
+
+## Iteration 64 — Kode QR Toko
+- GET /api/stores/{id}/qr?format=png|pdf&base= (public): A4 150dpi poster (store name, city, address, logo in header + center of QR level H) via store_qr.py (qrcode + Pillow). QR -> {origin}/shop/{id}?toko={id}; origin = base only if same host as request.
+- Tampilan Toko editor: 'Kode QR toko' card with Unduh PNG / Cetak PDF (admin cabang own store, Super Admin all 3).

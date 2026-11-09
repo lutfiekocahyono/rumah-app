@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, StyleSheet, ScrollView, Pressable, Image, ActivityIndicator, TextInput } from "react-native";
+import { View, Text, StyleSheet, ScrollView, Pressable, Image, ActivityIndicator, TextInput, Linking, Platform } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as ImagePicker from "expo-image-picker";
@@ -12,6 +12,13 @@ import { adminStyles, Card, Chips, Field, PrimaryButton } from "@/src/components
 import { uploadWithProgress } from "@/src/utils/upload-progress";
 
 type Feat = StoreAppearance["featured"][number];
+
+/** QR poster (PNG / A4 PDF) of the store page, opened in the browser to save or print. */
+const openQr = (storeId: string, format: "png" | "pdf") => {
+  const base = process.env.EXPO_PUBLIC_BACKEND_URL;
+  const origin = Platform.OS === "web" ? window.location.origin : base;
+  void Linking.openURL(`${base}/api/stores/${storeId}/qr?format=${format}&base=${encodeURIComponent(origin ?? "")}`);
+};
 
 function ImagePick({ label, url, wide, testID, storeId, onChange }: { label: string; url: string; wide?: boolean; testID: string; storeId: string; onChange: (u: string) => void }) {
   const [busy, setBusy] = useState(false);
@@ -107,6 +114,14 @@ function Editor({ a, onSaved }: { a: StoreAppearance; onSaved: (a: StoreAppearan
       {msg ? <Text style={msg.ok ? adminStyles.ok : adminStyles.err} testID="sa-msg">{msg.text}</Text> : null}
       <PrimaryButton testID="sa-save" label="Simpan tampilan" loading={busy} onPress={save} />
       <PrimaryButton testID="sa-preview" label="Lihat halaman toko" variant="outline" onPress={() => router.push(`/shop/${f.store_id}` as any)} />
+      <Card>
+        <Text style={adminStyles.section}>Kode QR toko</Text>
+        <Text style={adminStyles.muted}>Cetak dan tempel di kasir. Pembeli yang memindai langsung masuk ke halaman toko {f.name}. Logo toko yang sudah disimpan ikut tercetak.</Text>
+        <View style={{ flexDirection: "row", gap: spacing.sm }}>
+          <View style={{ flex: 1 }}><PrimaryButton testID="sa-qr-png" label="Unduh PNG" variant="outline" onPress={() => openQr(f.store_id, "png")} /></View>
+          <View style={{ flex: 1 }}><PrimaryButton testID="sa-qr-pdf" label="Cetak PDF" onPress={() => openQr(f.store_id, "pdf")} /></View>
+        </View>
+      </Card>
     </View>
   );
 }

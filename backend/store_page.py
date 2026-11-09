@@ -4,12 +4,13 @@ import uuid
 from datetime import datetime, timezone
 from typing import List, Optional
 
-from fastapi import Depends, File, HTTPException, UploadFile
+from fastapi import Depends, File, HTTPException, Request, Response, UploadFile
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
 import seller
 import storage
+import store_qr
 
 MAX_FEATURED = 10
 IMAGE_TYPES = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}
@@ -71,6 +72,24 @@ def register(api, db, *, require_admin, get_current_user, get_optional_user, vis
         out["product_count"] = await db.products.count_documents(await visible("all", store_id) if out["official"] else own_query(store_id))
         out["featured"], out["featured_manual"] = await featured(s, user)
         return out
+
+    # ---------------- appearance editor ----------------
+    @api.get("/stores/{store_id}/qr")
+    async def store_qr_code(store_id: str, request: Request, format: str = "png", base: str = ""):
+        """Printable QR poster of the store page (public: it only points to a public page)."""
+        s = await page_store(store_id)
+        if format not in ("png", "pdf"):
+            raise HTTPException(status_code=400, detail="Format harus png atau pdf")
+        host = request.headers.get("x-forwarded-host") or request.headers.get("host", "")
+        proto = request.headers.get("x-forwarded-proto", "https")
+        # the app is served on the same domain as the API; a given base is only used when it is that same host
+        origin = base.rstrip("/") if base and host and host in base else f"{proto}://{host}"
+        url = f"{origin}/shop/{store_id}" + (f"?toko={store_id}" if store_id in seller.OFFICIAL_IDS else "")
+        logo = await store_qr.fetch_logo(s.get("logo", ""))
+        data = await run_in_threadpool(store_qr.render, url, s["name"], s.get("city", ""), s.get("address", ""), logo, format)
+        fname = f"QR-{s['name'].replace(' ', '-')}.{format}"
+        return Response(content=data, media_type="application/pdf" if format == "pdf" else "image/png",
+                        headers={"Content-Disposition": f'inline; filename="{fname}"', "Cache-Control": "no-store"})
 
     # ---------------- appearance editor ----------------
     async def editable(user: dict) -> list:
