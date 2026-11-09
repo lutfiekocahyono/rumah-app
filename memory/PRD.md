@@ -221,3 +221,6 @@ Iteration 2: import all data from pusatgrosirsidoarjo.com; tiered pricing (pembe
 ## Iteration 62 — Halaman toko cabang = seluruh katalog cabang
 - /shop/{official} lists api.products({branch}) = shared + that branch's own products, branch price/stock, sold-out last across all pages (aggregate path in list_products when ?branch=), in_stock = stock>0. Facets accept ?branch=. product_count = whole branch catalog. /stores/{id}/own-products removed.
 - Shop page: search box + Filter sheet (kategori, merek, harga, stok) + sort chips, like Katalog.
+
+## Iteration 63 — Bagikan Halaman Toko
+- /shop/[id] header share button: native Share sheet; web touch -> navigator.share; desktop -> copy link. Link /shop/{id}?toko={id} switches buyer branch on open (official stores).

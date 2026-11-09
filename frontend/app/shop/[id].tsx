@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { View, Text, StyleSheet, FlatList, ActivityIndicator, Dimensions, Pressable, Image, Linking, RefreshControl, TextInput, ScrollView } from "react-native";
+import { View, Text, StyleSheet, FlatList, ActivityIndicator, Dimensions, Pressable, Image, Linking, RefreshControl, TextInput, ScrollView, Platform, Share } from "react-native";
+import * as Clipboard from "expo-clipboard";
 import { useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Icon from "@react-native-vector-icons/ionicons";
@@ -10,6 +11,7 @@ import { ScreenHeader } from "@/src/components/screen-header";
 import { ProductCard } from "@/src/components/product-card";
 import { adminStyles } from "@/src/components/admin-form";
 import { FilterSheet, NO_FILTERS, activeCount, toQuery, type SearchFilters } from "@/src/components/search-filters";
+import { useStore } from "@/src/store-context";
 
 const SORTS = [
   { key: "popular", label: "Terlaris" }, { key: "newest", label: "Terbaru" },
@@ -134,6 +136,33 @@ export default function ShopPage() {
     return () => { live = false; clearTimeout(t); };
   }, [store, fetchPage]);
 
+  // shared link ?toko=<branch>: the buyer continues shopping (detail, cart) at that branch
+  const { toko } = useLocalSearchParams<{ toko?: string }>();
+  const { ready, storeId, stores, choose } = useStore();
+  useEffect(() => {
+    if (ready && toko && toko === id && toko !== storeId && stores.some((s) => s.store_id === toko)) void choose(toko);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, toko, stores.length]);
+
+  const [toast, setToast] = useState("");
+  const showToast = (t: string) => { setToast(t); setTimeout(() => setToast(""), 2500); };
+  const share = async () => {
+    if (!store || !id) return;
+    const base = Platform.OS === "web" ? window.location.origin : process.env.EXPO_PUBLIC_BACKEND_URL;
+    const url = `${base}/shop/${encodeURIComponent(id)}${store.official ? `?toko=${encodeURIComponent(id)}` : ""}`;
+    const text = `Belanja di ${store.name}${store.city ? ` (${store.city})` : ""} - Pusat Grosir Sidoarjo`;
+    try {
+      if (Platform.OS !== "web") { await Share.share({ message: `${text}\n${url}`, url, title: store.name }); return; }
+      const nav: any = typeof navigator !== "undefined" ? navigator : null;
+      const touch = typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches;
+      if (touch && nav?.share) { await nav.share({ title: store.name, text, url }); return; }
+      await Clipboard.setStringAsync(url);
+      showToast("Tautan toko disalin");
+    } catch (e: any) {
+      if (e?.name !== "AbortError") showToast("Gagal membagikan, coba lagi");
+    }
+  };
+
   const loadMore = async () => {
     if (more || done || !id || !items.length) return;
     setMore(true);
@@ -146,7 +175,12 @@ export default function ShopPage() {
 
   return (
     <View style={[adminStyles.root, { paddingTop: insets.top }]} testID="shop-screen">
-      <ScreenHeader title={store?.name ?? "Toko"} />
+      <ScreenHeader title={store?.name ?? "Toko"} right={store ? (
+        <Pressable testID="shop-share-btn" hitSlop={8} onPress={share} accessibilityLabel="Bagikan toko" style={{ minWidth: 44, minHeight: 44, alignItems: "center", justifyContent: "center" }}>
+          <Icon name="share-social-outline" size={22} color={colors.onSurface} />
+        </Pressable>
+      ) : null} />
+      {toast ? <View style={styles.toast} testID="shop-toast"><Text style={styles.toastText}>{toast}</Text></View> : null}
       {err ? <Text style={[adminStyles.err, { padding: spacing.lg }]} testID="shop-error">{err}</Text> : !store ? <ActivityIndicator color={colors.brandPrimary} style={{ marginTop: spacing.xl }} /> : (
         <FlatList
           data={items}
@@ -205,6 +239,8 @@ const styles = StyleSheet.create({
   searchInput: { flex: 1, color: colors.onSurface, paddingVertical: 10, fontSize: fontSize.sm },
   chip: { minHeight: 36, paddingHorizontal: spacing.md, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border, justifyContent: "center", backgroundColor: colors.surface },
   filterChip: { flexDirection: "row", alignItems: "center", gap: 4 },
+  toast: { position: "absolute", bottom: 96, alignSelf: "center", zIndex: 10, backgroundColor: colors.onSurface, borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  toastText: { color: colors.surface, fontSize: fontSize.sm, fontWeight: "600" },
   chipOn: { backgroundColor: colors.brandPrimary, borderColor: colors.brandPrimary },
   chipText: { fontSize: 13, color: colors.onSurface, fontWeight: "600" },
   emptyH: { fontSize: fontSize.base, fontWeight: "600", color: colors.onSurface, textAlign: "center" },
