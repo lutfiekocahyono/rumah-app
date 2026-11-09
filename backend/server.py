@@ -731,9 +731,15 @@ async def _catalog_query(ctx: str, category: Optional[str], q: Optional[str], br
             query.setdefault("$and", []).append({"$or": [{"product_id": {"$in": hit}}, {"price": rng, "product_id": {"$nin": own}}]})
         else:
             query["price"] = rng
-    if wholesale:  # products with their own tiered (grosir) prices
-        query["$or"] = [{"tier_prices.langsung.0": {"$exists": True}}, {"tier_prices.pengecer.0": {"$exists": True}},
-                        {"tier_prices.reseller.0": {"$exists": True}}]
+    if wholesale:  # grosir = a tier price from 2+ pcs; a branch with its own price list uses its own tiers
+        tiers = lambda f: {"$or": [{f"{f}.{t}": {"$elemMatch": {"min_qty": {"$gt": 1}}}} for t in ("langsung", "pengecer", "reseller")]}  # noqa: E731
+        pb = await _priced_branch(stock_branch)
+        if pb:
+            own = await db.store_stock.distinct("product_id", {"store_id": pb, "price": {"$gt": 0}})
+            hit = await db.store_stock.distinct("product_id", {"store_id": pb, "price": {"$gt": 0}, **tiers("tier_prices")})
+            query.setdefault("$and", []).append({"$or": [{"product_id": {"$in": hit}}, {**tiers("tier_prices"), "product_id": {"$nin": own}}]})
+        else:
+            query.setdefault("$and", []).append(tiers("tier_prices"))
     if in_stock:  # available in the buyer's branch (or any branch when none is chosen)
         branches = [stock_branch] if stock_branch in seller.OFFICIAL_IDS else [b for b in seller.OFFICIAL_IDS if b not in await _hidden_stores()]
         others = [b for b in branches if b != seller.PGS_STORE_ID]
