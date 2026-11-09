@@ -10,7 +10,7 @@ import { ConfirmDialog } from "@/src/components/confirm-dialog";
 import { adminStyles, Card, Chips, Field, PrimaryButton, ToggleRow } from "@/src/components/admin-form";
 
 const BRANCHES = [{ id: "pgs-jombang", name: "Mitra PGS Jombang", add: 2000, pct: 2, sub: 3 }, { id: "pgs-jember", name: "Mitra PGS Jember", add: 1000, pct: 1, sub: 5 }];
-const MODES = [{ id: "rp", label: "Rupiah (Rp)" }, { id: "pct", label: "Persen (%)" }] as const;
+const MODES = [{ id: "rp", label: "Rupiah" }, { id: "pct", label: "Persen" }, { id: "mix", label: "Campuran" }] as const;
 const num = (t: string) => Number(t.replace(/[^0-9]/g, "")) || 0;
 const pctOf = (t: string) => Math.max(-50, Math.min(100, Number(t.replace(",", ".").replace(/[^0-9.-]/g, "")) || 0)); // negative = cheaper than Sidoarjo
 const withPct = (v: number, pct: number) => Math.max(100, Math.ceil((v * (10000 + Math.round(pct * 100))) / 1_000_000) * 100); // same integer math as the server
@@ -20,7 +20,7 @@ type R = BranchCopyRule & { name: string; pctText: string };
 export default function BranchCopy() {
   const insets = useSafeAreaInsets();
   const [rules, setRules] = useState<R[]>(BRANCHES.map((b) => ({ store_id: b.id, name: b.name, mode: "rp", price_add: b.add, price_pct: b.pct, pctText: String(b.pct),
-    stock_sub: b.sub, copy_price: true, copy_stock: false, overwrite_manual: false })));
+    stock_sub: b.sub, copy_price: true, copy_stock: false, overwrite_manual: false, threshold: 20000 })));
   const [pv, setPv] = useState<BranchCopyPreview | null>(null);
   const [busy, setBusy] = useState("");
   const [ask, setAsk] = useState(false);
@@ -59,14 +59,21 @@ export default function BranchCopy() {
             {r.copy_price ? (
               <>
                 <Chips testID={`bc-mode-${r.store_id}`} options={[...MODES]} value={r.mode} onChange={(v) => edit(i, { mode: v })} />
-                {r.mode === "rp" ? (
-                  <Field testID={`bc-add-${r.store_id}`} label="Harga ditambah (Rp)" keyboardType="number-pad" value={r.price_add ? String(r.price_add) : ""}
+                {r.mode === "mix" ? (
+                  <Field testID={`bc-threshold-${r.store_id}`} label="Ambang harga Sidoarjo (Rp)" keyboardType="number-pad" value={r.threshold ? String(r.threshold) : ""}
+                    hint={`Di bawah ${formatIDR(r.threshold)} pakai persen, mulai ${formatIDR(r.threshold)} pakai rupiah`}
+                    onChangeText={(t) => edit(i, { threshold: Math.min(1000000000, num(t)) })} />
+                ) : null}
+                {r.mode !== "pct" ? (
+                  <Field testID={`bc-add-${r.store_id}`} label={r.mode === "mix" ? "Produk mahal: harga ditambah (Rp)" : "Harga ditambah (Rp)"} keyboardType="number-pad" value={r.price_add ? String(r.price_add) : ""}
                     onChangeText={(t) => edit(i, { price_add: Math.min(1000000, num(t)) })} />
-                ) : (
-                  <Field testID={`bc-pct-${r.store_id}`} label="Harga ditambah (%) · minus = diskon, mis. -5" keyboardType="numbers-and-punctuation" value={r.pctText}
-                    hint={`Contoh: Rp10.000 → ${formatIDR(withPct(10000, r.price_pct))} · Rp200.000 → ${formatIDR(withPct(200000, r.price_pct))}`}
+                ) : null}
+                {r.mode !== "rp" ? (
+                  <Field testID={`bc-pct-${r.store_id}`} label={`${r.mode === "mix" ? "Produk murah: harga" : "Harga"} ditambah (%) · minus = diskon, mis. -5`} keyboardType="numbers-and-punctuation" value={r.pctText}
+                    hint={r.mode === "mix" ? `Contoh: Rp5.000 → ${formatIDR(withPct(5000, r.price_pct))} · ${formatIDR(r.threshold)} ke atas → +${formatIDR(r.price_add)}`
+                      : `Contoh: Rp10.000 → ${formatIDR(withPct(10000, r.price_pct))} · Rp200.000 → ${formatIDR(withPct(200000, r.price_pct))}`}
                     onChangeText={(t) => edit(i, { pctText: pctOf(t) >= 100 ? "100" : pctOf(t) <= -50 ? "-50" : t.replace(/[^0-9.,-]/g, "").replace(/(?!^)-/g, ""), price_pct: pctOf(t) })} />
-                )}
+                ) : null}
               </>
             ) : null}
             <ToggleRow testID={`bc-copy-stock-${r.store_id}`} label="Salin stok juga" sub="Stok cabang = stok Sidoarjo − pengurang (min 0)" value={r.copy_stock} onChange={(v) => edit(i, { copy_stock: v })} />
@@ -81,6 +88,7 @@ export default function BranchCopy() {
           return (
             <Card key={b.store_id}>
               <Text style={styles.h} testID={`bc-sum-${b.store_id}`}>{b.store_name}: {fmt(b.total - b.unchanged)} dari {fmt(b.total)} produk berubah</Text>
+              {rules[i]?.mode === "mix" ? <Text style={adminStyles.muted} testID={`bc-mix-${b.store_id}`}>Pakai persen: {fmt(b.by_pct)} produk · pakai rupiah: {fmt(b.by_rp)} produk</Text> : null}
               <Text style={adminStyles.muted}>Harga berubah {fmt(b.price_changed)} · stok berubah {fmt(b.stock_changed)}{rules[i]?.copy_stock ? ` · stok jadi 0: ${fmt(b.zero_stock)}` : ""}</Text>
               {b.big_rise ? <Text style={adminStyles.err} testID={`bc-big-${b.store_id}`}>{fmt(b.big_rise)} produk naik 50% atau lebih dari harga Sidoarjo.</Text> : null}
               {b.protected || b.protected_overwritten ? (

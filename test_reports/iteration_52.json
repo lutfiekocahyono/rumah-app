@@ -1,0 +1,39 @@
+{
+  "summary": "Tested (1) the Campuran (mix) rule in Salin Harga & Stok ke Cabang and (2) the fix for Rupiah decreases in Edit Massal Cabang, on backend and UI at 390px. All requested flows work. New test file test_branch_mix.py: 12/12 passed, including applying the mix rule. test_branch_bulk.py (BC_ALLOW_APPLY=1, -n0, run on its own): 26/26 passed. test_branch_copy_pct.py (BC_ALLOW_APPLY=1, -n0, run on its own): 16/16 passed. Mix preview with threshold 20000, +10%, +2000: by_pct 958 and by_rp 5660, which matches the DB count of Sidoarjo prices below 20000. Sample prices match ceil-to-Rp100 integer math. Threshold 0 gives 400 'Isi ambang harga untuk aturan campuran'. Negative pct (-5) in mix works. Mix apply: every non-protected jombang product has the exact expected unit and tier prices, with tiers following their product's choice. Bulk: rp -1000 on Gula Pasir gives 200 (20.500 -> 19.500, tiers -1000). -19000 skips the product with row 0 and reason '... akan jadi 0 / minus. dilewati'. A full-catalog -5000 changed 6603 and skipped 15, and no price, original price or tier is <= 0. pct -91 / -100 give 400 'Persen harus antara -90 dan 100'. UI: the Campuran chip shows threshold/add/pct fields with hints; the preview shows the bc-mix line (jombang only); empty threshold shows the Indonesian error. In the jombang dialog, Turunkan + Rupiah + 1000 shows a preview with no 422; 19000 shows bb-errors with the skipped product and hides Simpan. Real data was backed up and restored exactly after every apply.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/branch-prices/bulk/preview (rp skip reason)", "issue": "`.replace(',', '.')` (meant for the thousands separator) also replaces the comma in the sentence. The reason reads 'akan jadi 0 / minus. dilewati' instead of 'akan jadi 0 / minus, dilewati'. Format only the number. Reference: /app/backend/branch_price.py:204"},
+      {"endpoint": "POST /api/branch-prices/bulk/preview (rp skip reason)", "issue": "The reason always quotes the unit price, even when a grosir tier is what would go <= 0. Example: Gula Pasir unit 20.500 at -19000 would become 1.500, but the reseller tier 18.872 would go negative. The message says 'harga 20.500 akan jadi 0 / minus', which confuses the owner. Mention the lowest price, or say 'harga grosir'."},
+      {"endpoint": "POST /api/branch-prices/bulk/preview (tiers=false)", "issue": "The skip check always includes tier prices, even when tiers=false ('Ubah juga harga grosir' off). Tiers are not changed in that case, so a valid unit-price decrease is skipped. Verified: {mode:rp, value:-19000, q:'Gula Pasir', tiers:false} gives changed 0 with 1 error, although 20.500 -> 1.500 is valid. Reference: /app/backend/branch_price.py:203"}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/seller/branch-prices", "issues": ["Still open from iteration 51: at 390px the tool buttons wrap, leaving 'Unggah Excel' alone on a second row."]},
+      {"screen": "/admin/branch-copy (mix preview)", "issues": ["In mix mode many cheap products drop below the current branch price (e.g. 7.500 -> 6.100), but there is only a 'big_rise' warning and no warning for price drops. Optional: show a 'turun' count."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_branch_mix.py", "/app/backend/tests/test_branch_bulk.py", "/app/backend/tests/test_branch_copy_pct.py", "/app/test_reports/pytest/iter52_mix.xml", "/app/test_reports/pytest/iter52_branch_bulk.xml", "/app/test_reports/pytest/iter52_bc_pct.xml"],
+  "action_items": [
+    "LOW: Fix the skip reason punctuation (format only the number with '.'), and say which price (unit or grosir) would go <= 0.",
+    "LOW: In bulk rp preview, include tier prices in the <= 0 check only when body.tiers is true.",
+    "OPTIONAL: Show the number of price decreases in the branch-copy preview (mix/negative pct)."
+  ],
+  "critical_code_review_comments": [
+    "branch_copy.price_fn: the mix rule picks the mode once per product from the Sidoarjo unit price, so tiers stay consistent. Correct.",
+    "Rule.price_add allows a negative value (ge=-1_000_000), and mode rp/mix clamps to max(1, v+add). A branch-copy price can therefore become Rp1, with no skip or warning (unlike the new bulk protection). The UI sends only positive add values, so this is API-only.",
+    "BulkIn.value now has no schema bound. Per-mode checks give Indonesian 400s for pct outside -90..100, rp beyond ±100M, and 0. Iteration 51's HIGH bug is fixed.",
+    "No deprecated Expo packages found in the reviewed files."
+  ],
+  "updated_files": ["/app/backend/tests/test_branch_mix.py (new)"],
+  "success_rate": {"backend": "54/54 (100%)", "frontend": "100% of requested flows"},
+  "seed_data_creation": "None kept. Fresh bb_backup.pkl and bc_pct_backup.pkl were taken at 06:23 UTC (13236 store_stock docs, price_history 13236, events 0, notifications 1044, branch_copy 24, branch_price_previews 14). After each suite, bb_restore.py (and bc_pct_restore.py after the pct suite) restored the data: 0 mismatched docs, 0 manual_price_at, price_history 13236, events 0. Previews: branch_price_previews is back to 14; branch_copy is now 5. bc_pct_restore removed the 19 old test previews listed in bc_pct_created.json from earlier runs, and I deleted 1 UI preview by id. Notifications are 1045: the extra one is a chat 'Pesan dari Admin Mitra PGS Jombang' (Casserole 32 Cm) at 06:25:39. It was not created by these tests (no chat actions were made); I left it alone.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backup: python /app/tests/backup/bb_backup.py (+ bc_pct_backup.py when running test_branch_copy_pct). Run each suite separately with -n0 and EXPO_PUBLIC_BACKEND_URL from frontend/.env; BC_ALLOW_APPLY=1 enables apply tests. Restore after each: bb_restore.py, plus bc_pct_restore.py for the pct suite (it cleans previews from bc_pct_created.json). UI: set localStorage before the app boots: setting it after page load gave 'Not authenticated' for jombang, while UI login via email-input/password-input/login-submit works. Grant geolocation (-7.5469, 112.2331) and tap 'Izinkan lokasi'. Chip testIDs: bc-mode-<store>-mix, bb-dir-down, bb-mode-rp. Only 1 non-variant product matches 'Gula Pasir' (pgs-51954).",
+  "rca_of_issue": "Iteration 51 HIGH bug (rp decrease limited to -90) is verified fixed. BulkIn.value has no pydantic bound, and branch_price.py:191-196 validates per mode."
+}

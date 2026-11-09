@@ -197,16 +197,19 @@ def register(api, db, get_current_user, seller):
         prods = await scope_products(body.q, body.product_ids)
         rows = {r["product_id"]: r for r in await db.store_stock.find({"store_id": sid, "product_id": {"$in": [p["product_id"] for p in prods]}}, {"_id": 0}).to_list(50000)}
         f = adjust_fn(body.mode, body.value)
-        items = []
+        items, errors = [], []
         for p in prods:
             b = current(p, rows.get(p["product_id"]))
+            if body.mode == "rp" and body.value < 0 and min([b["price"], *([x["price"] for v in b["tier_prices"].values() for x in v] if body.tiers else [])]) + body.value <= 0:
+                errors.append({"row": 0, "product_id": p["product_id"], "reason": f"{p.get('name', '')}: harga{' atau grosirnya' if body.tiers else ''} akan jadi 0 / minus, dilewati"})
+                continue
             price = f(b["price"])
             a = {"price": price, "original_price": max(price, f(b["original_price"])),
                  "tier_prices": adjust_tiers(b["tier_prices"], body.mode, body.value, price) if body.tiers else b["tier_prices"]}
             if a != b:
                 items.append({"product_id": p["product_id"], "name": p.get("name", ""), "before": b, "after": a})
         how = f"{'+' if body.value >= 0 else ''}{body.value:g}{'%' if body.mode == 'pct' else ' Rp'}"
-        return await save_preview(user, sid, items, [], f"Edit massal {how}")
+        return await save_preview(user, sid, items, errors, f"Edit massal {how}")
 
     @api.get("/branch-prices/export")
     async def bulk_export(store_id: Optional[str] = None, user=Depends(get_current_user)):

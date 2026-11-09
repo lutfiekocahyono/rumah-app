@@ -18,7 +18,8 @@ history.SOURCES[SOURCE] = "Salin dari Sidoarjo"
 
 class Rule(BaseModel):
     store_id: str
-    mode: Literal["rp", "pct"] = "rp"
+    mode: Literal["rp", "pct", "mix"] = "rp"  # mix: % below the threshold (cheap items), Rp from the threshold up
+    threshold: int = Field(default=0, ge=0, le=1_000_000_000)
     price_add: int = Field(default=0, ge=-1_000_000, le=1_000_000)  # mode rp
     price_pct: float = Field(default=0, ge=-50, le=100)  # mode pct, rounded up to Rp100
     stock_sub: int = Field(default=0, ge=0, le=100_000)
@@ -31,7 +32,9 @@ class PreviewIn(BaseModel):
     rules: List[Rule] = Field(min_length=1, max_length=5)
 
 
-def price_fn(r: Rule):
+def price_fn(r: Rule, base: int = 0):
+    if r.mode == "mix":
+        return price_fn(r.model_copy(update={"mode": "pct" if base < r.threshold else "rp"}))
     if r.mode == "pct":
         bp = 10000 + round(r.price_pct * 100)  # integer math (basis points): 3000 +10% = 3300 exactly, no float drift
         return lambda v: max(100, -(-int(v) * bp // 1_000_000) * 100) if v else 0
@@ -49,13 +52,16 @@ def register(api, db, require_admin, seller):
         ids = [p["product_id"] for p in prods]
         out, rows = [], {}
         for r in rules:
-            f = price_fn(r)
             cur = {d["product_id"]: d for d in await db.store_stock.find({"store_id": r.store_id, "product_id": {"$in": ids}}, {"_id": 0}).to_list(50000)}
             n = {"store_id": r.store_id, "total": len(prods), "price_changed": 0, "stock_changed": 0, "unchanged": 0, "zero_stock": 0,
                  "protected": 0, "protected_overwritten": 0, "big_rise": 0}
             sample, protected = [], []
             rows[r.store_id] = []
+            n["by_pct"] = n["by_rp"] = 0
             for p in prods:
+                f = price_fn(r, p.get("price", 0))  # mix: Sidoarjo unit price decides % or Rp for this product (tiers included)
+                if r.copy_price:
+                    n["by_pct" if r.mode == "pct" or (r.mode == "mix" and p.get("price", 0) < r.threshold) else "by_rp"] += 1
                 c = cur.get(p["product_id"], {})
                 own = bool(c.get("price"))
                 old = {"price": c["price"] if own else p.get("price", 0),
@@ -93,6 +99,8 @@ def register(api, db, require_admin, seller):
     async def check_rules(rules: List[Rule]) -> dict:
         names = await seller.store_names(db)
         for r in rules:
+            if r.mode == "mix" and r.threshold <= 0:
+                raise HTTPException(status_code=400, detail="Isi ambang harga untuk aturan campuran")
             if r.store_id not in seller.OFFICIAL_IDS or r.store_id == seller.PGS_STORE_ID:
                 raise HTTPException(status_code=400, detail="Cabang tujuan hanya Mitra PGS Jombang / Jember")
         if len({r.store_id for r in rules}) != len(rules):

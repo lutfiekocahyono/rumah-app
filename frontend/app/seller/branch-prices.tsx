@@ -64,8 +64,8 @@ export default function BranchPrices() {
             <Pressable testID="bp-bulk-adjust" style={styles.tool} onPress={() => setBulk("adjust")}><Icon name="trending-up-outline" size={16} color={colors.brandPrimary} /><Text style={styles.toolText}>Ubah massal</Text></Pressable>
             <Pressable testID="bp-export" style={styles.tool} onPress={async () => {
               try { await downloadAuthed(api.branchExportUrl(admin ? branch : null), `harga-${branch}.xlsx`); } catch (e: any) { setErr(e.message); }
-            }}><Icon name="download-outline" size={16} color={colors.brandPrimary} /><Text style={styles.toolText}>Unduh Excel</Text></Pressable>
-            <Pressable testID="bp-import" style={styles.tool} onPress={() => setBulk("import")}><Icon name="cloud-upload-outline" size={16} color={colors.brandPrimary} /><Text style={styles.toolText}>Unggah Excel</Text></Pressable>
+            }}><Icon name="download-outline" size={16} color={colors.brandPrimary} /><Text style={styles.toolText}>Unduh</Text></Pressable>
+            <Pressable testID="bp-import" style={styles.tool} onPress={() => setBulk("import")}><Icon name="cloud-upload-outline" size={16} color={colors.brandPrimary} /><Text style={styles.toolText}>Unggah</Text></Pressable>
           </View>
         ) : null}
       </View>

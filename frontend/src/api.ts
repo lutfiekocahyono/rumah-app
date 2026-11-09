@@ -535,9 +535,9 @@ export type BranchBulkPreview = { preview_id: string; store_id: string; changed:
 export type PriceSet = { price: number; original_price: number; tier_prices: Record<string, { min_qty: number; price: number }[]> };
 export type BranchPriceItem = { product_id: string; name: string; image: string; sidoarjo: PriceSet; branch: PriceSet; own_price: boolean; stock: number; price_set_at: string | null };
 export type BranchPriceList = { store_id: string; store_name: string; items: BranchPriceItem[] };
-export type BranchCopyRule = { store_id: string; mode: "rp" | "pct"; price_add: number; price_pct: number; stock_sub: number; copy_price: boolean; copy_stock: boolean; overwrite_manual: boolean };
+export type BranchCopyRule = { store_id: string; mode: "rp" | "pct" | "mix"; threshold: number; price_add: number; price_pct: number; stock_sub: number; copy_price: boolean; copy_stock: boolean; overwrite_manual: boolean };
 export type BranchCopyPreview = { preview_id: string; branches: { store_id: string; store_name: string; total: number; price_changed: number; stock_changed: number;
-  unchanged: number; zero_stock: number; protected: number; protected_overwritten: number; big_rise: number;
+  unchanged: number; zero_stock: number; protected: number; protected_overwritten: number; big_rise: number; by_pct: number; by_rp: number;
   protected_sample: { product_id: string; name: string; branch_price: number; would_be: number }[]; sample: { product_id: string; name: string; sidoarjo_price: number; sidoarjo_stock: number; old_price: number; new_price: number; old_stock: number; new_stock: number }[] }[] };
 export type NearestStores = { nearest: { store_id: string; name: string; distance_km: number } | null; stores: { store_id: string; name: string; distance_km: number }[] };
 export type CategoryPreview = { preview_id: string; total: number; groups: { category_id: string; count: number }[];

@@ -82,8 +82,8 @@ export function BranchBulkDialog({ kind, storeId, storeName, q, onClose, onDone 
                 <Text style={styles.h} testID="bb-summary">{pv.changed.toLocaleString("id-ID")} produk berubah · naik {pv.up.toLocaleString("id-ID")} · turun {pv.down.toLocaleString("id-ID")}</Text>
                 {pv.error_count ? (
                   <View testID="bb-errors">
-                    <Text style={adminStyles.err}>{pv.error_count} baris dilewati:</Text>
-                    {pv.errors.slice(0, 5).map((e) => <Text key={`${e.row}`} style={adminStyles.muted}>Baris {e.row} ({e.product_id}): {e.reason}</Text>)}
+                    <Text style={adminStyles.err}>{pv.error_count} {kind === "import" ? "baris" : "produk"} dilewati:</Text>
+                    {pv.errors.slice(0, 5).map((e) => <Text key={`${e.row}-${e.product_id}`} style={adminStyles.muted}>{e.row ? `Baris ${e.row} (${e.product_id}): ` : ""}{e.reason}</Text>)}
                   </View>
                 ) : null}
                 {pv.sample.slice(0, 10).map((x) => (
