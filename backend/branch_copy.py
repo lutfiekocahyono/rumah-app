@@ -4,7 +4,7 @@ Harga cabang disalin sekali (berdiri sendiri setelahnya) dan menimpa harga/stok 
 ikut ditambah. Pratinjau dulu, diterapkan setelah dikonfirmasi; tiap perubahan tercatat di Riwayat Harga & Stok (tanpa notifikasi pembeli)."""
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import List, Literal
+from typing import List, Literal, Optional
 
 from fastapi import Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -32,6 +32,10 @@ class PreviewIn(BaseModel):
     rules: List[Rule] = Field(min_length=1, max_length=5)
 
 
+class ApplyIn(BaseModel):
+    confirm_down: bool = False  # extra confirmation when branch prices would go DOWN
+
+
 def price_fn(r: Rule, base: int = 0):
     if r.mode == "mix":
         return price_fn(r.model_copy(update={"mode": "pct" if base < r.threshold else "rp"}))
@@ -54,8 +58,8 @@ def register(api, db, require_admin, seller):
         for r in rules:
             cur = {d["product_id"]: d for d in await db.store_stock.find({"store_id": r.store_id, "product_id": {"$in": ids}}, {"_id": 0}).to_list(50000)}
             n = {"store_id": r.store_id, "total": len(prods), "price_changed": 0, "stock_changed": 0, "unchanged": 0, "zero_stock": 0,
-                 "protected": 0, "protected_overwritten": 0, "big_rise": 0}
-            sample, protected = [], []
+                 "protected": 0, "protected_overwritten": 0, "big_rise": 0, "price_down": 0}
+            sample, protected, down = [], [], []
             rows[r.store_id] = []
             n["by_pct"] = n["by_rp"] = 0
             for p in prods:
@@ -87,12 +91,16 @@ def register(api, db, require_admin, seller):
                 n["zero_stock"] += ("stock" in new and new["stock"] == 0)
                 if pc and p.get("price") and new["price"] >= p["price"] * 1.5:
                     n["big_rise"] += 1
+                if "price" in new and new["price"] < old["price"]:  # cheaper than the branch's current price
+                    n["price_down"] += 1
+                    if len(down) < 10:
+                        down.append({"product_id": p["product_id"], "name": p["name"], "old_price": old["price"], "new_price": new["price"]})
                 if (pc or sc) and len(sample) < 30:
                     sample.append({"product_id": p["product_id"], "name": p["name"], "sidoarjo_price": p.get("price", 0), "sidoarjo_stock": p.get("stock", 0),
                                    "old_price": old["price"], "new_price": new.get("price", old["price"]), "old_stock": old["stock"], "new_stock": new.get("stock", old["stock"])})
                 if pc or sc:
                     rows[r.store_id].append({"product_id": p["product_id"], "name": p["name"], "set": new, "before": {k: old[k] for k in new}})
-            n["sample"], n["protected_sample"] = sample, protected
+            n["sample"], n["protected_sample"], n["down_sample"] = sample, protected, down
             out.append(n)
         return out, rows
 
@@ -119,7 +127,13 @@ def register(api, db, require_admin, seller):
         return {"preview_id": doc["preview_id"], "branches": summary}
 
     @api.post("/admin/branch-copy/{preview_id}/apply")
-    async def copy_apply(preview_id: str, admin=Depends(require_admin)):
+    async def copy_apply(preview_id: str, body: Optional[ApplyIn] = None, admin=Depends(require_admin)):
+        pre = await db.branch_copy.find_one({"preview_id": preview_id}, {"_id": 0, "rules": 1})
+        if pre and not (body and body.confirm_down):
+            summary, _ = await compute([Rule(**r) for r in pre["rules"]])
+            down = sum(s["price_down"] for s in summary)
+            if down:
+                raise HTTPException(status_code=409, detail=f"{down} harga cabang akan TURUN. Centang konfirmasi harga turun lalu terapkan lagi")
         d = await db.branch_copy.find_one_and_update(
             {"preview_id": preview_id, "status": "preview", "created_at": {"$gte": datetime.now(timezone.utc) - timedelta(hours=2)}},
             {"$set": {"status": "applying"}}, projection={"_id": 0})

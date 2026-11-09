@@ -188,3 +188,8 @@ Iteration 2: import all data from pusatgrosirsidoarjo.com; tiered pricing (pembe
 - Admin cabang (Sidoarjo/Jombang/Jember store_admin) add products via editor, Excel import or /seller/products -> `only_branch=<store_id>`; listings/search/home/recommendations/count only show them to buyers of that branch (detail page still opens directly). Excluded from Harga Cabang, Salin ke Cabang, other branches' lists.
 - Sidoarjo admin cannot delete master catalog products (only own only_branch ones). Branch admins edit only their own products.
 - Flash Sale: per-branch flash price (items[].branch_prices); automatic = Sidoarjo flash + (branch price − Sidoarjo price). Flash price replaces branch price (no more min()); only grosir tiers min_qty>1 can go lower.
+
+## Iteration 55 — Peringatan Harga Turun
+- Legacy POST /seller/products & Excel import by branch admins now set only_branch (fixed).
+- Branch copy preview: price_down + down_sample per branch; apply requires {confirm_down:true} when any price goes down (else 409). Rupiah field accepts negative values.
+- Branch bulk edit (pct/rp/Excel): preview down + down_sample; apply requires confirm_down when down>0. UI: red warning box + "Saya mengerti" toggle before confirm.

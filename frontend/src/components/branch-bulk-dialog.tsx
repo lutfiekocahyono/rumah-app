@@ -5,6 +5,7 @@ import * as DocumentPicker from "expo-document-picker";
 import { colors, fontSize, radius, spacing, formatIDR } from "@/src/theme";
 import { api, type BranchBulkPreview } from "@/src/api";
 import { adminStyles, Chips, ToggleRow } from "@/src/components/admin-form";
+import { PriceDownWarning } from "@/src/components/price-down-warning";
 
 const XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 export type BulkKind = "adjust" | "import";
@@ -23,8 +24,9 @@ export function BranchBulkDialog({ kind, storeId, storeName, q, onClose, onDone 
   const [err, setErr] = useState("");
   const [saved, setSaved] = useState<number | null>(null);
   const [confirm, setConfirm] = useState(false);
+  const [downOk, setDownOk] = useState(false);
 
-  useEffect(() => { if (kind) { setPv(null); setErr(""); setSaved(null); setConfirm(false); setVal(""); setOnlyQ(!!q); } }, [kind, q]);
+  useEffect(() => { if (kind) { setPv(null); setErr(""); setSaved(null); setConfirm(false); setDownOk(false); setVal(""); setOnlyQ(!!q); } }, [kind, q]);
 
   const n = Number(val.replace(",", ".")) || 0;
   const preview = async () => {
@@ -46,7 +48,7 @@ export function BranchBulkDialog({ kind, storeId, storeName, q, onClose, onDone 
   const apply = async () => {
     if (!pv) return;
     setBusy("save"); setErr("");
-    try { setSaved((await api.branchBulkApply(pv.preview_id)).saved); onDone(); }
+    try { setSaved((await api.branchBulkApply(pv.preview_id, downOk)).saved); onDone(); }
     catch (e: any) { setErr(e.message); } finally { setBusy(""); setConfirm(false); }
   };
 
@@ -86,6 +88,7 @@ export function BranchBulkDialog({ kind, storeId, storeName, q, onClose, onDone 
                     {pv.errors.slice(0, 5).map((e) => <Text key={`${e.row}-${e.product_id}`} style={adminStyles.muted}>{e.row ? `Baris ${e.row} (${e.product_id}): ` : ""}{e.reason}</Text>)}
                   </View>
                 ) : null}
+                <PriceDownWarning testID="bb-down" count={pv.down} sample={pv.down_sample ?? []} label={`di ${storeName}`} ok={downOk} onChange={(v) => { setDownOk(v); setErr(""); }} />
                 {pv.sample.slice(0, 10).map((x) => (
                   <View key={x.product_id} style={styles.sample} testID="bb-sample">
                     <Text style={styles.name} numberOfLines={1}>{x.name}</Text>
@@ -96,7 +99,7 @@ export function BranchBulkDialog({ kind, storeId, storeName, q, onClose, onDone 
               </View>
             )}
           </ScrollView>
-          {confirm && saved === null ? <Text style={adminStyles.err} testID="bb-confirm-text">Simpan harga baru untuk {pv?.changed.toLocaleString("id-ID")} produk di {storeName}?</Text> : null}
+          {confirm && saved === null ? <Text style={adminStyles.err} testID="bb-confirm-text">Simpan harga baru untuk {pv?.changed.toLocaleString("id-ID")} produk di {storeName}?{pv?.down ? ` ${pv.down.toLocaleString("id-ID")} di antaranya harga TURUN.` : ""}</Text> : null}
           {err ? <Text style={adminStyles.err} testID="bb-error">{err}</Text> : null}
           <View style={styles.row}>
             <Pressable testID="bb-close" style={[styles.btn, styles.cancel]} disabled={busy === "save"}
@@ -105,7 +108,7 @@ export function BranchBulkDialog({ kind, storeId, storeName, q, onClose, onDone 
             </Pressable>
             {saved === null && (pv ? pv.changed > 0 : kind === "adjust") ? (
               <Pressable testID={pv ? (confirm ? "bb-confirm" : "bb-apply") : "bb-preview-btn"} style={[styles.btn, { backgroundColor: colors.brandPrimary }]} disabled={!!busy}
-                onPress={pv ? (confirm ? apply : () => setConfirm(true)) : preview}>
+                onPress={pv ? (confirm ? apply : () => (pv.down && !downOk ? setErr("Centang konfirmasi harga turun dulu") : setConfirm(true))) : preview}>
                 {busy ? <ActivityIndicator color={colors.onBrandPrimary} /> : <Text style={styles.okText}>{pv ? (confirm ? "Ya, simpan" : "Simpan") : "Lihat pratinjau"}</Text>}
               </Pressable>
             ) : null}

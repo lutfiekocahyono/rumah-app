@@ -238,7 +238,7 @@ export const api = {
     req<{ saved: number }>(`/product-editor/uncategorized/${id}/apply`, { method: "POST", body: JSON.stringify({ skip, overrides }) }),
   branchBulkPreview: (b: { store_id: string | null; mode: "pct" | "rp"; value: number; tiers: boolean; q: string }) =>
     req<BranchBulkPreview>("/branch-prices/bulk/preview", { method: "POST", body: JSON.stringify(b) }),
-  branchBulkApply: (id: string) => req<{ saved: number }>(`/branch-prices/bulk/${id}/apply`, { method: "POST" }),
+  branchBulkApply: (id: string, confirmDown = false) => req<{ saved: number }>(`/branch-prices/bulk/${id}/apply`, { method: "POST", body: JSON.stringify({ confirm_down: confirmDown }) }),
   branchExportUrl: (store_id: string | null) => `${BASE}/api/branch-prices/export?${qs({ store_id })}`,
   branchImport: async (file: LocalFile, store_id: string | null): Promise<BranchBulkPreview> => {
     const token = await getToken();
@@ -252,7 +252,7 @@ export const api = {
     req<BranchPriceItem>(`/branch-prices/${id}`, { method: "PUT", body: JSON.stringify(b) }),
   branchCopyPreview: (rules: BranchCopyRule[]) =>
     req<BranchCopyPreview>("/admin/branch-copy/preview", { method: "POST", body: JSON.stringify({ rules }) }),
-  branchCopyApply: (id: string) => req<{ branches: { store_id: string; store_name: string; updated: number }[] }>(`/admin/branch-copy/${id}/apply`, { method: "POST" }),
+  branchCopyApply: (id: string, confirmDown = false) => req<{ branches: { store_id: string; store_name: string; updated: number }[] }>(`/admin/branch-copy/${id}/apply`, { method: "POST", body: JSON.stringify({ confirm_down: confirmDown }) }),
   nearestStores: (lat: number, lng: number) => req<NearestStores>(`/branches/nearest?${qs({ lat, lng })}`),
   saveLocation: (lat: number, lng: number, accuracy: number | null, platform: string) =>
     req<{ saved: boolean }>("/location", { method: "POST", body: JSON.stringify({ lat, lng, accuracy, platform }) }),
@@ -531,14 +531,15 @@ export type PriceLog = {
 export type EditorListItem = { product_id: string; name: string; image: string; sku: string; price: number; original_price: number; stock: number; status: "active" | "inactive"; variants: number; sold: number; store_id: string; weight_grams: number; weight_estimated: boolean; dims: number[]; dims_estimated: boolean; shared?: boolean; only_branch?: string };
 export type BulkEdit = { store_id?: string | null; product_ids: string[]; price_mode?: "" | "set" | "up_pct" | "down_pct" | "up" | "down"; price_value?: number; stock_mode?: "" | "set" | "add" | "sub"; stock_value?: number; status?: "" | "active" | "inactive"; weight_grams?: number; weight_only_missing?: boolean; dims?: number[]; dims_only_missing?: boolean };
 export type EstimateKind = "weight" | "dims";
-export type BranchBulkPreview = { preview_id: string; store_id: string; changed: number; up: number; down: number; error_count: number;
+export type PriceDown = { product_id: string; name: string; old_price: number; new_price: number };
+export type BranchBulkPreview = { preview_id: string; store_id: string; changed: number; up: number; down: number; error_count: number; down_sample: PriceDown[];
   errors: { row: number; product_id: string; reason: string }[]; sample: { product_id: string; name: string; before: PriceSet; after: PriceSet }[] };
 export type PriceSet = { price: number; original_price: number; tier_prices: Record<string, { min_qty: number; price: number }[]> };
 export type BranchPriceItem = { product_id: string; name: string; image: string; sidoarjo: PriceSet; branch: PriceSet; own_price: boolean; stock: number; price_set_at: string | null };
 export type BranchPriceList = { store_id: string; store_name: string; items: BranchPriceItem[] };
 export type BranchCopyRule = { store_id: string; mode: "rp" | "pct" | "mix"; threshold: number; price_add: number; price_pct: number; stock_sub: number; copy_price: boolean; copy_stock: boolean; overwrite_manual: boolean };
 export type BranchCopyPreview = { preview_id: string; branches: { store_id: string; store_name: string; total: number; price_changed: number; stock_changed: number;
-  unchanged: number; zero_stock: number; protected: number; protected_overwritten: number; big_rise: number; by_pct: number; by_rp: number;
+  unchanged: number; zero_stock: number; protected: number; protected_overwritten: number; big_rise: number; by_pct: number; by_rp: number; price_down: number; down_sample: PriceDown[];
   protected_sample: { product_id: string; name: string; branch_price: number; would_be: number }[]; sample: { product_id: string; name: string; sidoarjo_price: number; sidoarjo_stock: number; old_price: number; new_price: number; old_stock: number; new_stock: number }[] }[] };
 export type NearestStores = { nearest: { store_id: string; name: string; distance_km: number } | null; stores: { store_id: string; name: string; distance_km: number }[] };
 export type CategoryPreview = { preview_id: string; total: number; groups: { category_id: string; count: number }[];

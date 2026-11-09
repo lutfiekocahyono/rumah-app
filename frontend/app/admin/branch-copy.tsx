@@ -14,29 +14,31 @@ const MODES = [{ id: "rp", label: "Rupiah" }, { id: "pct", label: "Persen" }, { 
 const num = (t: string) => Number(t.replace(/[^0-9]/g, "")) || 0;
 const pctOf = (t: string) => Math.max(-50, Math.min(100, Number(t.replace(",", ".").replace(/[^0-9.-]/g, "")) || 0)); // negative = cheaper than Sidoarjo
 const withPct = (v: number, pct: number) => Math.max(100, Math.ceil((v * (10000 + Math.round(pct * 100))) / 1_000_000) * 100); // same integer math as the server
-type R = BranchCopyRule & { name: string; pctText: string };
+type R = BranchCopyRule & { name: string; pctText: string; addText: string };
 
 /** Super Admin: salin harga (Rp atau %) & stok PGS Sidoarjo ke cabang mitra; pratinjau → konfirmasi. Harga yang diubah admin cabang dilindungi. */
 export default function BranchCopy() {
   const insets = useSafeAreaInsets();
-  const [rules, setRules] = useState<R[]>(BRANCHES.map((b) => ({ store_id: b.id, name: b.name, mode: "rp", price_add: b.add, price_pct: b.pct, pctText: String(b.pct),
+  const [rules, setRules] = useState<R[]>(BRANCHES.map((b) => ({ store_id: b.id, name: b.name, mode: "rp", price_add: b.add, addText: String(b.add), price_pct: b.pct, pctText: String(b.pct),
     stock_sub: b.sub, copy_price: true, copy_stock: false, overwrite_manual: false, threshold: 20000 })));
   const [pv, setPv] = useState<BranchCopyPreview | null>(null);
   const [busy, setBusy] = useState("");
   const [ask, setAsk] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
-  const edit = (i: number, patch: Partial<R>) => { setPv(null); setRules((r) => r.map((x, n) => (n === i ? { ...x, ...patch } : x))); };
+  const [downOk, setDownOk] = useState(false);
+  const downTotal = pv ? pv.branches.reduce((s, b) => s + (b.price_down || 0), 0) : 0;
+  const edit = (i: number, patch: Partial<R>) => { setPv(null); setDownOk(false); setRules((r) => r.map((x, n) => (n === i ? { ...x, ...patch } : x))); };
 
   const preview = async () => {
-    setBusy("pv"); setMsg(null);
-    try { setPv(await api.branchCopyPreview(rules.map(({ name: _n, pctText: _p, ...r }) => r))); }
+    setBusy("pv"); setMsg(null); setDownOk(false);
+    try { setPv(await api.branchCopyPreview(rules.map(({ name: _n, pctText: _p, addText: _a, ...r }) => r))); }
     catch (e: any) { setMsg({ ok: false, text: e.message }); } finally { setBusy(""); }
   };
   const apply = async () => {
     if (!pv) return;
     setAsk(false); setBusy("apply"); setMsg(null);
     try {
-      const r = await api.branchCopyApply(pv.preview_id);
+      const r = await api.branchCopyApply(pv.preview_id, downOk);
       setPv(null);
       setMsg({ ok: true, text: `Selesai: ${r.branches.map((b) => `${b.store_name} ${b.updated.toLocaleString("id-ID")} produk`).join(" · ")}. Tercatat di Riwayat Harga & Stok.` });
     } catch (e: any) { setMsg({ ok: false, text: e.message }); } finally { setBusy(""); }
@@ -65,8 +67,8 @@ export default function BranchCopy() {
                     onChangeText={(t) => edit(i, { threshold: Math.min(1000000000, num(t)) })} />
                 ) : null}
                 {r.mode !== "pct" ? (
-                  <Field testID={`bc-add-${r.store_id}`} label={r.mode === "mix" ? "Produk mahal: harga ditambah (Rp)" : "Harga ditambah (Rp)"} keyboardType="number-pad" value={r.price_add ? String(r.price_add) : ""}
-                    onChangeText={(t) => edit(i, { price_add: Math.min(1000000, num(t)) })} />
+                  <Field testID={`bc-add-${r.store_id}`} label={`${r.mode === "mix" ? "Produk mahal: harga ditambah (Rp)" : "Harga ditambah (Rp)"} · minus = lebih murah, mis. -500`} keyboardType="numbers-and-punctuation" value={r.addText}
+                    onChangeText={(t) => { const neg = t.trim().startsWith("-"); edit(i, { addText: (neg ? "-" : "") + t.replace(/[^0-9]/g, ""), price_add: Math.max(-1000000, Math.min(1000000, (neg ? -1 : 1) * num(t))) }); }} />
                 ) : null}
                 {r.mode !== "rp" ? (
                   <Field testID={`bc-pct-${r.store_id}`} label={`${r.mode === "mix" ? "Produk murah: harga" : "Harga"} ditambah (%) · minus = diskon, mis. -5`} keyboardType="numbers-and-punctuation" value={r.pctText}
@@ -91,6 +93,14 @@ export default function BranchCopy() {
               {rules[i]?.mode === "mix" ? <Text style={adminStyles.muted} testID={`bc-mix-${b.store_id}`}>Pakai persen: {fmt(b.by_pct)} produk · pakai rupiah: {fmt(b.by_rp)} produk</Text> : null}
               <Text style={adminStyles.muted}>Harga berubah {fmt(b.price_changed)} · stok berubah {fmt(b.stock_changed)}{rules[i]?.copy_stock ? ` · stok jadi 0: ${fmt(b.zero_stock)}` : ""}</Text>
               {b.big_rise ? <Text style={adminStyles.err} testID={`bc-big-${b.store_id}`}>{fmt(b.big_rise)} produk naik 50% atau lebih dari harga Sidoarjo.</Text> : null}
+              {b.price_down ? (
+                <View style={styles.warnDown} testID={`bc-down-${b.store_id}`}>
+                  <Text style={[styles.name, { color: colors.error, fontWeight: "600" }]} testID={`bc-down-count-${b.store_id}`}>⚠ {fmt(b.price_down)} produk akan LEBIH MURAH dari harga {b.store_name} sekarang</Text>
+                  {b.down_sample.slice(0, 5).map((x) => (
+                    <Text key={x.product_id} style={adminStyles.muted} numberOfLines={2}>{x.name}: {formatIDR(x.old_price)} → {formatIDR(x.new_price)}</Text>
+                  ))}
+                </View>
+              ) : null}
               {b.protected || b.protected_overwritten ? (
                 <View style={styles.warn} testID={`bc-protected-${b.store_id}`}>
                   <Text style={styles.name}>
@@ -112,11 +122,18 @@ export default function BranchCopy() {
             </Card>
           );
         }) : null}
-        {pv ? <PrimaryButton testID="bc-apply" label="Terapkan ke cabang" loading={busy === "apply"} onPress={() => setAsk(true)} /> : null}
+        {pv && downTotal ? (
+          <View style={styles.warnDown} testID="bc-down-confirm">
+            <Text style={[styles.name, { color: colors.error, fontWeight: "600" }]}>Total {fmt(downTotal)} harga cabang akan TURUN. Centang untuk melanjutkan.</Text>
+            <ToggleRow testID="bc-down-ok" label="Saya mengerti, harga ini memang diturunkan" value={downOk} onChange={(v) => { setDownOk(v); setMsg(null); }} />
+          </View>
+        ) : null}
+        {pv ? <PrimaryButton testID="bc-apply" label="Terapkan ke cabang" loading={busy === "apply"}
+          onPress={() => (downTotal && !downOk ? setMsg({ ok: false, text: "Centang konfirmasi harga turun dulu" }) : setAsk(true))} /> : null}
         {msg ? <Text style={msg.ok ? adminStyles.ok : adminStyles.err} testID={msg.ok ? "bc-msg-ok" : "bc-msg-error"}>{msg.text}</Text> : null}
       </KeyboardAwareScrollView>
       <ConfirmDialog visible={ask} title="Terapkan ke cabang?" confirmLabel="Ya, terapkan" danger={false}
-        message={pv ? pv.branches.map((b) => `${b.store_name}: ${fmt(b.total - b.unchanged)} produk diubah${b.protected ? `, ${fmt(b.protected)} harga admin cabang dilewati` : ""}${b.protected_overwritten ? `, ${fmt(b.protected_overwritten)} harga admin cabang DITIMPA` : ""}`).join("\n") + "\nPerubahan tercatat di Riwayat Harga & Stok." : ""}
+        message={pv ? pv.branches.map((b) => `${b.store_name}: ${fmt(b.total - b.unchanged)} produk diubah${b.price_down ? `, ${fmt(b.price_down)} harga TURUN` : ""}${b.protected ? `, ${fmt(b.protected)} harga admin cabang dilewati` : ""}${b.protected_overwritten ? `, ${fmt(b.protected_overwritten)} harga admin cabang DITIMPA` : ""}`).join("\n") + "\nPerubahan tercatat di Riwayat Harga & Stok." : ""}
         onCancel={() => setAsk(false)} onConfirm={apply} />
     </View>
   );
@@ -127,4 +144,5 @@ const styles = StyleSheet.create({
   sample: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, paddingTop: 6, gap: 2 },
   name: { fontSize: fontSize.sm, color: colors.onSurface },
   warn: { backgroundColor: colors.surfaceSecondary, borderRadius: 8, padding: spacing.sm, gap: 4, borderLeftWidth: 3, borderLeftColor: colors.warning },
+  warnDown: { backgroundColor: colors.surfaceSecondary, borderRadius: 8, padding: spacing.sm, gap: 4, borderLeftWidth: 3, borderLeftColor: colors.error },
 });

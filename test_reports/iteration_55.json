@@ -1,0 +1,32 @@
+{
+  "summary": "Iteration 55: verified legacy POST /api/seller/products only_branch fix (sidoarjo/jombang/jember) and price-down warning + 409 confirm gate for Branch Copy (Super Admin) and Branch Bulk Edit (Harga Cabang). Backend 8/8 new + 51/51 iter54 regression pass. Frontend (390x844) both flows pass. All real data restored exactly (store_stock pgs-9955 jember, no leftover price_history/product_events, TEST_ products deleted).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "admin/branch-copy.tsx", "issue": "After pressing Terapkan without the price-down toggle, the error 'Centang konfirmasi harga turun dulu' (bc-msg-error) stays visible after toggling bc-down-ok and even while the confirm dialog is open. onChange={setDownOk} should also clear msg (bulk dialog does this correctly). Ref: /app/frontend/app/admin/branch-copy.tsx:128", "testID": "bc-msg-error", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "admin/branch-copy", "issues": ["Rupiah field (bc-add-*) accepts digits only, so a negative Rupiah selisih (allowed by backend price_add >= -1,000,000) cannot be entered from UI; only Persen mode can lower prices. Intentional? If not, allow a minus sign like bc-pct-*."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iter55_legacy_only_branch_price_down.py", "/app/backend/tests/test_iter54_only_branch_flash.py", "/app/test_reports/pytest/iter55.xml"],
+  "action_items": [
+    "LOW: branch-copy.tsx clear the stale bc-msg-error when bc-down-ok is toggled (setDownOk + setMsg(null)).",
+    "LOW (optional): allow negative input in Rupiah field bc-add-* or add a hint that lowering prices needs Persen mode.",
+    "LOW (DRY): branch-copy.tsx duplicates the price-down box inline instead of reusing PriceDownWarning component."
+  ],
+  "critical_code_review_comments": [
+    "seller_create sets only_branch for any OFFICIAL_IDS store incl. pgs-official — correct since pgs-official is owned by sidoarjo@pgs.id (store_admin), Super Admin does not own a store.",
+    "branch_copy apply recomputes full catalogue (~6.6k products) for the 409 check and again for apply — acceptable but doubles work.",
+    "bulk_apply 409 gate is based on the stored preview items and runs after branch_for authorization — good; jombang cannot apply jember preview."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter55_legacy_only_branch_price_down.py"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "Temporary TEST_legacy_* products (deleted). pgs-9955 jember branch price lowered then raised in backend test and restored exactly from Mongo snapshot; its price_history/product_events from the run deleted. A few branch_copy / branch_price_previews preview docs left (status preview, expire after 2h, harmless).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Use q='SG-CS32' (only product pgs-9955) for narrow branch bulk tests; snapshot/restore store_stock via tests/ui_iter49_helper.py backup|restore. Do not apply branch-copy on real data (overwrites ~6618 Jember prices). Token stored in localStorage key pgs_auth_token for UI login injection.",
+  "rca_of_issue": ""
+}

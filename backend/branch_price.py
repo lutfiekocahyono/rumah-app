@@ -85,6 +85,10 @@ class BulkIn(BaseModel):
     product_ids: List[str] = Field(default=[], max_length=10000)
 
 
+class ApplyIn(BaseModel):
+    confirm_down: bool = False  # extra confirmation when branch prices would go DOWN
+
+
 class TierIn(BaseModel):
     min_qty: int = Field(ge=1, le=99999)
     price: int = Field(ge=1, le=1_000_000_000)
@@ -174,7 +178,9 @@ def register(api, db, get_current_user, seller):
                "created_at": datetime.now(timezone.utc), "status": "preview"}
         await db.branch_price_previews.insert_one({**doc})
         up = sum(1 for i in items if i["after"]["price"] > i["before"]["price"])
-        return {"preview_id": doc["preview_id"], "store_id": sid, "changed": len(items), "up": up, "down": sum(1 for i in items if i["after"]["price"] < i["before"]["price"]),
+        downs = [i for i in items if i["after"]["price"] < i["before"]["price"]]
+        return {"preview_id": doc["preview_id"], "store_id": sid, "changed": len(items), "up": up, "down": len(downs),
+                "down_sample": [{"product_id": i["product_id"], "name": i["name"], "old_price": i["before"]["price"], "new_price": i["after"]["price"]} for i in downs[:10]],
                 "errors": errors[:50], "error_count": len(errors), "sample": [{k: i[k] for k in ("product_id", "name", "before", "after")} for i in items[:30]]}
 
     async def scope_products(q: str, ids: List[str]) -> list:
@@ -276,11 +282,14 @@ def register(api, db, get_current_user, seller):
         return await save_preview(user, sid, items, errors, "Impor Excel harga cabang")
 
     @api.post("/branch-prices/bulk/{preview_id}/apply")
-    async def bulk_apply(preview_id: str, user=Depends(get_current_user)):
-        pre = await db.branch_price_previews.find_one({"preview_id": preview_id}, {"store_id": 1, "by": 1})
+    async def bulk_apply(preview_id: str, body: Optional[ApplyIn] = None, user=Depends(get_current_user)):
+        pre = await db.branch_price_previews.find_one({"preview_id": preview_id}, {"store_id": 1, "by": 1, "items.before.price": 1, "items.after.price": 1})
         if not pre:
             raise HTTPException(status_code=400, detail="Pratinjau tidak ditemukan. Buat pratinjau baru")
         await branch_for(user, pre["store_id"])
+        down = sum(1 for i in pre.get("items", []) if i["after"]["price"] < i["before"]["price"])
+        if down and not (body and body.confirm_down):
+            raise HTTPException(status_code=409, detail=f"{down} harga cabang akan TURUN. Centang konfirmasi harga turun lalu simpan lagi")
         d = await db.branch_price_previews.find_one_and_update(
             {"preview_id": preview_id, "status": "preview", "created_at": {"$gte": datetime.now(timezone.utc) - timedelta(hours=2)}},
             {"$set": {"status": "applied"}}, projection={"_id": 0})
