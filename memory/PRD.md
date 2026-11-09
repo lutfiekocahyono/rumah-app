@@ -247,3 +247,5 @@ Iteration 2: import all data from pusatgrosirsidoarjo.com; tiered pricing (pembe
 - [Done] Tombol Filter (merek, rentang harga, stok cabang, grosir) di halaman kategori toko cabang; FilterSheet prop fixedCategory menyembunyikan bagian Kategori. Bug urutan spread category diperbaiki testing agent (iter 67).
 
 - [Done] Halaman kategori dari Beranda juga punya chip sub-kategori (GET /api/categories/counts?parent=), kotak cari dalam kategori, dan tombol Filter (merek/harga/stok/grosir); harga & stok default katalog (tanpa X-Shop-Page). Iter 68 lulus.
+
+- [Done] Kotak cari katalog global & ikon kaca pembesar disembunyikan di semua /category/* (satu kotak cari dalam halaman). Label filter stok tetap 'Tersedia di <cabang pilihan>' karena filter in_stock memang memakai stok cabang pilihan pembeli (diverifikasi: Dapur Sidoarjo 2774).
