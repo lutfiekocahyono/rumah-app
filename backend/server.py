@@ -29,6 +29,7 @@ import fonnte
 import branch_copy
 import branch_price
 import customer_location
+import store_page
 import order_tasks
 from order_tasks import COD_PICKUP_HOURS, RELEASE_STATUSES
 import promo
@@ -748,6 +749,7 @@ async def list_products(
     limit: int = Query(40, ge=1, le=200),
     skip: int = Query(0, ge=0),
     store: Optional[str] = None,
+    branch: Optional[str] = None,
     brand: Optional[str] = Query(None, description="merek, pisahkan dengan |"),
     min_price: Optional[int] = Query(None, ge=0),
     max_price: Optional[int] = Query(None, ge=0),
@@ -757,6 +759,8 @@ async def list_products(
     x_store_id: Optional[str] = Header(default=None),
 ):
     # Home, search & categories list every branch at once; a store page (?store=) keeps the chosen branch's view
+    if branch in seller.OFFICIAL_IDS and not store:  # ?branch= : list as a buyer of that branch (e.g. picking featured products)
+        x_store_id = branch
     ctx = _ctx(x_store_id) if store else ALL_BRANCHES
     query = await _catalog_query(ctx, category, q, brand, min_price, max_price, in_stock, wholesale, x_store_id)
     if store:
@@ -770,7 +774,7 @@ async def list_products(
         "rating": [("rating", -1), ("product_id", -1)],
         "newest": [("in_stock", -1), ("created_at", -1), ("product_id", -1)],
     }
-    stock_ctx = x_store_id if in_stock and not store and x_store_id in seller.OFFICIAL_IDS else ctx  # "Tersedia di <cabang>": show that branch's stock
+    stock_ctx = x_store_id if (in_stock or branch) and not store and x_store_id in seller.OFFICIAL_IDS else ctx  # "Tersedia di <cabang>" / ?branch=: show that branch's stock
     pb = await _priced_branch(x_store_id) if sort in ("price_asc", "price_desc") else None
     if pb:  # sort by the price the buyer sees in his branch
         rows = await db.products.aggregate([{"$match": query}, *_branch_price_stages(pb),
@@ -1032,17 +1036,17 @@ async def get_wishlist(owner: str = Depends(get_owner), x_store_id: Optional[str
 
 
 @api.post("/wishlist/{product_id}", response_model=WishlistOut)
-async def add_wishlist(product_id: str, owner: str = Depends(get_owner)):
+async def add_wishlist(product_id: str, owner: str = Depends(get_owner), x_store_id: Optional[str] = Header(default=None)):
     if not await db.products.find_one({"product_id": product_id}, {"_id": 1}):
         raise HTTPException(status_code=404, detail="Produk tidak ditemukan")
     await db.wishlists.update_one({"owner": owner}, {"$addToSet": {"items": product_id}}, upsert=True)
-    return await get_wishlist(owner)
+    return await get_wishlist(owner, x_store_id)
 
 
 @api.delete("/wishlist/{product_id}", response_model=WishlistOut)
-async def remove_wishlist(product_id: str, owner: str = Depends(get_owner)):
+async def remove_wishlist(product_id: str, owner: str = Depends(get_owner), x_store_id: Optional[str] = Header(default=None)):
     await db.wishlists.update_one({"owner": owner}, {"$pull": {"items": product_id}})
-    return await get_wishlist(owner)
+    return await get_wishlist(owner, x_store_id)
 
 
 # ---------------------------------------------------------------------------
@@ -1431,7 +1435,8 @@ fonnte.register(api, db, require_admin, account.normalize_phone)
 branch_copy.register(api, db, require_admin, seller)
 branch_price.register(api, db, get_current_user, seller)
 customer_location.register(api, db, get_owner=get_owner, require_admin=require_admin)
-
+store_page.register(api, db, require_admin=require_admin, get_current_user=get_current_user, get_optional_user=get_optional_user,
+                    visible=_visible, apply_stock=_apply_stock, product_out=_product_out, active_flash=promo.active_flash)
 app.include_router(api)
 
 app.add_middleware(

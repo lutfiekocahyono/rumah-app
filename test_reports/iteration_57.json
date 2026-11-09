@@ -1,0 +1,41 @@
+{
+  "summary": "Tested the per-branch store page, the Tampilan Toko editor and a re-check of the wishlist and Seller Center bugs. Backend: new suite test_iter57_store_page.py passed 10 of 11. Checked: /stores/{id}/page fields for all 3 branches (official phone present), 404 for an unknown store, own-products for official = only_branch only, Jombang own products sorted in-stock first and stock 0 last and not shown at Jember, auto featured = in-stock own products, manual featured kept in order with featured_manual true and the Jombang price, invalid id 400, more than 10 ids 422, a Jombang-own product rejected for Jember 400, permissions (jombang sees only own, PUT jember 403, demo 403, anonymous 401/403, admin 3 rows and can PUT any), upload PNG returns a /api/files url that can be downloaded, text/plain 400, cross-branch upload 403, GET /wishlist with X-Store-Id pgs-jombang = 362000 vs 360000 Sidoarjo without header. FAILED: the POST/DELETE /wishlist responses ignore X-Store-Id (Sidoarjo price). The app's wishlist state is set from those responses, so the bug fix is incomplete. Frontend at 390x844: demo Beranda store-switch -> pilih-toko -> pick Jember -> /shop/pgs-jember shows banner, logo overlapping the banner, name and shop-empty with a clear message plus Lihat Katalog; header-back returns to Beranda. Jombang /seller has Tampilan and Flash Sale tiles. Store-appearance fields save (PUT 200) and the preview shows desc/address/hours/phone with Telepon/WA buttons (44px high). shell-back is visible on mobile and returns to /seller. Admin sees 3 sa-store chips and switching works. 2 UI bugs: (1) sa-msg 'Tampilan toko disimpan' is cleared right after it renders; (2) the Featured search for Jombang/Jember returns nothing because it calls /products?store=pgs-jombang (own products only), so branch admins cannot pick shared catalog products. Appearance restored to the original values for all 3 branches and the test products were deleted.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/wishlist/{id}, DELETE /api/wishlist/{id}", "issue": "Both return get_wishlist(owner) without passing X-Store-Id, so x_store_id is the Header() FieldInfo default and _ctx() falls back to Sidoarjo. With X-Store-Id pgs-jombang the POST response price is 360000 instead of 362000. cart-context.tsx:55-56 does setWishlist(w.items) from this response, so after a toggle the wishlist shows Sidoarjo prices until refresh. Fix: add x_store_id: Optional[str] = Header(default=None) to add_wishlist/remove_wishlist and call get_wishlist(owner, x_store_id). Reference: server.py:1036-1046", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "GET /api/stores/{id}/page", "issue": "If every saved featured_id becomes unavailable, featured() falls back to the auto best sellers but featured_manual stays true, so the UI shows the title 'Produk Andalan' instead of 'Terlaris'. Reference: store_page.py:57-72"}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Store appearance editor success message", "issue": "After a successful save, onSaved() replaces the list item, so the Editor's useEffect([a]) runs setMsg(null) and clears the message immediately. sa-msg 'Tampilan toko disimpan' renders briefly but is never visible; a MutationObserver confirmed it appeared and was gone right away. Reference: app/seller/store-appearance.tsx:84,91", "testID": "sa-msg", "priority": "HIGH"},
+      {"component": "FeaturedPicker search", "issue": "Uses api.products({store: storeId, q}), which for pgs-jombang/pgs-jember returns only the store's own products (curl /products?store=pgs-jombang&q=Suggo -> []). Branch admins cannot add shared catalog products as featured, although the backend accepts them. Works for pgs-official (8 results). Fix: for branches, search the catalog with the X-Store-Id/branch context instead of store=. Reference: app/seller/store-appearance.tsx:46", "testID": "sa-feat-search / sa-feat-add-*", "priority": "HIGH"}
+    ],
+    "integration_issues": [
+      {"flow": "Wishlist toggle on a Jombang/Jember branch", "issue": "The wishlist state comes from the POST/DELETE response, which uses the Sidoarjo price (see backend critical).", "affected_testIDs": ["pd-wishlist-btn"]}
+    ],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iter57_store_page.py", "/app/test_reports/pytest/iter57.xml"],
+  "action_items": [
+    "server.py add_wishlist/remove_wishlist: accept the X-Store-Id header and pass it to get_wishlist (do not rely on the Header default when calling directly)",
+    "store-appearance.tsx Editor: do not clear msg when 'a' changes after a save (e.g. reset msg only when store_id changes, or set the message after onSaved via a ref/flag)",
+    "store-appearance.tsx FeaturedPicker: for pgs-jombang/pgs-jember, search the shared catalog plus branch-own products (pass X-Store-Id=storeId, without store=) so branch admins can pick featured products",
+    "Optional: set featured_manual=false (or return a flag) when the manual ids resolve to no products"
+  ],
+  "critical_code_review_comments": [
+    "get_wishlist is called directly as a Python function with a FastAPI Header default, which is fragile (FieldInfo object passed as x_store_id)",
+    "Shop page renders the global search bar above the ScreenHeader on web (two headers stacked), which is consistent with other pages but takes vertical space",
+    "The uploaded 1x1 TEST PNG (stores/pgs-jombang/...) is still in storage/uploads. It is not referenced by any store."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter57_store_page.py"],
+  "success_rate": {"backend": "91% (10/11)", "frontend": "80% (flows work; sa-msg and branch featured search broken)"},
+  "seed_data_creation": "Created 2 TEST_Jombang products (deleted) and added pgs-10062 to the demo wishlist (removed). Appearance of all 3 branches was changed during the tests and then restored to the originals (description/phone values, empty banner/logo/address/hours/featured). An appearance_updated_at field was added to the store docs.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run with -n0. pgs-10062 has Jombang price 362000 vs Sidoarjo 360000. Original appearance: official desc 'Toko resmi Pusat Grosir Sidoarjo', phone 6281335551252; jombang/jember desc 'Toko resmi Mitra PGS Jombang/Jember', phone empty; everything else empty. UI login: go to the origin first, set localStorage pgs_auth_token, then page.goto the target. Grant geolocation in the context.",
+  "rca_of_issue": "sa-msg: Editor useEffect(() => { setF(a); setMsg(null) }, [a]) fires on the new 'a' object that onSaved puts in the list. Wishlist: add/remove call get_wishlist(owner) without x_store_id. Featured search: /products?store=<branch> filters on store_id=<branch>, but shared catalog products have store_id=pgs-official."
+}

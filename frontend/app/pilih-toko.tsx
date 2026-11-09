@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { View, Text, StyleSheet, Pressable, ScrollView, ActivityIndicator } from "react-native";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Icon from "@react-native-vector-icons/ionicons";
 
@@ -25,7 +25,10 @@ export default function PickStore() {
     return g ? { distance_km: g.distance_km, gps: true } : { distance_km: near?.stores.find((r) => r.store_id === id)?.distance_km ?? null, gps: false };
   };
   const nearestId = distances?.[0]?.store_id ?? near?.suggested;
+  const { from } = useLocalSearchParams<{ from?: string }>();
   const back = () => { refresh(); if (router.canGoBack()) router.back(); else router.replace("/" as any); };
+  // from Beranda: open the chosen branch's store page; its back button returns to Beranda
+  const picked = (id: string) => { refresh(); if (from === "home") router.replace(`/shop/${id}` as any); else back(); };
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]} testID="pick-store-screen">
@@ -46,7 +49,7 @@ export default function PickStore() {
           const d = info(s.store_id);
           return (
             <Pressable key={s.store_id} testID={`pick-store-${s.store_id}`} style={[styles.card, on && styles.cardOn]}
-              onPress={async () => { await choose(s.store_id); back(); }}>
+              onPress={async () => { await choose(s.store_id); picked(s.store_id); }}>
               <View style={[styles.icon, on && { backgroundColor: colors.brandPrimary }]}>
                 <Icon name="storefront" size={22} color={on ? colors.onBrandPrimary : colors.brandPrimary} />
               </View>

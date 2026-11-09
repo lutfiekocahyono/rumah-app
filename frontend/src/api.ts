@@ -214,6 +214,11 @@ export const api = {
   openStore: (s: StoreInput) => req<Store>("/stores", { method: "POST", body: JSON.stringify(s) }),
   editStore: (s: StoreInput) => req<Store>("/me/store", { method: "PUT", body: JSON.stringify(s) }),
   storePage: (id: string) => req<Store>(`/stores/${id}`),
+  shopPage: (id: string) => req<ShopPage>(`/stores/${id}/page`),
+  shopProducts: (id: string, skip = 0) => req<Product[]>(`/stores/${id}/own-products?skip=${skip}`),
+  storeAppearance: () => req<StoreAppearance[]>("/store-appearance"),
+  saveStoreAppearance: (id: string, b: Omit<StoreAppearance, "store_id" | "name" | "city" | "featured"> & { featured_ids: string[] }) =>
+    req<StoreAppearance>(`/store-appearance/${id}`, { method: "PUT", body: JSON.stringify(b) }),
   sellerProducts: () => req<Product[]>("/seller/products"),
   sellerSaveProduct: (p: SellerProductInput, id?: string) =>
     req<Product>(id ? `/seller/products/${id}` : "/seller/products", { method: id ? "PUT" : "POST", body: JSON.stringify(p) }),
@@ -446,6 +451,8 @@ export type HomeSectionsInput = Record<HomeSectionKey, HomeSectionCfg>;
 export type HomeSectionsSettings = { store_id: string; store_name: string; sections: Record<HomeSectionKey, HomeSectionCfg & { pinned_products: { product_id: string; name: string; image: string; price: number }[] }> };
 export type HomeFeed = Record<HomeSectionKey, { enabled: boolean; title: string; limit: number; items: Product[]; more?: boolean }>;
 export type Store = { official?: boolean; store_id: string; owner_id: string; name: string; description: string; city: string; phone?: string; logo: string; status: "pending" | "active" | "rejected" | "suspended"; note: string; created_at: string; product_count?: number; owner_name?: string; owner_email?: string; address?: string; pickup_hours?: string };
+export type ShopPage = Store & { banner: string; featured: Product[]; featured_manual: boolean };
+export type StoreAppearance = { store_id: string; name: string; city: string; banner: string; logo: string; description: string; phone: string; address: string; pickup_hours: string; featured: { product_id: string; name: string; image: string }[] };
 export type StoreInput = { name: string; description: string; city: string; phone: string; logo: string; address?: string; pickup_hours?: string };
 export type SellerProductInput = { name: string; description: string; category: string; price: number; original_price: number; stock: number; images: string[] };
 export type Courier = { code: string; name: string; cost: number; eta: string; active: boolean; source?: "auto" | "manual" };
@@ -462,7 +469,7 @@ export type Report = {
 };
 export type Category = { category_id: string; name: string; icon: string; image: string; parent?: string | null; count: number };
 export type ProductQuery = {
-  category?: string; q?: string; sort?: string; skip?: number; limit?: number; store?: string;
+  category?: string; q?: string; sort?: string; skip?: number; limit?: number; store?: string; branch?: string;
   brands?: string[]; min_price?: number | null; max_price?: number | null; in_stock?: boolean; wholesale?: boolean;
 };
 export type ProductFacets = {
@@ -471,7 +478,7 @@ export type ProductFacets = {
 };
 function productQs(p: ProductQuery) {
   const qs = new URLSearchParams();
-  for (const k of ["store", "category", "q", "sort"] as const) if (p[k]) qs.set(k, p[k]!);
+  for (const k of ["store", "branch", "category", "q", "sort"] as const) if (p[k]) qs.set(k, p[k]!);
   if (p.skip) qs.set("skip", String(p.skip));
   if (p.limit) qs.set("limit", String(p.limit));
   if (p.brands?.length) qs.set("brand", p.brands.join("|"));

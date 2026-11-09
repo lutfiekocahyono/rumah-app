@@ -199,3 +199,9 @@ Iteration 2: import all data from pusatgrosirsidoarjo.com; tiered pricing (pembe
 - promo.active_flash -> windows {branch: ends_at} of running branches; flash_for/flash_ends by buyer branch (X-Store-Id). Cart, detail, lists, /flash-sale countdown follow branch schedule.
 - GET /api/flash-sale/schedules, PUT /api/flash-sale/schedules/{store_id} {follow, starts_at, ends_at}: store admin = own store only (403 otherwise), Super Admin = all.
 - UI: Admin > Flash Sale "Jadwal per cabang"; Seller Center menu "Jadwal Flash Sale" (/seller/flash-schedule) for official branch admins.
+
+## Iteration 57 — Halaman toko tiap cabang
+- store_page.py: GET /api/stores/{id}/page (banner, logo, info, phone for official, featured: manual featured_ids else top sold own products in stock), GET /api/stores/{id}/own-products (branch-only products: Sidoarjo only_branch=pgs-official, others store_id; in-stock first). GET/PUT /api/store-appearance(/{id}), POST /api/store-appearance/{id}/upload — store admin own store, Super Admin all (403 otherwise).
+- Frontend: /shop/[id] banner + overlapping logo, call/WhatsApp, Produk Andalan, Produk Toko + empty message. Beranda store-switch -> /pilih-toko?from=home -> after choosing, replace to /shop/{id} (back returns to Beranda). /seller/store-appearance editor (menu Tampilan Toko / Tampilan Toko Cabang for admin).
+- Wishlist uses buyer branch (X-Store-Id); SellerShell shows back button on phones.
+- ?branch= product search uses that branch's stock (featured picker).

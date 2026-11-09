@@ -1,0 +1,31 @@
+{
+  "summary": "Retest of the iteration 57 fixes. All 4 fixes are verified. Backend: 15/15 passed (new test_iter58_retest.py 4/4 plus the test_iter57_store_page.py regression 11/11, run with -n0). (1) Wishlist with X-Store-Id pgs-jombang: the POST response for pgs-10062 shows 362000, without the header 360000, and the DELETE response with the header keeps 362000 for the remaining item. (2) GET /products?branch=pgs-jombang&q=keset returns 29 shared catalog products (store_id pgs-official), all priced at their Jombang store_stock price; ?store=pgs-jombang still returns own products only. (3) featured_manual: true with a Jombang own product set as featured; after that product is deleted, featured_manual is false and the auto list is used. Frontend at 390x844 as jombang@pgs.id: after changing sa-hours and saving, sa-msg 'Tampilan toko disimpan' is still visible after 2.5s and hides on the next edit. Typing 'keset' in sa-feat-search shows 8 sa-feat-add-* results; added pgs-12110 and saved. sa-preview opens /shop/pgs-jombang, where shop-featured shows 'Produk Andalan' with the product and the hours appear. After a reload the featured product and the hours are still there. Restored through the UI (removed the featured product, cleared the hours, saved); the API confirms the original state (hours '', featured [], featured_manual false). One new minor issue: the picker search uses summed all-branch stock, so it can suggest products that are out of stock at Jombang.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/products?branch=pgs-jombang", "issue": "ctx stays ALL_BRANCHES, so stock/in_stock are summed over all branches. Example: pgs-12110 returns in_stock true, stock 3 (Sidoarjo), but Jombang store_stock is 0, and the Jombang shop then shows it as 'Stok habis' in Produk Andalan. The featured picker can therefore suggest products that are out of stock at the branch. Reference: server.py:762-785"}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "seller/store-appearance FeaturedPicker", "issues": ["Search results show no price or branch stock, so an admin cannot tell that a product is out of stock at the branch before featuring it (pgs-12110 was the first result and shows 'Stok habis' on the shop page)"]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iter58_retest.py", "/app/backend/tests/test_iter57_store_page.py", "/app/test_reports/pytest/iter58.xml"],
+  "action_items": [
+    "Optional: when ?branch= is used, compute stock for that branch (stock_ctx=branch), or show branch stock/price in the FeaturedPicker results so admins do not feature products that are out of stock at the branch"
+  ],
+  "critical_code_review_comments": [
+    "Manual featured products are not filtered by branch stock, while the auto featured list requires stock>0. This may be intended, but out-of-stock items can appear under 'Produk Andalan'"
+  ],
+  "updated_files": ["/app/backend/tests/test_iter58_retest.py"],
+  "success_rate": {"backend": "100% (15/15)", "frontend": "100% (all requested flows pass)"},
+  "seed_data_creation": "Created TEST_Iter58 Featured (Jombang own product), then deleted it. Demo wishlist items were added and removed (wishlist empty again). The Jombang appearance was changed and then restored to the original (desc 'Toko resmi Mitra PGS Jombang', everything else empty, featured []).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run with -n0. pgs-10062 has Jombang price 362000 vs Sidoarjo 360000. pgs-12110 (keset) has Jombang stock 0 but Sidoarjo stock 3. UI login: go to the origin, set localStorage pgs_auth_token, then goto the target page.",
+  "rca_of_issue": "Minor stock issue: list_products sets x_store_id=branch but ctx = ALL_BRANCHES when store is not set, so _apply_stock sums the stock of all branches."
+}

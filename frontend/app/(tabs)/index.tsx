@@ -103,7 +103,7 @@ export default function Home() {
       <View style={styles.header}>
         <View style={styles.headerBrand}>
           <Image source={require("../../assets/images/pgs-logo-small.png")} style={styles.logoImg} contentFit="contain" testID="home-logo" />
-          <Pressable style={{ flex: 1, minHeight: 44, justifyContent: "center" }} testID="store-switch" onPress={() => router.push("/pilih-toko" as any)}>
+          <Pressable style={{ flex: 1, minHeight: 44, justifyContent: "center" }} testID="store-switch" onPress={() => router.push("/pilih-toko?from=home" as any)}>
             <Text style={styles.brandLabel}>Produk semua cabang · toko pilihan</Text>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
               <Text style={styles.brandCity} numberOfLines={1}>{store?.name ?? "PGS Sidoarjo"}</Text>

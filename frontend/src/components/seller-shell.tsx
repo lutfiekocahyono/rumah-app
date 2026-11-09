@@ -30,7 +30,8 @@ function menu(admin: boolean, storeId: string): (Item | Group)[] {
     ...(admin ? [i("Promosi", "megaphone-outline", "/admin/vouchers")] : []),
     ...(admin ? [] : [i("Chat", "chatbubbles-outline", "/chat?side=store")]),
     i("Komplain", "alert-circle-outline", admin ? "/complaint?scope=admin" : "/complaint?scope=store"),
-    ...(!admin && official ? [i("Beranda Toko", "flame-outline", "/seller/home-sections"), i("Jadwal Flash Sale", "flash-outline", "/seller/flash-schedule")] : []),
+    ...(!admin && official ? [i("Tampilan Toko", "color-palette-outline", "/seller/store-appearance"), i("Beranda Toko", "flame-outline", "/seller/home-sections"), i("Jadwal Flash Sale", "flash-outline", "/seller/flash-schedule")] : []),
+    ...(admin ? [i("Tampilan Toko Cabang", "color-palette-outline", "/seller/store-appearance")] : []),
     i("Laporan Penjualan", "bar-chart-outline", admin ? "/admin/report" : "/seller"),
     i("Pengaturan Toko", "settings-outline", admin ? "/admin/stores" : "/seller"),
   ];
