@@ -245,3 +245,5 @@ Iteration 2: import all data from pusatgrosirsidoarjo.com; tiered pricing (pembe
 - [Done] Pilihan sub-kategori di halaman kategori toko cabang: GET /api/stores/{id}/categories?parent=<cat> (hanya sub-kategori berproduk berharga cabang, urut terbanyak, cucu dihitung ke sub-kategori). Chip 'Semua' + sub-kategori (testID cat-sub-<id>), bisa digabung dengan cari & urutan.
 
 - [Done] Tombol Filter (merek, rentang harga, stok cabang, grosir) di halaman kategori toko cabang; FilterSheet prop fixedCategory menyembunyikan bagian Kategori. Bug urutan spread category diperbaiki testing agent (iter 67).
+
+- [Done] Halaman kategori dari Beranda juga punya chip sub-kategori (GET /api/categories/counts?parent=), kotak cari dalam kategori, dan tombol Filter (merek/harga/stok/grosir); harga & stok default katalog (tanpa X-Shop-Page). Iter 68 lulus.

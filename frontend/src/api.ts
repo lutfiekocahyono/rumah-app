@@ -218,6 +218,7 @@ export const api = {
   storePage: (id: string) => req<Store>(`/stores/${id}`),
   shopPage: (id: string) => req<ShopPage>(`/stores/${id}/page`),
   shopCategories: (id: string, parent?: string) => req<Category[]>(`/stores/${id}/categories${parent ? `?${qs({ parent })}` : ""}`),
+  categoryCounts: (parent?: string) => req<Category[]>(`/categories/counts${parent ? `?${qs({ parent })}` : ""}`),
   suggest: (q: string) => req<{ products: { product_id: string; name: string; image: string }[]; brands: string[]; categories: { category_id: string; name: string }[] }>(`/products/suggest?${qs({ q })}`),
   storeAppearance: () => req<StoreAppearance[]>("/store-appearance"),
   saveStoreAppearance: (id: string, b: Omit<StoreAppearance, "store_id" | "name" | "city" | "featured"> & { featured_ids: string[] }) =>

@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import List, Optional
 
-from fastapi import Depends, File, HTTPException, Request, Response, UploadFile
+from fastapi import Depends, File, Header, HTTPException, Request, Response, UploadFile
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
@@ -75,13 +75,9 @@ def register(api, db, *, require_admin, get_current_user, get_optional_user, vis
         out["featured"], out["featured_manual"] = await featured(s, user)
         return out
 
-    @api.get("/stores/{store_id}/categories")
-    async def store_categories(store_id: str, parent: Optional[str] = None):
-        """Categories (main, or the sub-categories of `parent`) that have products priced in this PGS branch
-        (stok 0 ikut), most products first; deeper levels count towards their ancestor at that level."""
-        if store_id not in seller.OFFICIAL_IDS:
-            raise HTTPException(status_code=404, detail="Toko tidak ditemukan")
-        shop_scope.ON.set(True)
+    async def category_counts(query: dict, parent: Optional[str]) -> list:
+        """Categories (main, or the sub-categories of `parent`) having products matching `query` (stok 0 ikut),
+        most products first; deeper levels count towards their ancestor at that level."""
         cats = await db.categories.find({}, {"_id": 0}).to_list(1000)
         up = {c["category_id"]: c.get("parent") for c in cats}
 
@@ -98,11 +94,24 @@ def register(api, db, *, require_admin, get_current_user, get_optional_user, vis
             return None
 
         counts: dict = {}
-        async for d in db.products.find(await visible(store_id), {"_id": 0, "categories": 1}):
+        async for d in db.products.find(query, {"_id": 0, "categories": 1}):
             for t in {level(c) for c in (d.get("categories") or ["lainnya"])} - {None}:
                 counts[t] = counts.get(t, 0) + 1
         rows = [{**c, "count": counts[c["category_id"]]} for c in cats if (c.get("parent") or None) == parent and counts.get(c["category_id"])]
         return sorted(rows, key=lambda c: -c["count"])
+
+    @api.get("/stores/{store_id}/categories")
+    async def store_categories(store_id: str, parent: Optional[str] = None):
+        """Branch store page: only products priced in this PGS branch."""
+        if store_id not in seller.OFFICIAL_IDS:
+            raise HTTPException(status_code=404, detail="Toko tidak ditemukan")
+        shop_scope.ON.set(True)
+        return await category_counts(await visible(store_id), parent)
+
+    @api.get("/categories/counts")
+    async def catalog_category_counts(parent: Optional[str] = None, x_store_id: Optional[str] = Header(default=None)):
+        """Beranda / katalog: same products as the catalog list of the buyer's branch (shared catalog)."""
+        return await category_counts(await visible("all", x_store_id or ""), parent)
 
     # ---------------- appearance editor ----------------
     @api.get("/stores/{store_id}/qr")

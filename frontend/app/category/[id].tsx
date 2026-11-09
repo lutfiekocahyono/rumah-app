@@ -29,23 +29,24 @@ export default function CategoryPage() {
   const [cat, setCat] = useState<Category | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [sort, setSort] = useState("popular");
-  const { ready, storeId, stores } = useStore();
+  const { ready, storeId, stores, store } = useStore();
   const shopName = toko ? stores.find((s) => s.store_id === toko)?.name : undefined;
   const [q, setQ] = useState("");
-  const [dq, setDq] = useState(""); // debounced search, only on a branch store category
+  const [dq, setDq] = useState(""); // debounced in-category search
   useEffect(() => { const t = setTimeout(() => setDq(q.trim()), 300); return () => clearTimeout(t); }, [q]);
-  const [subs, setSubs] = useState<Category[]>([]); // sub-categories with products priced in this branch
+  // sub-categories with products: priced in that branch (store page) or in the shared catalog (Beranda)
+  const [subs, setSubs] = useState<Category[]>([]);
   const [sub, setSub] = useState<string | null>(null);
   useEffect(() => {
     setSub(null);
-    if (toko && id) api.shopCategories(toko, id).then(setSubs).catch(() => setSubs([]));
-    else setSubs([]);
-  }, [toko, id]);
+    if (!id || !ready) return;
+    (toko ? api.shopCategories(toko, id) : api.categoryCounts(id)).then(setSubs).catch(() => setSubs([]));
+  }, [toko, id, ready, storeId]);
   const catId = sub ?? id;
-  const [filters, setFilters] = useState<SearchFilters>(NO_FILTERS); // brand / price / stock, branch store only
+  const [filters, setFilters] = useState<SearchFilters>(NO_FILTERS); // brand / price / stock
   const [sheet, setSheet] = useState(false);
   const nFilters = activeCount(filters);
-  const scope = toko ? { ...toQuery(dq, filters), branch: toko } : {};
+  const scope = { ...toQuery(dq, filters), ...(toko ? { branch: toko } : {}) };
   const [loading, setLoading] = useState(true);
   const [done, setDone] = useState(false);
   const [moreLoading, setMoreLoading] = useState(false);
@@ -91,14 +92,14 @@ export default function CategoryPage() {
         )}
       </View>
 
-      {toko ? (
+      {(
         <View style={styles.searchBox}>
           <Icon name="search" size={16} color={colors.muted} />
           <TextInput testID="cat-shop-search" value={q} onChangeText={setQ} returnKeyType="search"
-            placeholder={`Cari ${cat?.name ?? "produk"} di ${shopName ?? "toko ini"}…`} placeholderTextColor={colors.muted} style={styles.searchInput} />
+            placeholder={`Cari di ${cat?.name ?? "kategori ini"}${shopName ? ` · ${shopName}` : ""}…`} placeholderTextColor={colors.muted} style={styles.searchInput} />
           {q ? <Pressable testID="cat-shop-search-clear" hitSlop={10} onPress={() => setQ("")}><Icon name="close-circle" size={16} color={colors.muted} /></Pressable> : null}
         </View>
-      ) : null}
+      )}
 
       {subs.length ? (
         <View style={styles.subWrap}>
@@ -118,12 +119,12 @@ export default function CategoryPage() {
 
       <View style={styles.chipsWrap}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsRow}>
-          {toko ? (
+          {(
             <Pressable testID="cat-filter-btn" onPress={() => setSheet(true)} style={[styles.chip, styles.filterChip, nFilters > 0 && styles.chipActive]}>
               <Icon name="options-outline" size={16} color={nFilters ? colors.onBrandPrimary : colors.onSurface} />
               <Text style={[styles.chipText, nFilters > 0 && styles.chipTextActive]}>Filter{nFilters ? ` (${nFilters})` : ""}</Text>
             </Pressable>
-          ) : null}
+          )}
           {SORTS.map((s) => {
             const active = s.id === sort;
             return (
@@ -161,10 +162,8 @@ export default function CategoryPage() {
           renderItem={({ item }) => <ProductCard product={item} style={{ width: CARD_WIDTH }} />}
         />
       )}
-      {toko ? (
-        <FilterSheet visible={sheet} q={dq} value={filters} storeName={shopName ?? "toko ini"} branch={toko} fixedCategory={catId}
-          onApply={setFilters} onClose={() => setSheet(false)} />
-      ) : null}
+      <FilterSheet visible={sheet} q={dq} value={filters} storeName={shopName ?? store?.name ?? "cabang pilihan"} branch={toko} fixedCategory={catId}
+        onApply={setFilters} onClose={() => setSheet(false)} />
     </View>
   );
 }

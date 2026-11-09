@@ -1,0 +1,38 @@
+{
+  "summary": "Tested the Beranda category page (/category/dapur without ?toko): sub-category chips with counts, in-category search, Filter sheet (brand/price/stock/grosir) with sort, plus regressions for the branch category page (?toko=pgs-jombang) and the shop page FilterSheet. Backend: 18/18 pytest pass (11 new for iter68 + 7 from iter67). GET /api/categories/counts?parent=dapur returns 10 sub-categories, all with parent=dapur, sorted by count descending (Peralatan Masak 933 first). Without parent it returns main categories only. An unknown parent returns []. Chip counts exactly match the catalog list totals (peralatan-masak 933 for pgs-official and pgs-jombang; dapur 2805). Frontend: every review item passes. Chips cat-sub-all 'Semua' and cat-sub-peralatan-masak 'Peralatan Masak (933)' are present. Selecting a sub sends products?category=peralatan-masak with no branch param and no X-Shop-Page header (X-Store-Id is sent). Search cat-shop-search sends q=panci inside the sub-category and combines with sort=price_asc. The sheet has no Kategori section. Brand 'Q2 & GSF' + min 50000 + Termahal gives 'Tampilkan 35 produk', the request includes brand, min_price and sort, the button shows Filter (2), and the cards are sorted descending and are all >= 50000. In-stock + grosir gives 2774 of 2805, and the filters persist when switching sub-category. min 999999999 shows the empty state with 'Hapus filter', and tapping it resets the filters. Beranda -> category-dapur tap navigates to /category/dapur. Regression OK: ?toko=pgs-jombang shows 'di Mitra PGS Jombang', uses /stores/pgs-jombang/categories, and sends products with branch=pgs-jombang and X-Shop-Page:1. The facets request is scoped the same way, the sheet label is 'Tersedia di Mitra PGS Jombang', and there is no Kategori section. The shop page sheet still shows the Kategori section (Dapur (2805)...). No code bugs found.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/categories", "issue": "Main category 'count' for dapur is 2788 while /api/categories/counts and the product list give 2805. The two count sources differ slightly (likely caching or a different scope). This is not shown on the category page."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/category/[id] (Beranda, no toko)", "issues": [
+        "There are three search entry points stacked on one screen: the global app-chrome top bar 'Cari di Katalog Produk…', the header search icon (cat-search), and the new in-category search box (cat-shop-search). Together they take ~100px of vertical space at 375x667. Consider hiding the app-chrome top bar on /category/* (it is already hidden for ?toko, app-chrome.tsx:88) or dropping the cat-search icon.",
+        "Sub-category chips, the Filter button and sort chips are 36px tall, below the 44pt touch-target minimum.",
+        "Sub-chip counts are unfiltered totals: with Filter (2) active, 'Bekal (36)' still shows 36. This is acceptable but may confuse users.",
+        "The in-stock toggle label says 'Tersedia di PGS Sidoarjo' while Beranda stock is the sum across branches. The wording may not match the data; please verify the intent."
+      ]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iter68_category_counts.py", "/app/backend/tests/test_iter67_category_filter.py", "/app/test_reports/pytest/iter68.xml"],
+  "action_items": [
+    "Optional (UX): remove the duplicate search affordances on the Beranda category page by hiding the app-chrome top bar for /category/* or removing the cat-search header icon.",
+    "Optional: raise the chip minHeight to 44 for touch targets."
+  ],
+  "critical_code_review_comments": [
+    "category/[id].tsx: the products effect deps omit catId/scope, but they are covered via sub/dq/filters/toko. The eslint-disable comment is OK.",
+    "category/[id].tsx: the subs effect resets sub=null on storeId change, which is correct because counts depend on the branch.",
+    "store_page.py category_counts scans all matching products on every request with no caching. It is fine for ~6.6k products but may be slow as the catalog grows."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter68_category_counts.py"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "None. Read-only tests; no DB data modified.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Run pytest with EXPO_BACKEND_URL set to EXPO_PUBLIC_BACKEND_URL from frontend/.env and -p no:xdist -o addopts=''. Hide the location-lock modal by setting display:none on every position:fixed ancestor of [data-testid=location-lock]. /api/categories returns only main categories; sub-category rows come from /api/categories/counts?parent=X (header X-Store-Id) or /api/stores/{id}/categories?parent=X (branch). Beranda category requests send no X-Shop-Page header and no branch param; ?toko requests send X-Shop-Page:1 and branch=<toko>."
+}
