@@ -60,7 +60,7 @@ export default function CategoryPage() {
           <Icon name="chevron-back" size={24} color={colors.onSurface} />
         </Pressable>
         <Text style={styles.title}>{cat?.name ?? "Kategori"}</Text>
-        <Pressable testID="cat-search" hitSlop={8} onPress={() => router.push("/search" as any)}>
+        <Pressable testID="cat-search" hitSlop={8} onPress={() => router.push("/search?focus=1" as any)}>
           <Icon name="search" size={22} color={colors.onSurface} />
         </Pressable>
       </View>

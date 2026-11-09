@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { View, Text, StyleSheet, Pressable, TextInput, FlatList, Dimensions, ActivityIndicator, ScrollView } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams, usePathname, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Icon from "@react-native-vector-icons/ionicons";
 
@@ -23,7 +23,8 @@ export default function Search() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { store } = useStore();
-  const params = useLocalSearchParams<{ q?: string }>();
+  const params = useLocalSearchParams<{ q?: string; focus?: string }>();
+  const inTab = usePathname() === "/katalog";  // bottom-nav "Katalog": no back button, keyboard stays closed
   const [q, setQ] = useState(params.q ?? "");
   const [sort, setSort] = useState<string>("newest");
   const [filters, setFilters] = useState<SearchFilters>(NO_FILTERS);
@@ -35,19 +36,17 @@ export default function Search() {
   const req = useRef(0);
 
   const nFilters = activeCount(filters);
-  const searching = !!q.trim() || nFilters > 0;
 
   useEffect(() => {
     const t = setTimeout(() => {
       const id = ++req.current;
-      if (!searching) { setResults([]); setLoading(false); return; }
       setLoading(true);
       api.products({ ...toQuery(q.trim(), filters), sort, limit: PAGE })
         .then((p) => { if (id === req.current) { setResults(p); setDone(p.length < PAGE); } })
         .catch(() => {}).finally(() => { if (id === req.current) setLoading(false); });
     }, 300);
     return () => clearTimeout(t);
-  }, [q, sort, filters, searching]);
+  }, [q, sort, filters]);
 
   const loadMore = useCallback(async () => {
     if (done || more || loading) return;
@@ -63,20 +62,23 @@ export default function Search() {
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]} testID="search-screen">
+      <Text style={styles.title} testID="catalog-title">Katalog Produk</Text>
       <View style={styles.header}>
-        <Pressable testID="search-back" hitSlop={8} onPress={() => router.back()}>
-          <Icon name="chevron-back" size={24} color={colors.onSurface} />
-        </Pressable>
+        {!inTab && router.canGoBack() ? (
+          <Pressable testID="search-back" hitSlop={8} onPress={() => router.back()}>
+            <Icon name="chevron-back" size={24} color={colors.onSurface} />
+          </Pressable>
+        ) : null}
         <View style={styles.input}>
           <Icon name="search" size={18} color={colors.muted} />
           <TextInput
             testID="search-input"
-            placeholder="Cari produk…"
+            placeholder="Cari di Katalog Produk…"
             placeholderTextColor={colors.muted}
-            value={q} onChangeText={setQ} autoFocus
+            value={q} onChangeText={setQ} autoFocus={!inTab && params.focus === "1"}
             style={{ flex: 1, color: colors.onSurface, paddingVertical: 10 }}
           />
-          {q ? <Pressable hitSlop={8} onPress={() => setQ("")}><Icon name="close-circle" size={18} color={colors.muted} /></Pressable> : null}
+          {q ? <Pressable testID="search-clear" hitSlop={12} onPress={() => setQ("")}><Icon name="close-circle" size={20} color={colors.muted} /></Pressable> : null}
         </View>
       </View>
 
@@ -101,11 +103,6 @@ export default function Search() {
 
       {loading ? (
         <ActivityIndicator color={colors.brandPrimary} style={{ marginTop: spacing.xl }} />
-      ) : !searching ? (
-        <View style={styles.empty}>
-          <Icon name="search-outline" size={48} color={colors.muted} />
-          <Text style={styles.emptyText}>Cari furniture, elektronik, dapur, dan lainnya — atau pakai Filter untuk menelusuri per kategori & merek</Text>
-        </View>
       ) : results.length === 0 ? (
         <View style={styles.empty}>
           <Icon name="sad-outline" size={48} color={colors.muted} />
@@ -133,6 +130,7 @@ export default function Search() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.surface },
+  title: { fontSize: fontSize.lg, fontWeight: "700", color: colors.onSurface, paddingHorizontal: spacing.lg, paddingTop: spacing.sm },
   header: {
     flexDirection: "row", alignItems: "center", gap: spacing.sm,
     paddingHorizontal: spacing.lg, paddingVertical: spacing.sm,
@@ -140,7 +138,7 @@ const styles = StyleSheet.create({
   input: { flex: 1, flexDirection: "row", alignItems: "center", gap: spacing.sm, backgroundColor: colors.surfaceTertiary, borderRadius: radius.pill, paddingHorizontal: spacing.md },
   bar: { flexDirection: "row", alignItems: "center", gap: spacing.xs, paddingLeft: spacing.lg, paddingBottom: spacing.sm,
     borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-  filterBtn: { flexDirection: "row", alignItems: "center", gap: 4, minHeight: 36, paddingHorizontal: spacing.md, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border },
+  filterBtn: { flexDirection: "row", alignItems: "center", gap: 4, minHeight: 44, paddingHorizontal: spacing.md, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border },
   filterBtnOn: { backgroundColor: colors.brandPrimary, borderColor: colors.brandPrimary },
   filterText: { fontSize: 13, fontWeight: "600", color: colors.onSurface },
   activeRow: { gap: spacing.xs, paddingHorizontal: spacing.lg, paddingVertical: spacing.xs },

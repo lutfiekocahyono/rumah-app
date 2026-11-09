@@ -1,0 +1,37 @@
+{
+  "summary": "Tested the Katalog Produk rename/tab and weight-only no-notify fix. Backend: 8/8 pytest pass (tests/test_pgs_iter42_weight_no_notify.py). Editor publish with only weight changed on raw imported never-edited products (with and without brand) creates 0 product_events, also a 2nd weight change and a 15-product random sample (13 published, 2 skipped by 422, 0 events). Excel import with only 'ID Produk (jangan diubah)' + 'Berat (gram)*' on 2 raw products: update=2, 0 events. Changing the description via the editor or Excel creates exactly 1 'info' event. All products were restored with replace_one from the original docs, and only our events were deleted. Afterwards: product_events=0, products with weight_grams=0, price_history=0. /api/admin/product-digest/run was NOT called. Frontend at 390x844: the bottom nav shows Beranda|Katalog|Scan|Keranjang|Akun with no Kategori. tab-katalog opens /katalog with title 'Katalog Produk', 40 products right away (GET products?sort=newest&limit=40), the Terbaru chip active, no back button and the keyboard closed. Infinite scroll loads skip=40/80/120. The filter sheet has the category chips, and applying Fashion sends category=fashion (Tampilkan 79 produk, Filter (1)). The home search-input-open and the global-search on /akun open /search?focus=1 with the title, a back button and the input focused. Typing 'teko' filters the list, clearing shows all products, and back returns home. /kategori (home 'Lihat Semua') and /category/dapur load and highlight the Katalog tab. Only minor UI issues. Deprecated packages detected: none.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/product-editor/publish", "issue": "Products in category 'lainnya' (220 products; this category doesn't exist in db.categories) fail editor publish with 422 'Kategori wajib dipilih' (e.g. pgs-47472, pgs-25726). The owner can't fix their weight in the editor without also picking a category. The Excel weight import works for them. Existing issue, not a regression."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "search.tsx / katalog", "issues": [
+        "Filter button and sort chips are 36px tall, below the 44px touch target (search.tsx:141 minHeight 36)",
+        "The clear-text (close-circle) button in the search input has no testID and is only 18px + 8 hitSlop (search.tsx:81)",
+        "On web the focused TextInput shows a black browser focus outline inside the pill (add outlineStyle:'none' for web)"
+      ]},
+      {"screen": "category/[id]", "issues": ["The global search bar and the page's own search icon (cat-search) are both shown, which is redundant (existing)"]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_pgs_iter42_weight_no_notify.py", "/app/test_reports/pytest/pytest_iter42.xml"],
+  "action_items": [
+    "Optional: map the imported 'lainnya' category (220 products) to an existing category, or let the editor accept it, so weight can be fixed in the editor",
+    "Optional: raise the search chips and Filter button to minHeight 44, and add testID 'search-clear' to the clear button"
+  ],
+  "critical_code_review_comments": [
+    "product_notify.on_info now treats a missing field as equal to its empty/default value (condition 'new', min_order 1) and compares only the category leaf. Verified it suppresses false 'info' events for raw imports.",
+    "search.tsx: inTab = usePathname()==='/katalog' controls the back button and autoFocus. Correct. The katalog tab keeps its query/filter state between tab switches (acceptable)."
+  ],
+  "updated_files": ["/app/backend/tests/test_pgs_iter42_weight_no_notify.py"],
+  "success_rate": {"backend": "100% (8/8)", "frontend": "100% of requested flows"},
+  "seed_data_creation": "None. Products were changed temporarily and restored from the original docs. The product_events created by the description tests were deleted by product_id + time.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Raw imported products lack specs/condition/variants keys (6616 of 6618 in pgs-official). EXPO_PUBLIC_BACKEND_URL is the env var. Run the iter42 test with -n0 to see the prints. No product has weight_grams; keep it that way."
+}

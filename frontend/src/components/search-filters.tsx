@@ -145,7 +145,7 @@ const styles = StyleSheet.create({
   wrap: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs },
   row: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   search: { flexDirection: "row", alignItems: "center", gap: spacing.xs, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: spacing.md, minHeight: 44 },
-  chip: { minHeight: 36, paddingHorizontal: spacing.md, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border, justifyContent: "center", maxWidth: 240 },
+  chip: { minHeight: 44, paddingHorizontal: spacing.md, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border, justifyContent: "center", maxWidth: 240 },
   chipOn: { borderColor: colors.brandPrimary, backgroundColor: colors.brandPrimary },
   chipText: { fontSize: 13, color: colors.onSurface },
   chipTextOn: { color: colors.onBrandPrimary, fontWeight: "600" },

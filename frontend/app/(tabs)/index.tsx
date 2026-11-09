@@ -118,7 +118,7 @@ export default function Home() {
             <Icon name="heart-outline" size={22} color={colors.onSurface} />
           </Pressable>
         </View>
-        <Pressable testID="search-input-open" style={styles.search} onPress={() => router.push("/search" as any)}>
+        <Pressable testID="search-input-open" style={styles.search} onPress={() => router.push("/search?focus=1" as any)}>
           <Icon name="search" size={18} color={colors.muted} />
           <Text style={styles.searchPlaceholder} testID="home-search-placeholder">
             {productCount ? `Cari dari ${productCount.toLocaleString("id-ID")} produk…` : "Cari produk…"}

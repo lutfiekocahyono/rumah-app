@@ -18,7 +18,7 @@ logger = logging.getLogger("product_notify")
 
 INTERVAL = timedelta(hours=1)
 CHECK_EVERY_S = 300
-INFO_FIELDS = ("name", "description", "images", "image", "video", "specs", "category", "subcategory", "brand", "condition",
+INFO_FIELDS = ("name", "description", "images", "video", "specs", "brand", "condition",
                "variant_options", "min_order", "preorder")
 KIND_TEXT = {"new": "produk baru", "price": "harga berubah", "restock": "stok tersedia lagi", "stock": "stok diperbarui", "info": "info diperbarui"}
 DIGEST_KEY = {"key": "product_digest"}
@@ -56,7 +56,9 @@ async def on_info(db, old: dict, new: dict) -> None:
         return await _event(db, merged, "new", after=merged.get("price"))
     empty = lambda v: v in (None, "", 0, False) or v == [] or v == {}  # missing field == default empty value
     defaults = {"condition": "new", "min_order": 1}  # editor fills these for imported products that never had them
-    if any(f in new and not (empty(new[f]) and empty(old.get(f))) and new[f] != old.get(f, defaults.get(f)) for f in INFO_FIELDS):
+    leaf = lambda d: d.get("subcategory") or d.get("category") or ""  # editor splits an imported category into main + sub
+    moved = ("category" in new or "subcategory" in new) and leaf(merged) != leaf(old)
+    if moved or any(f in new and not (empty(new[f]) and empty(old.get(f))) and new[f] != old.get(f, defaults.get(f)) for f in INFO_FIELDS):
         await _event(db, merged, "info")
 
 

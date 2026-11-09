@@ -10,11 +10,12 @@ import { useCart } from "@/src/cart-context";
 // login / daftar / pembayaran stay plain so buyers can focus on finishing
 const PLAIN = [/^\/login/, /^\/register/, /^\/forgot-password/, /^\/checkout/];
 // these already have their own search box at the top
-const OWN_SEARCH = [/^\/$/, /^\/search/, /^\/scan/];
+const OWN_SEARCH = [/^\/$/, /^\/search/, /^\/katalog/, /^\/scan/];
 
 const ITEMS = [
   { key: "home", label: "Beranda", icon: "home", to: "/", match: (p: string) => p === "/" },
-  { key: "kategori", label: "Kategori", icon: "grid", to: "/kategori", match: (p: string) => p.startsWith("/kategori") || p.startsWith("/category") },
+  { key: "katalog", label: "Katalog", icon: "grid", to: "/katalog",
+    match: (p: string) => p.startsWith("/katalog") || p.startsWith("/search") || p.startsWith("/kategori") || p.startsWith("/category") },
   { key: "scan", label: "Scan", icon: "scan", to: "/scan", match: (p: string) => p.startsWith("/scan") },
   { key: "keranjang", label: "Keranjang", icon: "cart", to: "/keranjang", match: (p: string) => p.startsWith("/keranjang") },
   { key: "akun", label: "Akun", icon: "person", to: "/akun", match: (p: string) => p.startsWith("/akun") },
@@ -24,9 +25,9 @@ function TopSearch({ top }: { top: number }) {
   const router = useRouter();
   return (
     <View style={[styles.top, { paddingTop: top + spacing.sm }]} testID="global-search-bar">
-      <Pressable testID="global-search" style={styles.search} onPress={() => router.push("/search" as any)}>
+      <Pressable testID="global-search" style={styles.search} onPress={() => router.push("/search?focus=1" as any)}>
         <Icon name="search" size={18} color={colors.muted} />
-        <Text style={styles.searchText}>Cari produk…</Text>
+        <Text style={styles.searchText}>Cari di Katalog Produk…</Text>
       </Pressable>
     </View>
   );

@@ -156,3 +156,8 @@ Iteration 2: import all data from pusatgrosirsidoarjo.com; tiered pricing (pembe
 - Berat produk: semua 6.618 produk impor belum punya berat. Daftar Produk menampilkan jumlah "belum ada berat" / "berat perkiraan", filter keduanya, badge per baris, Edit Massal "Isi Berat" (hanya yang kosong / timpa), Excel (kolom Berat (gram)).
 - Perkiraan otomatis (weight_estimate.py): aturan nama (AC, TV per ukuran, kulkas, dispenser, speaker, kipas, lemari, dll.) lalu kategori; ×N untuk per dus/isi N; pratinjau dengan edit/buang per baris, konfirmasi, lalu disimpan dengan tanda weight_estimated sampai dikoreksi (editor/massal/Excel).
 - Perubahan berat tidak memicu notifikasi pembeli; perbaikan on_info agar field default produk impor tidak dianggap berubah.
+
+## Iteration 42 (Jun 2026)
+- Halaman pencarian = "Katalog Produk": default semua produk urut Terbaru; tab bawah "Katalog" (/katalog) menggantikan Kategori; kotak cari membuka /search?focus=1. Filter kategori tetap di lembar Filter.
+- Notifikasi: perubahan berat saja (editor/Excel) tidak lagi memicu "info diperbarui" (abaikan pergantian thumbnail & pemecahan kategori impor).
+- Catatan: 220 produk impor berkategori "lainnya" (tidak ada di daftar kategori) — editor minta pilih kategori dulu; Excel tetap bisa.
