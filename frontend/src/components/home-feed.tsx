@@ -18,7 +18,7 @@ const EMPTY: Data = { cats: [], flash: { active: false, items: [] }, vouchers: [
 
 /** Beranda sections (Kategori, Gratis Ongkir, Flash Sale, Voucher, Populer, Terbaru, Rekomendasi) for the selected branch:
  * every price, stock and flash price follows that branch. Used on Beranda and on the branch store page. */
-export function HomeFeedSections({ refreshKey = 0, onLoaded, recsAsRail = false }: { refreshKey?: number; onLoaded?: () => void; recsAsRail?: boolean }) {
+export function HomeFeedSections({ refreshKey = 0, onLoaded, shop = false }: { refreshKey?: number; onLoaded?: () => void; shop?: boolean }) {
   const router = useRouter();
   const { storeId, store } = useStore();
   const [data, setData] = useState<Data>(EMPTY);
@@ -31,15 +31,15 @@ export function HomeFeedSections({ refreshKey = 0, onLoaded, recsAsRail = false 
   const load = useCallback(async () => {
     const safe = <T,>(p: Promise<T>, fb: T) => p.catch(() => fb);
     const [cats, flash, vouchers, settings, feed] = await Promise.all([
-      safe(api.categories(), []), safe(api.flashSale(), EMPTY.flash), safe(api.vouchers(), []),
-      safe(api.homeSettings(), null), safe(api.homeSections(), null),
+      safe(api.categories(), []), safe(api.flashSale(shop), EMPTY.flash), safe(api.vouchers(), []),
+      safe(api.homeSettings(), null), safe(api.homeSections(shop), null),
     ]);
     const recs = feed?.recommended.items ?? [];
     setData({ cats, flash, vouchers, settings, feed, recs });
     recSkip.current = recs.length;
     recPage.current = feed?.recommended.limit ?? 20;
     setRecDone(!feed?.recommended.more || recs.length < recPage.current);
-  }, []);
+  }, [shop]);
 
   useEffect(() => {
     setLoading(true);
@@ -50,7 +50,7 @@ export function HomeFeedSections({ refreshKey = 0, onLoaded, recsAsRail = false 
   const loadMoreRecs = async () => {
     setRecMore(true);
     try {
-      const more = await api.moreRecommended(recSkip.current, recPage.current);
+      const more = await api.moreRecommended(recSkip.current, recPage.current, shop);
       recSkip.current += more.length;
       setData((d) => {
         const have = new Set(d.recs.map((p) => p.product_id));
@@ -95,7 +95,7 @@ export function HomeFeedSections({ refreshKey = 0, onLoaded, recsAsRail = false 
       {data.feed?.newest.enabled ? <ProductRail title={data.feed.newest.title} icon="sparkles-outline" items={data.feed.newest.items} testID="newest-section" /> : null}
 
       {/* Rekomendasi */}
-      {recsAsRail ? (
+      {shop ? (
         <ProductRail
           title={data.feed?.recommended.title ?? "Rekomendasi untukmu"} icon="thumbs-up-outline" items={data.recs} testID="recommend-section"
           onEndReached={() => { if (!recDone && !recMore) loadMoreRecs(); }} loadingMore={recMore}

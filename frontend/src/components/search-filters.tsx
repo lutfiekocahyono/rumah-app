@@ -38,7 +38,7 @@ export function FilterSheet({ visible, q, value, storeName, onApply, onClose, br
   useEffect(() => {
     if (!visible) return;
     setLoading(true);
-    const t = setTimeout(() => api.productFacets({ ...toQuery(q, f), branch }).then(setFacets).catch(() => {}).finally(() => setLoading(false)), 300);
+    const t = setTimeout(() => api.productFacets({ ...toQuery(q, f), branch }, !!branch).then(setFacets).catch(() => {}).finally(() => setLoading(false)), 300);
     return () => clearTimeout(t);
   }, [visible, q, f, storeId, branch]);
 

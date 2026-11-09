@@ -27,6 +27,7 @@ import product_notify
 import push
 import fonnte
 import branch_copy
+import shop_scope
 import branch_price
 import customer_location
 import store_page
@@ -626,7 +627,10 @@ async def _visible(ctx: str, buyer: Optional[str] = None) -> dict:
         return {"store_id": {"$nin": await _hidden_stores()}, "status": {"$ne": "inactive"}}
     b = ctx if ctx != ALL_BRANCHES else (buyer if buyer in seller.OFFICIAL_IDS else seller.PGS_STORE_ID)
     others = [s for s in seller.OFFICIAL_IDS if s not in (seller.PGS_STORE_ID, b)]
-    return {"store_id": {"$nin": await _hidden_stores() + others}, "status": {"$ne": "inactive"}, "only_branch": {"$in": [None, b]}}
+    q = {"store_id": {"$nin": await _hidden_stores() + others}, "status": {"$ne": "inactive"}, "only_branch": {"$in": [None, b]}}
+    if shop_scope.branch(b):  # branch store page: only products with a branch price set
+        q["$and"] = [await shop_scope.clause(db, b)]
+    return q
 
 
 async def _apply_stock(docs: List[dict], ctx: str, price_branch: Optional[str] = None) -> List[dict]:
@@ -1481,6 +1485,7 @@ customer_location.register(api, db, get_owner=get_owner, require_admin=require_a
 store_page.register(api, db, require_admin=require_admin, get_current_user=get_current_user, get_optional_user=get_optional_user,
                     visible=_visible, apply_stock=_apply_stock, product_out=_product_out, active_flash=promo.active_flash)
 app.include_router(api)
+app.add_middleware(shop_scope.Middleware)
 
 app.add_middleware(
     CORSMiddleware,

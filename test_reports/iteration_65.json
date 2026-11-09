@@ -1,0 +1,27 @@
+{
+  "summary": "Retest of the iteration_64 HIGH bug and the shop-scope changes. Backend: tests/test_iter64_shop_scope.py, 14/14 passed. Direct API check: /home/sections, /home/sections/recommended and /flash-sale with X-Shop-Page:1 and X-Store-Id:pgs-jombang return store_name 'Mitra PGS Jombang' and that branch's own stock (e.g. pgs-11740 shows 41). Without the header (Beranda) they return 'PGS · semua cabang' and the summed stock (124). Frontend at 375x667, with the pgs-11740 Jombang price renamed to _bak_price (restored afterwards; 0 _bak_price rows; 6618 priced in Jombang). The HIGH bug is FIXED: jombang@pgs.id logged in with pgs-official stored, then went Akun -> menu-kelola-toko -> 'Lihat Halaman Toko'. /shop/pgs-jombang showed '6617 produk toko', pgs-11740 was hidden, and the stored branch switched to pgs-jombang. After going back and tapping Beranda, it showed 'Cari dari 6.618 produk…' and pgs-11740 was visible in popular-section. The Beranda refetch requests (/products/count, /flash-sale, /home/sections) had no X-Shop-Page header. All store page calls (flash-sale, home/sections, products?branch, recommended?skip=20, in-store search) sent X-Shop-Page:1. On the store page, the popular, newest and recommend rails all load as horizontal rails. Horizontal scrolling of recommend loads more (40 cards). Rails show 'Mitra PGS Jombang' and the branch stock, with 0 'semua cabang' labels. In-store search for pgs-10211 shows 'Stok habis'. Beranda recommend is a 2-column grid. The Jember store page shows 6618 with 'Mitra PGS Jember' labels. The Sidoarjo store page shows 6618 with 'PGS · semua cabang' labels (by design: Sidoarjo is the master catalog).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/shop/pgs-official", "issues": ["The Sidoarjo store page rails still show 'PGS · semua cabang' with summed stock, while the Jombang and Jember pages show the branch name. shop_scope.branch() returns None for PGS_STORE_ID, so this is intended. It is noted only for consistency."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iter64_shop_scope.py", "/app/test_reports/pytest/pytest_iter65.xml"],
+  "action_items": [
+    "Optional: decide whether the Sidoarjo store page rails should show 'PGS Sidoarjo' plus its own stock instead of 'PGS · semua cabang'.",
+    "Optional: remove the obsolete tests in test_iter57/test_iter60 (as noted in iteration_64)."
+  ],
+  "critical_code_review_comments": [
+    "src/api.ts sc(shop) builds the X-Shop-Page header per request, and req() merges init.headers over the defaults. The global flag is gone. products, productFacets (FilterSheet with branch), flashSale, homeSections and moreRecommended pass shop only from app/shop/[id].tsx and HomeFeedSections shop. This is correct.",
+    "api.suggest no longer carries X-Shop-Page. The store page does not use suggest, so there is no impact."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "None. The pgs-11740 Jombang store_stock price was temporarily renamed to _bak_price and restored. Verified: 0 _bak_price rows, 6618 priced.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "/tmp/db.py hide|restore was used to toggle the pgs-11740 Jombang price. To keep Sidoarjo selected before login, set localStorage pgs_store_id=pgs-official and pgs_store_manual=1. The Akun menu testID is menu-kelola-toko."
+}

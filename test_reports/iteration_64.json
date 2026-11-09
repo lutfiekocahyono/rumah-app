@@ -1,0 +1,37 @@
+{
+  "summary": "Tested the branch store page scope (only products with a branch price, plus only_branch products) on backend and frontend. Backend: new file tests/test_iter64_shop_scope.py has 14 tests and all 14 pass. For the test, the Jombang price was removed (renamed to _bak_price) from 5 products: pgs-10062, the first item of popular, newest and recommended, and the first flash item. A TEST_ only_branch product was also added through the Jombang admin. With X-Shop-Page:1 plus X-Store-Id:pgs-jombang, these all hide the unpriced products: count (-5, +1 own product), /products?branch, facets, suggest, /home/sections, /home/sections/recommended and /flash-sale. Without the header (Beranda) nothing is hidden. /stores/pgs-jombang/page gives product_count = the shop-scoped count even without the header, and featured excludes the unpriced products. The only_branch product is listed and shows in the featured fallback. Stock-0 priced pgs-10211 is listed with in_stock=false. Jember and Sidoarjo are not affected. All DB data was restored (0 _bak_price rows, 6618 priced in Jombang) and the TEST product was deleted. Frontend at 375x667, with the pgs-11740 Jombang price removed: going Beranda -> product detail -> pd-store-link -> /shop/pgs-jombang shows '6617 produk toko'. The page shows flash, popular, newest and recommend sections and hides pgs-11740. Its requests carry X-Shop-Page:1. In-store search shows 'Stok habis' for pgs-10211. Opening the product detail from the store list works. Going back to Beranda shows 6.618 and pgs-11740, with no header. Recommend is a horizontal rail on the store page and a 2-column grid on Beranda. Jember and Sidoarjo store pages show 6618. One HIGH bug: when the store page switches the buyer's branch (storeId differs from the shop id), the Beranda that is still mounted refetches while the global shopPage flag is on. Beranda then keeps the filtered data.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "tests (stale)", "issue": "tests/test_iter57_store_page.py (test_own_products_official_only_branch, test_jombang_create_and_order) and tests/test_iter60_suggest_shop_search.py (test_page_categories, test_own_products_*) fail. They call /api/stores/{id}/own-products (now 404) and expect page.categories, both removed when the store page moved to the Beranda layout. These are obsolete tests, not a regression of this change."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Beranda (app/(tabs)/index.tsx + src/components/home-feed.tsx) after store page switches the branch", "issue": "Reproduced. Jombang admin with buyer branch pgs-official goes Akun -> Kelola Toko -> 'Lihat Halaman Toko' -> /shop/pgs-jombang, then goes back and taps Beranda. Beranda shows 'Cari dari 6.617 produk…' and pgs-11740 is missing from Produk Populer. Unfiltered is 6618. RCA: the store page calls choose(id), so storeId changes. The Beranda tab is still mounted under the stack, and its useEffect([storeId]) reloads products/count, banners, home/sections and flash-sale. These requests carry X-Shop-Page:1 because the module-level shopPage flag in src/api.ts:58-68 is global. Beranda does not refetch on focus, so the filtered data stays. Same risk for any other mounted screen that refetches on storeId change, and for pd-store-link of a branch-only product.", "testID": "home-search-placeholder, popular-section", "priority": "HIGH"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/shop/pgs-jombang rails", "issues": ["The popular, newest and recommended rails on the branch store page show store_name 'PGS · semua cabang' and the summed all-branch stock (e.g. '2977 stok tersedia'). The 'Semua Produk Toko' cards show 'Mitra PGS Jombang' with that branch's stock. This is inconsistent on a branch store page and comes from the existing home_feed apply_stock(all_branches)."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iter64_shop_scope.py", "/app/test_reports/pytest/pytest_iter64.xml"],
+  "action_items": [
+    "HIGH: Stop shop-scope leaking into Beranda. Send X-Shop-Page per call, not through a global flag. For example, add a shopScope option to api.homeSections, flashSale, moreRecommended and products, and pass a shopScope prop to HomeFeedSections from app/shop/[id].tsx. Alternatively, make Beranda and HomeFeedSections ignore or redo loads that ran while shopPage was on (e.g. refetch on focus if the last load was shop-scoped).",
+    "Minor: consider showing the branch name and branch stock in the store page rails, to match the 'Semua Produk Toko' list.",
+    "Minor: delete or update the obsolete tests in test_iter57_store_page.py and test_iter60_suggest_shop_search.py that use /stores/{id}/own-products and page.categories."
+  ],
+  "critical_code_review_comments": [
+    "src/api.ts: shopPage is a module-level flag, so any request from any mounted screen gets the header while the store page is focused. This is the root cause of the HIGH bug.",
+    "store_page.py:68 sets shop_scope.ON without a reset token. This is OK because the middleware resets it per request.",
+    "shop_scope.clause runs distinct() and builds a $in with about 6618 ids on every call; home/sections runs it once per section. Latency is still fine (about 0.26-0.5s), but a $lookup or a short cache would scale better."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter64_shop_scope.py"],
+  "success_rate": {"backend": "100% (14/14 new tests); 7 obsolete older tests fail on removed endpoints", "frontend": "90% (all requested flows pass; 1 HIGH bug on Beranda after a branch switch from the store page)"},
+  "seed_data_creation": "None kept. Temporary changes: store_stock price renamed to _bak_price for Jombang products, then restored, plus one TEST_shopscope_ product, then deleted. Verified: 0 _bak_price rows, 6618 priced rows in Jombang and in Jember.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run tests/test_iter64_shop_scope.py. It renames and restores prices itself and takes about 6s. To repro the Beranda leak: rename the pgs-11740 Jombang price, set localStorage pgs_store_id=pgs-official, pgs_store_manual=1 and pgs_auth_token (Jombang admin token). Then go Akun -> Kelola Toko -> Lihat Halaman Toko -> back -> Beranda tab and check home-search-placeholder. Grant geolocation in Playwright to avoid the location modal. Always restore with $rename {_bak_price:'price'}.",
+  "rca_of_issue": "Global shopPage flag (src/api.ts) plus storeId-triggered refetch in the Beranda components that stay mounted under the stack while the store page is focused, after choose(id) in app/shop/[id].tsx:147-150."
+}

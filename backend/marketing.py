@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from pymongo import ReturnDocument
 
 import promo
+import shop_scope
 import storage
 
 
@@ -126,7 +127,10 @@ def register(api, db, *, require_admin, get_owner, get_optional_owner, get_optio
         if not flash or not promo.flash_ends(flash, branch):  # each branch runs on its own schedule
             return {"active": False, "items": []}
         ids = list(flash["prices"].keys())
-        docs = {d["product_id"]: d for d in await db.products.find({"product_id": {"$in": ids}}, {"_id": 0}).to_list(100)}
+        q: dict = {"product_id": {"$in": ids}}
+        if shop_scope.branch(branch):  # branch store page: only products with a branch price set
+            q["$and"] = [await shop_scope.clause(db, branch)]
+        docs = {d["product_id"]: d for d in await db.products.find(q, {"_id": 0}).to_list(100)}
         await apply_stock(list(docs.values()), branch)  # the branch's own price & stock next to its flash price
         ctype = (user or {}).get("customer_type", "langsung")
         items = [product_out(docs[i], ctype, flash, branch) for i in ids if i in docs]

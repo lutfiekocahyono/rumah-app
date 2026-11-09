@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 
 import promo
 import seller
+import shop_scope
 
 
 SECTION_KEYS = ("popular", "newest", "recommended")
@@ -39,6 +40,10 @@ class SectionsIn(BaseModel):
 
 def register(api, db, *, get_current_user, require_admin, get_optional_owner, get_optional_user,
              visible, apply_stock, product_out, all_branches: str):
+
+    def stock_ctx(branch: str) -> tuple:
+        """Branch store page: that branch's own stock; Beranda: stock summed over all branches."""
+        return (branch,) if shop_scope.branch(branch) else (all_branches, branch)
 
     async def load_cfg(store_id: str) -> dict:
         doc = await db.home_sections.find_one({"store_id": store_id}, {"_id": 0}) or {}
@@ -79,7 +84,7 @@ def register(api, db, *, get_current_user, require_admin, get_optional_owner, ge
         if pins:
             got = {d["product_id"]: d for d in await db.products.find({**base, "product_id": {"$in": pins}}, {"_id": 0}).to_list(len(pins))}
             pinned_docs = [got[p] for p in pins if p in got]
-            await apply_stock(pinned_docs, all_branches, branch)
+            await apply_stock(pinned_docs, *stock_ctx(branch))
             pinned_docs = [d for d in pinned_docs if d.get("stock", 0) > 0]
         need = want - len(pinned_docs)
         auto: list = []
@@ -114,7 +119,7 @@ def register(api, db, *, get_current_user, require_admin, get_optional_owner, ge
                 pipeline += [{"$sort": {**order, "created_at": -1, "product_id": -1}}, {"$limit": fetch}]
             pipeline.append({"$project": {"_id": 0, "_k": 0}} if sort in ("personal", "newest") else {"$project": {"_id": 0}})
             auto = await db.products.aggregate(pipeline).to_list(fetch)
-            await apply_stock(auto, all_branches, branch)
+            await apply_stock(auto, *stock_ctx(branch))
             auto = [d for d in auto if d.get("in_stock", True) and d.get("stock", 0) > 0]
         page = (pinned_docs + auto)[skip:want]
         flash = await promo.active_flash(db)

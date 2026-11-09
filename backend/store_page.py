@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
 import seller
+import shop_scope
 import storage
 import store_qr
 
@@ -64,6 +65,7 @@ def register(api, db, *, require_admin, get_current_user, get_optional_user, vis
     @api.get("/stores/{store_id}/page")
     async def store_page(store_id: str, user=Depends(get_optional_user)):
         s = await page_store(store_id)
+        shop_scope.ON.set(True)  # this endpoint is only used by the store page
         out = seller.store_out(s)
         if not out["official"]:
             out.pop("phone", None)  # marketplace sellers are reached via chat

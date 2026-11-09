@@ -79,7 +79,7 @@ function Header({ s, q, setQ, sort, setSort, nFilters, openFilter, homeReady, re
         </View>
       ) : null}
       {/* same sections as Beranda, priced for this branch (the buyer's branch is switched to it on open) */}
-      {s.official && homeReady ? <HomeFeedSections refreshKey={refreshKey} recsAsRail /> : null}
+      {s.official && homeReady ? <HomeFeedSections refreshKey={refreshKey} shop /> : null}
       <Text style={[styles.h, { paddingHorizontal: spacing.lg, marginTop: spacing.lg }]} testID="shop-all-title">Semua Produk Toko</Text>
       <View style={{ gap: spacing.sm, marginTop: spacing.sm }}>
         <View style={styles.searchBox}>
@@ -123,7 +123,7 @@ export default function ShopPage() {
   // official branch: the whole catalog of that branch (shared + its own) with its prices & stock; other stores: their own products
   const fetchPage = useCallback((skip: number) => {
     if (!id || !store) return Promise.resolve([] as Product[]);
-    return api.products({ ...toQuery(q.trim(), filters), sort, skip, limit: 40, ...(store.official ? { branch: id } : { store: id }) });
+    return api.products({ ...toQuery(q.trim(), filters), sort, skip, limit: 40, ...(store.official ? { branch: id } : { store: id }) }, store.official);
   }, [id, store, q, filters, sort]);
 
   const load = useCallback(async () => {

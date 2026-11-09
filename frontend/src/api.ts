@@ -55,6 +55,8 @@ export async function getGuestId(): Promise<string> {
 let currentStore = "pgs-official";
 /** Branch chosen by the buyer (PGS Sidoarjo / Mitra Jombang / Mitra Jember); sent with every request. */
 export const setCurrentStore = (id: string) => { currentStore = id; };
+/** Requests made by a branch store page: lists only show products with a price set for that branch. */
+const sc = (shop?: boolean): RequestInit => (shop ? { headers: { "X-Shop-Page": "1" } } : {});
 
 async function headers(): Promise<Record<string, string>> {
   const h: Record<string, string> = { "Content-Type": "application/json" };
@@ -102,8 +104,8 @@ export const api = {
   categories: (parent?: string) => req<Category[]>(`/categories${parent ? `?parent=${encodeURIComponent(parent)}` : ""}`),
   allCategories: () => req<Category[]>("/categories?all=true"),
   productCount: () => req<{ count: number }>("/products/count"),
-  products: (params: ProductQuery = {}) => req<Product[]>(`/products?${productQs(params)}`),
-  productFacets: (params: ProductQuery = {}) => req<ProductFacets>(`/products/facets?${productQs(params)}`),
+  products: (params: ProductQuery = {}, shop?: boolean) => req<Product[]>(`/products?${productQs(params)}`, sc(shop)),
+  productFacets: (params: ProductQuery = {}, shop?: boolean) => req<ProductFacets>(`/products/facets?${productQs(params)}`, sc(shop)),
   product: (id: string) => req<Product>(`/products/${id}`),
 
   // cart
@@ -146,15 +148,15 @@ export const api = {
   // homepage promo
   banners: () => req<Banner[]>("/banners"),
   homeSettings: () => req<HomeSettings>("/home-settings"),
-  flashSale: () => req<FlashSale>("/flash-sale"),
+  flashSale: (shop?: boolean) => req<FlashSale>("/flash-sale", sc(shop)),
   vouchers: () => req<Voucher[]>("/vouchers"),
   myVouchers: () => req<Voucher[]>("/vouchers/mine"),
   claimVoucher: (code: string) => req<Voucher>(`/vouchers/${encodeURIComponent(code)}/claim`, { method: "POST" }),
   applyVoucher: (code: string) => req<{ code: string; title: string; discount: number }>("/vouchers/apply", { method: "POST", body: JSON.stringify({ code }) }),
   trackView: (product_id: string) => req<{ ok: boolean }>(`/activity/view/${product_id}`, { method: "POST" }),
   recommendations: (skip = 0, limit = 20) => req<Product[]>(`/recommendations?skip=${skip}&limit=${limit}`),
-  homeSections: () => req<HomeFeed>("/home/sections"),
-  moreRecommended: (skip: number, limit = 20) => req<Product[]>(`/home/sections/recommended?skip=${skip}&limit=${limit}`),
+  homeSections: (shop?: boolean) => req<HomeFeed>("/home/sections", sc(shop)),
+  moreRecommended: (skip: number, limit = 20, shop?: boolean) => req<Product[]>(`/home/sections/recommended?skip=${skip}&limit=${limit}`, sc(shop)),
   sellerHomeSections: () => req<HomeSectionsSettings>("/seller/home-sections"),
   saveSellerHomeSections: (s: HomeSectionsInput) => req<HomeSectionsSettings>("/seller/home-sections", { method: "PUT", body: JSON.stringify(s) }),
   adminHomeSections: (storeId: string) => req<HomeSectionsSettings>(`/admin/home-sections/${storeId}`),

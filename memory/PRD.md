@@ -233,3 +233,5 @@ Iteration 2: import all data from pusatgrosirsidoarjo.com; tiered pricing (pembe
 - src/components/home-feed.tsx HomeFeedSections (Kategori, Gratis Ongkir, Flash Sale, Voucher, Populer, Terbaru, Rekomendasi) shared by Beranda and /shop/[id]. Shop page (official): store banner+logo+info, featured, HomeFeedSections, then 'Semua Produk Toko' (search+filter+sort). Opening a branch shop switches buyer branch. Global search bar hidden on /shop/*.
 
 - [Done] Halaman toko cabang: 'Rekomendasi untukmu' kini memakai susunan kartu horizontal seperti 'Produk Populer' (prop recsAsRail di HomeFeedSections; Beranda utama tetap grid). Harga/stok cabang, auto muat lebih saat geser ke ujung.
+
+- [Done] Halaman toko cabang (Jombang/Jember) hanya menampilkan produk yang punya harga cabang (store_stock price>0, salinan massal/manual, stok 0 tampil 'Stok habis') + produk khusus cabang. Berlaku untuk semua bagian halaman toko. Header X-Shop-Page:1 dikirim per-request dari halaman toko (shop_scope.py). Rail Beranda di halaman toko memakai stok cabang sendiri. Beranda utama tidak terpengaruh.
