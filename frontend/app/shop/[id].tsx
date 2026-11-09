@@ -79,7 +79,7 @@ function Header({ s, q, setQ, sort, setSort, nFilters, openFilter, homeReady, re
         </View>
       ) : null}
       {/* same sections as Beranda, priced for this branch (the buyer's branch is switched to it on open) */}
-      {s.official && homeReady ? <HomeFeedSections refreshKey={refreshKey} /> : null}
+      {s.official && homeReady ? <HomeFeedSections refreshKey={refreshKey} recsAsRail /> : null}
       <Text style={[styles.h, { paddingHorizontal: spacing.lg, marginTop: spacing.lg }]} testID="shop-all-title">Semua Produk Toko</Text>
       <View style={{ gap: spacing.sm, marginTop: spacing.sm }}>
         <View style={styles.searchBox}>

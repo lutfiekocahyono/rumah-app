@@ -231,3 +231,5 @@ Iteration 2: import all data from pusatgrosirsidoarjo.com; tiered pricing (pembe
 
 ## Iteration 63 — Halaman toko cabang = Beranda cabang
 - src/components/home-feed.tsx HomeFeedSections (Kategori, Gratis Ongkir, Flash Sale, Voucher, Populer, Terbaru, Rekomendasi) shared by Beranda and /shop/[id]. Shop page (official): store banner+logo+info, featured, HomeFeedSections, then 'Semua Produk Toko' (search+filter+sort). Opening a branch shop switches buyer branch. Global search bar hidden on /shop/*.
+
+- [Done] Halaman toko cabang: 'Rekomendasi untukmu' kini memakai susunan kartu horizontal seperti 'Produk Populer' (prop recsAsRail di HomeFeedSections; Beranda utama tetap grid). Harga/stok cabang, auto muat lebih saat geser ke ujung.

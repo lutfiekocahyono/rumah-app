@@ -18,7 +18,7 @@ const EMPTY: Data = { cats: [], flash: { active: false, items: [] }, vouchers: [
 
 /** Beranda sections (Kategori, Gratis Ongkir, Flash Sale, Voucher, Populer, Terbaru, Rekomendasi) for the selected branch:
  * every price, stock and flash price follows that branch. Used on Beranda and on the branch store page. */
-export function HomeFeedSections({ refreshKey = 0, onLoaded }: { refreshKey?: number; onLoaded?: () => void }) {
+export function HomeFeedSections({ refreshKey = 0, onLoaded, recsAsRail = false }: { refreshKey?: number; onLoaded?: () => void; recsAsRail?: boolean }) {
   const router = useRouter();
   const { storeId, store } = useStore();
   const [data, setData] = useState<Data>(EMPTY);
@@ -95,7 +95,12 @@ export function HomeFeedSections({ refreshKey = 0, onLoaded }: { refreshKey?: nu
       {data.feed?.newest.enabled ? <ProductRail title={data.feed.newest.title} icon="sparkles-outline" items={data.feed.newest.items} testID="newest-section" /> : null}
 
       {/* Rekomendasi */}
-      {data.recs.length ? (
+      {recsAsRail ? (
+        <ProductRail
+          title={data.feed?.recommended.title ?? "Rekomendasi untukmu"} icon="thumbs-up-outline" items={data.recs} testID="recommend-section"
+          onEndReached={() => { if (!recDone && !recMore) loadMoreRecs(); }} loadingMore={recMore}
+        />
+      ) : data.recs.length ? (
         <View testID="recommend-section">
           <SectionHeader title={data.feed?.recommended.title ?? "Rekomendasi untukmu"} icon="thumbs-up-outline" />
           <View style={styles.grid}>

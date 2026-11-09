@@ -137,7 +137,9 @@ export function VoucherStrip({ vouchers, onChange }: { vouchers: Voucher[]; onCh
   );
 }
 
-export function ProductRail({ title, icon, items, testID }: { title: string; icon: string; items: Product[]; testID: string }) {
+export function ProductRail({ title, icon, items, testID, onEndReached, loadingMore }: {
+  title: string; icon: string; items: Product[]; testID: string; onEndReached?: () => void; loadingMore?: boolean;
+}) {
   if (!items.length) return null;
   return (
     <View testID={testID}>
@@ -149,6 +151,9 @@ export function ProductRail({ title, icon, items, testID }: { title: string; ico
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={{ gap: spacing.sm, paddingHorizontal: spacing.lg }}
         renderItem={({ item }) => <ProductCard product={item} style={{ width: 160 }} />}
+        onEndReached={onEndReached}
+        onEndReachedThreshold={0.5}
+        ListFooterComponent={loadingMore ? <View style={{ width: 60, alignSelf: "center" }}><ActivityIndicator color={colors.brandPrimary} /></View> : null}
       />
     </View>
   );
