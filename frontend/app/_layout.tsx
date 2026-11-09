@@ -1,6 +1,7 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Stack } from "expo-router";
-import { LogBox, StyleSheet } from "react-native";
+import { LogBox, Platform, StyleSheet } from "react-native";
+import * as Notifications from "expo-notifications";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -13,9 +14,20 @@ import { AuthProvider } from "@/src/auth-context";
 import { CartProvider } from "@/src/cart-context";
 import { StoreProvider } from "@/src/store-context";
 import { AppChrome } from "@/src/components/app-chrome";
+import { PushManager } from "@/src/components/push-manager";
 import { colors } from "@/src/theme";
 
 LogBox.ignoreAllLogs(true);
+
+// Push (native only): show notifications while the app is open, and the Android channel must exist before any push arrives
+if (Platform.OS !== "web") {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({ shouldShowAlert: true, shouldPlaySound: true, shouldSetBadge: false, shouldShowBanner: true, shouldShowList: true }),
+  });
+}
+if (Platform.OS === "android") {
+  Notifications.setNotificationChannelAsync("default", { name: "Default", importance: Notifications.AndroidImportance.MAX, sound: "default" });
+}
 
 export default function RootLayout() {
   return (
@@ -43,6 +55,7 @@ export default function RootLayout() {
                       <Stack.Screen name="orders" />
                       <Stack.Screen name="scan" />
                     </Stack>
+                    <PushManager />
                     </AppChrome>
                   </CartProvider>
                   </StoreProvider>

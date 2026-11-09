@@ -27,6 +27,7 @@ const MENU = [
   { icon: "card-outline", label: "Pengaturan Pembayaran", sub: "Kunci Midtrans (Sandbox / Production)", to: "/admin/payments" },
   { icon: "navigate-outline", label: "Pengaturan Ongkir Otomatis", sub: "API key RajaOngkir & lokasi asal tiap toko", to: "/admin/shipping" },
   { icon: "sync-outline", label: "Integrasi Accurate Online", sub: "Kunci API, uji koneksi, gudang & pratinjau barang", to: "/admin/accurate" },
+  { icon: "phone-portrait-outline", label: "Notifikasi Push HP", sub: "Aktif/nonaktif push info produk (setelah rilis)", to: "/admin/push" },
 ];
 
 export default function AdminHome() {

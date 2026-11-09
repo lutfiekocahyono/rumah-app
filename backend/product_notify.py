@@ -12,6 +12,7 @@ from typing import Optional
 from fastapi import Depends, HTTPException
 
 import mailer
+import push
 
 logger = logging.getLogger("product_notify")
 
@@ -187,8 +188,9 @@ def register(api, db, require_admin, get_current_user):
         mail_to = [u for u in users if u.get("email") and u.get("email_verified") and (u.get("settings") or {}).get("email_product", True)]
         digest = {"digest_id": digest_id, "title": title, "body": body, "items": items, "created_at": _now(), "bell": len(bell), "email_planned": len(mail_to)}
         await db.product_digests.insert_one({**digest})
+        pushed = await push.broadcast(db, [u["user_id"] for u in bell], title, body, link, digest_id)  # no-op while push is off
         result = await send_emails(digest, mail_to, stores)
-        await db.product_digests.update_one({"digest_id": digest_id}, {"$set": {"email": result}})
+        await db.product_digests.update_one({"digest_id": digest_id}, {"$set": {"email": result, "push": pushed}})
         logger.info("product digest %s: %s products, %s bell, email %s", digest_id, len(items), len(bell), result)
         return {k: v for k, v in digest.items() if k != "items"} | {"products": len(items), "email": result}
 

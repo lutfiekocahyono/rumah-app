@@ -196,6 +196,11 @@ export const api = {
   settings: () => req<AccountSettings>("/me/settings"),
   saveSettings: (s: AccountSettings) => req<AccountSettings>("/me/settings", { method: "PUT", body: JSON.stringify(s) }),
   notifications: () => req<AppNotification[]>("/notifications"),
+  pushConfig: () => req<{ enabled: boolean }>("/push/config"),
+  registerPush: (user_id: string, platform: string, device_token: string) =>
+    req<{ status: string }>("/register-push", { method: "POST", body: JSON.stringify({ user_id, platform, device_token }) }),
+  adminPush: () => req<PushStatus>("/admin/push"),
+  adminSetPush: (enabled: boolean) => req<PushStatus>("/admin/push", { method: "PUT", body: JSON.stringify({ enabled }) }),
   productUpdates: (id: string) => req<ProductUpdates>(`/product-updates/${id}`),
   unreadCount: () => req<{ count: number }>("/notifications/unread-count"),
   readAll: () => req<{ ok: boolean }>("/notifications/read-all", { method: "POST" }),
@@ -392,6 +397,8 @@ export type AddressInput = Omit<Address, "address_id">;
 export type AppNotification = { notif_id: string; kind: "order" | "promo" | "security" | "product"; title: string; body: string; link: string; read: boolean; created_at: string };
 export type ActivityLog = { log_id: string; action: string; detail: string; created_at: string };
 export type AccountSettings = { notif_order: boolean; notif_promo: boolean; notif_security: boolean; notif_product: boolean; email_product: boolean };
+export type PushStatus = { enabled: boolean; key_ready: boolean; devices: number; updated_at?: string | null;
+  last_send?: { at: string; title: string; result: Record<string, number> } | null };
 export type ProductUpdates = { digest_id: string; title: string; created_at: string;
   items: { product_id: string; name: string; image: string; kinds: string[]; change: string }[] };
 export type HomeSectionKey = "popular" | "newest" | "recommended";

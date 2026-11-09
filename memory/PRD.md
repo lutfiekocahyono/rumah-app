@@ -147,3 +147,7 @@ Iteration 2: import all data from pusatgrosirsidoarjo.com; tiered pricing (pembe
 ## Iteration 39 (Jun 2026)
 - Filter pencarian: urutan (Terbaru, Terlaris, Harga termurah/termahal), rentang harga min/maks, merek (multi, cari), kategori (dengan semua sub-level; "Lainnya" untuk produk tanpa kategori), tersedia di cabang pilihan, ada harga grosir. GET /api/products/facets.
 - Merek: diimpor dari atribut Brand website (import_brands.py, 4607/6618 produk). Input Merek di editor dengan saran merek yang ada; server menyamakan ejaan merek yang sudah ada.
+
+## Iteration 40 (Jun 2026)
+- Fondasi push HP (Emergent managed push / SuprSend): backend push.py (/api/push/config, /api/register-push [auth, own user only], /api/admin/push GET/PUT), default NONAKTIF; ringkasan info produk per jam ikut dikirim sebagai push bila aktif (chunk 100). Frontend: expo-notifications + expo-device, handler & channel di _layout, PushManager (tap routing, daftar token hanya jika push aktif, ajakan buka Pengaturan mingguan), halaman Admin → Notifikasi Push HP.
+- Belum: google-services.json (pemilik belum punya Firebase) → android.googleServicesFile sengaja belum dipasang agar build tidak gagal. EMERGENT_PUSH_KEY=placeholder diisi otomatis saat deploy.

@@ -24,6 +24,7 @@ import history
 import accurate
 import accurate_sync
 import product_notify
+import push
 import order_tasks
 from order_tasks import COD_PICKUP_HOURS, RELEASE_STATUSES
 import promo
@@ -1376,6 +1377,7 @@ history.register(api, db, get_current_user)
 accurate.register(api, db, require_admin)
 accurate_sync.register(api, db, require_admin)
 _product_digest_loop = product_notify.register(api, db, require_admin, get_current_user)
+push.register(api, db, get_current_user, require_admin)
 
 app.include_router(api)
 
