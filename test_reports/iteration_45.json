@@ -1,0 +1,30 @@
+{
+  "summary": "Tested the Cabang Terdekat (nearest branch) feature. Backend: GET /api/branches/nearest passed 18/18 pytest checks. It picks the right nearest branch for Jember, Sidoarjo, Jombang, Surabaya, Banyuwangi and Kediri. Results are sorted by distance_km with no _id. Invalid lat/lng and NaN return 400 'Koordinat tidak valid'. Missing or non-numeric params return 422. Frontend at 390px with Jember GPS and fresh storage: the branch switched to Mitra PGS Jember on its own, the nearest-toast appeared, nearest-toast-change went to /pilih-toko, and localStorage was pgs-jember / '0'. /pilih-toko showed the automatic mode text, the Terdekat badge on Jember, and distances (Jember ±1 km, Sidoarjo ±134 km, Jombang ±175 km dari lokasi Anda), sorted by distance. Picking PGS Sidoarjo by hand set manual='1'; after reload with Jember GPS the branch stayed Sidoarjo and no toast appeared. pick-store-auto ('Pakai toko terdekat otomatis (Mitra PGS Jember)') switched back to Jember with manual='0'. Sidoarjo GPS with fresh storage: stayed PGS Sidoarjo, no toast. With location denied, the popup cannot be closed by Esc or a backdrop tap and blocks taps on the page behind it; location-login opens /login without the lock. An admin who is already logged in is not locked or switched. At 360px the bulk-dim-0/1/2 inputs (86px each) fit inside bulk-dialog (328px) and accept input. No console errors.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Admin signing in on a fresh device with GPS allowed", "issue": "The location watcher runs while the user is still a guest on /login (an OPEN route), so the nearest branch is auto-picked and the toast shows on the login screen before the admin signs in. After login the admin keeps the auto-picked branch (pgs_store_id=pgs-jember). An admin who is already logged in is not affected. Low impact.", "affected_testIDs": ["nearest-toast"]}
+    ],
+    "design_issues": [
+      {"screen": "Home (nearest-toast)", "issues": ["The toast sits at insets.top+64 and covers the search bar for 7 s. The Ganti button target is 64x44 (OK)."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iter45_nearest_branch.py", "/app/test_reports/pytest/pytest_iter45.xml", "/app/.screenshots/i45_jember_home.jpeg", "/app/.screenshots/i45_pilih_manual.jpeg", "/app/.screenshots/i45_bulk360.jpeg"],
+  "action_items": [
+    "Optional: skip autoPick (or the toast) while on OPEN routes (/login, /register, /forgot-password), or don't let a guest-time auto-pick carry over once an admin or store_admin logs in.",
+    "Optional: when StoreProvider is not ready yet, autoPick returns early but last.current is already set, so the first GPS fix is lost for up to 2 min / 200 m. Retry after ready, or reset last.current when autoPick bails out.",
+    "Optional: when auto-switching branches, items in the old branch's cart stay there. Consider offering the existing /api/cart/move in the toast."
+  ],
+  "critical_code_review_comments": [
+    "store-context.tsx autoPick: the early return on !c.ready drops the first fix (location-gate throttles further sends for 2 min).",
+    "With fresh storage and the nearest branch equal to the default (Sidoarjo), set() is never called, so pgs_store_id stays null and chosen=false. This is probably intended, just noting it."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter45_nearest_branch.py"],
+  "success_rate": {"backend": "100%", "frontend": "100% of requested flows"},
+  "seed_data_creation": "Playwright guest contexts created 5 customer_locations and 5 location_history docs; they were deleted by owner id afterwards.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Use browser.new_context(permissions=['geolocation'], geolocation={...}) to get a fresh storage. Screenshots must be .jpeg when using quality. Header branch name is the second leaf text in the top 60px (testID store-switch). Delete the customer_locations and location_history docs your guest contexts create, by owner id."
+}

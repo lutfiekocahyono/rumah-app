@@ -173,3 +173,4 @@ Iteration 2: import all data from pusatgrosirsidoarjo.com; tiered pricing (pembe
 - Admin → WhatsApp Fonnte (/admin/fonnte): token terenkripsi, nomor pemilik, uji koneksi (/device), uji kirim OTP. Token Admin = OTP asli; tanpa token = mode uji. fonnte.py, dipakai account.py & notify.py.
 - Perkiraan ukuran dus: ukuran tertulis di nama (+2 cm, kecuali barang lipat), chest freezer, sofa angin. Input P/L/T Edit Massal muat di HP.
 - Kalimat privasi lokasi di Akun.
+- Iter 45: Cabang terdekat otomatis dari GPS (GET /api/branches/nearest), toast "Cabang terdekat dipilih… Ganti" di atas menu bawah; pilihan manual di Pilih Toko menghentikan pergantian otomatis (pgs_store_manual), tombol "Pakai toko terdekat otomatis" untuk kembali. Tidak memilih otomatis di halaman login/daftar.

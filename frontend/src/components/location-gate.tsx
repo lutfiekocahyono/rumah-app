@@ -2,11 +2,14 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { View, Text, StyleSheet, Pressable, AppState, Linking, Platform, ActivityIndicator, Modal, ScrollView } from "react-native";
 import * as Location from "expo-location";
 import { usePathname, useRouter } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Icon from "@react-native-vector-icons/ionicons";
 
 import { colors, fontSize, radius, spacing } from "@/src/theme";
 import { api } from "@/src/api";
 import { useAuth } from "@/src/auth-context";
+import { useStore } from "@/src/store-context";
+import { useCart } from "@/src/cart-context";
 
 type Perm = "checking" | "granted" | "denied" | "blocked" | "off";
 const OPEN = [/^\/login/, /^\/register/, /^\/forgot-password/]; // owner must always be able to sign in
@@ -22,7 +25,10 @@ const meters = (a: Location.LocationObjectCoords, b: Location.LocationObjectCoor
 /** Pelanggan & tamu: izin lokasi diminta langsung; tanpa izin aplikasi dikunci. Super Admin, admin cabang & halaman masuk tidak dikunci. */
 export function LocationGate({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
+  const { autoPick } = useStore();
   const path = usePathname();
+  const pathRef = useRef(path);
+  pathRef.current = path;
   const exempt = user?.role === "admin" || user?.role === "store_admin";
   const [perm, setPerm] = useState<Perm>("checking");
   const [asking, setAsking] = useState(false);
@@ -59,18 +65,48 @@ export function LocationGate({ children }: { children: React.ReactNode }) {
       if (l && Date.now() - l.at < SEND_EVERY && meters(l.c, c) < MOVED_M) return;
       last.current = { at: Date.now(), c };
       api.saveLocation(c.latitude, c.longitude, c.accuracy ?? null, Platform.OS).catch(() => { last.current = null; });
+      if (!OPEN.some((r) => r.test(pathRef.current))) void autoPick(c.latitude, c.longitude); // an admin signing in must not get a branch picked for him
     };
     Location.watchPositionAsync({ accuracy: Location.Accuracy.Balanced, timeInterval: 60000, distanceInterval: 50 }, (pos) => send(pos.coords))
       .then((s) => { if (stop) s.remove(); else sub = s; })
       .catch(() => {});
     return () => { stop = true; sub?.remove(); };
-  }, [exempt, perm, user?.user_id]);
+  }, [exempt, perm, user?.user_id, autoPick]);
 
   const locked = !loading && !exempt && (perm === "denied" || perm === "blocked" || perm === "off") && !OPEN.some((r) => r.test(path));
   return (
     <View style={{ flex: 1 }}>
       {children}
+      {!locked ? <NearestToast /> : null}
       {locked ? <LockScreen perm={perm} asking={asking} onAllow={() => check(true)} /> : null}
+    </View>
+  );
+}
+
+/** Short notice after the nearest branch was chosen automatically, with a way to change it. */
+function NearestToast() {
+  const { autoPicked } = useStore();
+  const { refresh } = useCart();
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const [shown, setShown] = useState<number | null>(null);
+  useEffect(() => {
+    if (!autoPicked) return;
+    refresh();
+    setShown(autoPicked.at);
+    const t = setTimeout(() => setShown(null), 7000);
+    return () => clearTimeout(t);
+  }, [autoPicked]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!autoPicked || shown !== autoPicked.at) return null;
+  return (
+    <View style={[styles.toast, { bottom: insets.bottom + 84 }]} testID="nearest-toast" pointerEvents="box-none">
+      <Icon name="navigate" size={18} color={colors.onSurfaceInverse} />
+      <Text style={styles.toastText} numberOfLines={2}>
+        Cabang terdekat dipilih: {autoPicked.name} (±{autoPicked.distance_km < 1 ? "<1" : Math.round(autoPicked.distance_km)} km). Stok & ongkir mengikuti cabang ini.
+      </Text>
+      <Pressable testID="nearest-toast-change" hitSlop={8} style={styles.toastBtn} onPress={() => { setShown(null); router.push("/pilih-toko" as any); }}>
+        <Text style={styles.toastBtnText}>Ganti</Text>
+      </Pressable>
     </View>
   );
 }
@@ -139,4 +175,9 @@ const styles = StyleSheet.create({
   outlineText: { color: colors.brandPrimary, fontWeight: "600" },
   link: { minHeight: 44, justifyContent: "center" },
   linkText: { color: colors.muted, fontSize: fontSize.sm, textDecorationLine: "underline" },
+  toast: { position: "absolute", left: spacing.md, right: spacing.md, zIndex: 900, flexDirection: "row", alignItems: "center", gap: spacing.sm,
+    backgroundColor: colors.surfaceInverse, borderRadius: radius.md, paddingLeft: spacing.md, paddingVertical: spacing.sm, maxWidth: 560, alignSelf: "center" },
+  toastText: { flex: 1, color: colors.onSurfaceInverse, fontSize: fontSize.sm },
+  toastBtn: { minHeight: 44, minWidth: 64, alignItems: "center", justifyContent: "center", paddingHorizontal: spacing.md },
+  toastBtnText: { color: colors.brandPrimary, fontWeight: "700" },
 });

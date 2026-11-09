@@ -88,6 +88,16 @@ def register(api, db, get_owner, seller):
         best = next((r["store_id"] for r in rows if r["available"]), None) if here else None
         return {"located": bool(here), "suggested": best, "stores": rows}
 
+    @api.get("/branches/nearest")
+    async def stores_nearest(lat: float, lng: float):
+        """Official branches sorted by distance from the buyer's GPS position."""
+        if not (-90 <= lat <= 90 and -180 <= lng <= 180):
+            raise HTTPException(status_code=400, detail="Koordinat tidak valid")
+        stores = await db.stores.find({"store_id": {"$in": seller.OFFICIAL_IDS}, "status": "active"}, {"_id": 0, "store_id": 1, "name": 1}).to_list(10)
+        rows = sorted(({**s, "distance_km": round(_km((lat, lng), BRANCH_COORDS[s["store_id"]]), 1)} for s in stores if s["store_id"] in BRANCH_COORDS),
+                      key=lambda r: r["distance_km"])
+        return {"nearest": rows[0] if rows else None, "stores": rows}
+
     @api.post("/stores/suggest")
     async def stores_suggest(body: SuggestIn):
         return await suggest(body.area, body.product_ids, body.quantities)
