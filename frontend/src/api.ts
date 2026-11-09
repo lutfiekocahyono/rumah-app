@@ -236,6 +236,17 @@ export const api = {
   uncatPreview: (store_id?: string | null) => req<CategoryPreview>(`/product-editor/uncategorized/preview?${qs({ store_id })}`, { method: "POST" }),
   uncatApply: (id: string, skip: string[], overrides: Record<string, string>) =>
     req<{ saved: number }>(`/product-editor/uncategorized/${id}/apply`, { method: "POST", body: JSON.stringify({ skip, overrides }) }),
+  branchBulkPreview: (b: { store_id: string | null; mode: "pct" | "rp"; value: number; tiers: boolean; q: string }) =>
+    req<BranchBulkPreview>("/branch-prices/bulk/preview", { method: "POST", body: JSON.stringify(b) }),
+  branchBulkApply: (id: string) => req<{ saved: number }>(`/branch-prices/bulk/${id}/apply`, { method: "POST" }),
+  branchExportUrl: (store_id: string | null) => `${BASE}/api/branch-prices/export?${qs({ store_id })}`,
+  branchImport: async (file: LocalFile, store_id: string | null): Promise<BranchBulkPreview> => {
+    const token = await getToken();
+    const res = await uploadForm(`${BASE}/api/branch-prices/import?${qs({ store_id })}`, { headers: token ? { Authorization: `Bearer ${token}` } : {}, files: { file } });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(typeof data.detail === "string" ? data.detail : `HTTP ${res.status}`);
+    return data as BranchBulkPreview;
+  },
   branchPrices: (store_id: string | null, q = "", skip = 0) => req<BranchPriceList>(`/branch-prices?${qs({ store_id, q, skip, limit: 40 })}`),
   setBranchPrice: (id: string, b: { store_id: string | null; price: number; original_price: number; tier_prices: Record<string, { min_qty: number; price: number }[]> }) =>
     req<BranchPriceItem>(`/branch-prices/${id}`, { method: "PUT", body: JSON.stringify(b) }),
@@ -519,6 +530,8 @@ export type PriceLog = {
 export type EditorListItem = { product_id: string; name: string; image: string; sku: string; price: number; original_price: number; stock: number; status: "active" | "inactive"; variants: number; sold: number; store_id: string; weight_grams: number; weight_estimated: boolean; dims: number[]; dims_estimated: boolean };
 export type BulkEdit = { store_id?: string | null; product_ids: string[]; price_mode?: "" | "set" | "up_pct" | "down_pct" | "up" | "down"; price_value?: number; stock_mode?: "" | "set" | "add" | "sub"; stock_value?: number; status?: "" | "active" | "inactive"; weight_grams?: number; weight_only_missing?: boolean; dims?: number[]; dims_only_missing?: boolean };
 export type EstimateKind = "weight" | "dims";
+export type BranchBulkPreview = { preview_id: string; store_id: string; changed: number; up: number; down: number; error_count: number;
+  errors: { row: number; product_id: string; reason: string }[]; sample: { product_id: string; name: string; before: PriceSet; after: PriceSet }[] };
 export type PriceSet = { price: number; original_price: number; tier_prices: Record<string, { min_qty: number; price: number }[]> };
 export type BranchPriceItem = { product_id: string; name: string; image: string; sidoarjo: PriceSet; branch: PriceSet; own_price: boolean; stock: number; price_set_at: string | null };
 export type BranchPriceList = { store_id: string; store_name: string; items: BranchPriceItem[] };

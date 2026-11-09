@@ -12,7 +12,7 @@ import { adminStyles, Card, Chips, Field, PrimaryButton, ToggleRow } from "@/src
 const BRANCHES = [{ id: "pgs-jombang", name: "Mitra PGS Jombang", add: 2000, pct: 2, sub: 3 }, { id: "pgs-jember", name: "Mitra PGS Jember", add: 1000, pct: 1, sub: 5 }];
 const MODES = [{ id: "rp", label: "Rupiah (Rp)" }, { id: "pct", label: "Persen (%)" }] as const;
 const num = (t: string) => Number(t.replace(/[^0-9]/g, "")) || 0;
-const pctOf = (t: string) => Math.min(100, Number(t.replace(",", ".").replace(/[^0-9.]/g, "")) || 0);
+const pctOf = (t: string) => Math.max(-50, Math.min(100, Number(t.replace(",", ".").replace(/[^0-9.-]/g, "")) || 0)); // negative = cheaper than Sidoarjo
 const withPct = (v: number, pct: number) => Math.max(100, Math.ceil((v * (10000 + Math.round(pct * 100))) / 1_000_000) * 100); // same integer math as the server
 type R = BranchCopyRule & { name: string; pctText: string };
 
@@ -63,9 +63,9 @@ export default function BranchCopy() {
                   <Field testID={`bc-add-${r.store_id}`} label="Harga ditambah (Rp)" keyboardType="number-pad" value={r.price_add ? String(r.price_add) : ""}
                     onChangeText={(t) => edit(i, { price_add: Math.min(1000000, num(t)) })} />
                 ) : (
-                  <Field testID={`bc-pct-${r.store_id}`} label="Harga ditambah (%)" keyboardType="decimal-pad" value={r.pctText}
+                  <Field testID={`bc-pct-${r.store_id}`} label="Harga ditambah (%) · minus = diskon, mis. -5" keyboardType="numbers-and-punctuation" value={r.pctText}
                     hint={`Contoh: Rp10.000 → ${formatIDR(withPct(10000, r.price_pct))} · Rp200.000 → ${formatIDR(withPct(200000, r.price_pct))}`}
-                    onChangeText={(t) => edit(i, { pctText: pctOf(t) >= 100 ? "100" : t.replace(/[^0-9.,]/g, ""), price_pct: pctOf(t) })} />
+                    onChangeText={(t) => edit(i, { pctText: pctOf(t) >= 100 ? "100" : pctOf(t) <= -50 ? "-50" : t.replace(/[^0-9.,-]/g, "").replace(/(?!^)-/g, ""), price_pct: pctOf(t) })} />
                 )}
               </>
             ) : null}

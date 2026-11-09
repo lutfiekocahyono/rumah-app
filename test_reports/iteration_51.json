@@ -1,0 +1,47 @@
+{
+  "summary": "Tested Edit Massal Cabang (backend and UI at 390px), negative percent in Salin Harga & Stok ke Cabang, and re-ran the apply flow of test_branch_copy_pct.py. test_branch_copy_pct.py with BC_ALLOW_APPLY=1 -n0: 16/16 passed. New test_branch_bulk.py: 25/26 passed. What works: preview access control and validation; pct math using integers (3000 +10% = 3300, 30000 +7% = 32100, negative pct matches the Decimal spec); tiers on/off; q scope; export columns and tier format; import (unchanged file gives changed 0, edited cell, error rows, wrong columns or non-xlsx gives 400); apply (writes only the jombang row, sets manual_price_at, stock untouched, second apply 400, jember 403, history source branch_bulk, buyers on X-Store-Id see the new price, Sidoarjo and Jember unchanged); import then apply. Branch-copy preview at -5/-10/-50 works, -51 gives 422. One HIGH bug: in Rupiah mode, 'Turunkan' by more than Rp90 is rejected with 422 because BulkIn.value has ge=-90 for both modes, and the UI shows the raw English pydantic message. UI flows all pass: bulk adjust, Back, confirm, saved and list refresh; import with errors; bad file; export download; admin bc-pct accepts -5 and clamps -60 to -50, hint shows discounted examples. All real data was restored exactly.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/branch-prices/bulk/preview", "issue": "BulkIn.value = Field(ge=-90, le=1_000_000) applies to both modes. So mode 'rp' with value -1000 ('Turunkan Rp1000') returns 422 'Input should be greater than or equal to -90'. Rupiah decreases above Rp90 are impossible. Reference: /app/backend/branch_price.py:66", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "POST /api/branch-prices/bulk/preview", "issue": "pct < -90 returns 422 (pydantic), not a 400 with an Indonesian message. The manual 400 check at line 175 is never reached for negative values. The UI already blocks it."},
+      {"endpoint": "POST /api/branch-prices/bulk/preview (pct + tiers)", "issue": "Rounding up to Rp100 removes the grosir discount on some products: the tier price becomes equal to the unit price. Measured on jombang data: 11 products at +7% (e.g. pgs-12570: 4000/3960 -> 4300/4300), 89 at -10%, 419 at -50%. Consider keeping the tier below the unit price, or warning about it in the preview."},
+      {"endpoint": "branch_price_previews collection", "issue": "Each preview stores all items (before and after) in one document. That is about 5.5 MB for 6618 products, so the 16 MB BSON limit will be hit at about 19k products."},
+      {"endpoint": "POST /api/branch-prices/bulk/{id}/apply", "issue": "history.record runs one item at a time (insert plus product find plus event insert). A full-catalog apply of 6618 items means about 20k sequential DB round trips, which risks an ingress timeout. Not tested on the full scope to protect real data. Also, settings.product_digest.last_at is unset, so the next digest check (every 5 min) would email or notify buyers about all events."},
+      {"endpoint": "POST /api/branch-prices/import", "issue": "to_int treats '.' as a thousands separator in text cells, so a text value '20130.5' parses as 201305. Numeric cells are fine."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "BranchBulkDialog error", "issue": "Turunkan + Rupiah + 1000 -> bb-error shows the raw English pydantic message 'Input should be greater than or equal to -90'.", "testID": "bb-error", "priority": "HIGH"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/seller/branch-prices", "issues": ["Tool buttons bp-bulk-adjust / bp-export / bp-import are 40px tall (< 44px touch target)", "At 390px the 3 tool buttons wrap so that 'Unggah Excel' sits alone on a second row; a 3-column or full-width layout would look cleaner"]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_branch_bulk.py", "/app/backend/tests/test_branch_copy_pct.py", "/app/tests/backup/bb_backup.py", "/app/tests/backup/bb_restore.py", "/app/test_reports/pytest/iter51_branch_bulk.xml", "/app/test_reports/pytest/iter51_bc_pct.xml"],
+  "action_items": [
+    "HIGH: In BulkIn, remove ge=-90 from value (or make it mode-dependent). Validate in code instead: pct must be within -90..100 (400 with an Indonesian message); rp must be within -1_000_000_000..1_000_000 (400). Then confirm 'Turunkan Rp1000' produces a preview.",
+    "LOW: Map pydantic 422 detail arrays to an Indonesian message in the frontend req helper or the dialog.",
+    "MEDIUM: Decide how pct rounding should treat tiers. Currently some grosir tiers collapse to the unit price (11 products at +7%, 89 at -10%).",
+    "MEDIUM: Make bulk apply faster for the full catalog: insert_many for price_history and product_events, or run it as a background job. Consider whether a full-catalog change should create one product_event per product for the buyer digest.",
+    "LOW: Store preview items in a separate collection or in chunks to avoid the 16 MB document limit.",
+    "LOW: Make the bp-* tool buttons at least 44px tall."
+  ],
+  "critical_code_review_comments": [
+    "branch_price.py:66 has a single Field bound for two modes with different units (percent vs rupiah). That is the root cause of the HIGH bug.",
+    "branch_price.py:175: because of the pydantic bound, the pct lower-bound check never returns 400.",
+    "bulk_apply checks branch ownership before claiming the preview, so another branch's admin gets 403 and the preview is not consumed. Good.",
+    "No deprecated Expo packages (expo-av / barcode-scanner / background-fetch) found."
+  ],
+  "updated_files": ["/app/backend/tests/test_branch_bulk.py (new)", "/app/tests/backup/bb_backup.py (new)", "/app/tests/backup/bb_restore.py (new)"],
+  "success_rate": {"backend": "41/42 (97.6%)", "frontend": "100% of requested flows; 1 error-message bug (same root cause as the backend bug)"},
+  "seed_data_creation": "None kept. Before writing, all 13236 store_stock docs for pgs-jombang and pgs-jember were backed up (bb_backup.pkl and bc_pct_backup.pkl) and later restored: 0 mismatched docs, 0 manual_price_at left. The restore also deleted the price_history rows (branch_bulk/branch_copy/branch_price created after t0), the product_events and branch_price_previews created after t0, and the branch_copy previews. Final counts: price_history 13236 (same as backup); product_events 0 (same). Notifications are 1044 vs 1043 at backup: the extra one is a chat message 'Pesan dari Mitra PGS Jombang' at 06:14:04, not created by these tests. 3 branch_price_previews from 06:07 (before t0, E1's) were left alone.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backup: python /app/tests/backup/bb_backup.py. Run: cd /app/backend && EXPO_PUBLIC_BACKEND_URL=<frontend/.env> BC_ALLOW_APPLY=1 pytest tests/test_branch_bulk.py -n0. Restore: python /app/tests/backup/bb_restore.py (restores jombang/jember store_stock from bb_backup.pkl and deletes branch_* history, events and branch_price_previews at or after t0). Restore quickly after applying: the product digest loop checks every 300s and last_at is unset, so pending product_events could notify real buyers. UI testIDs: bb-dir/bb-mode are Chips; click by text 'Turunkan' / 'Rupiah (Rp)'. Admin chips are bc-mode-<store>-pct. Import: page.expect_file_chooser on bb-pick. Geolocation near Jombang (-7.5469, 112.2331).",
+  "rca_of_issue": "Rupiah decrease blocked: BulkIn.value has ge=-90 (meant for percent) and applies to mode 'rp' too. The UI sends value=-n for 'Turunkan', so any rupiah decrease above Rp90 fails pydantic validation with a 422. Reproduce: POST /api/branch-prices/bulk/preview {mode:'rp', value:-1000} as jombang returns 422. Fix: validate per mode in code."
+}

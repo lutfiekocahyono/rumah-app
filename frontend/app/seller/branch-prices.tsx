@@ -9,6 +9,8 @@ import { api, type BranchPriceItem } from "@/src/api";
 import { useAuth } from "@/src/auth-context";
 import { ScreenHeader } from "@/src/components/screen-header";
 import { adminStyles, Chips } from "@/src/components/admin-form";
+import { BranchBulkDialog, type BulkKind } from "@/src/components/branch-bulk-dialog";
+import { downloadAuthed } from "@/src/utils/download";
 
 const BRANCHES = [{ id: "pgs-jombang", label: "Mitra PGS Jombang" }, { id: "pgs-jember", label: "Mitra PGS Jember" }];
 const TYPES = [{ id: "langsung", label: "Pembeli Langsung" }, { id: "pengecer", label: "Pengecer" }, { id: "reseller", label: "Reseller" }];
@@ -27,6 +29,7 @@ export default function BranchPrices() {
   const [err, setErr] = useState("");
   const [done, setDone] = useState(false);
   const [editing, setEditing] = useState<BranchPriceItem | null>(null);
+  const [bulk, setBulk] = useState<BulkKind | null>(null);
   const reqId = useRef(0);
 
   const load = useCallback(async (reset: boolean, from: number) => {
@@ -56,6 +59,15 @@ export default function BranchPrices() {
           <TextInput testID="bp-search" value={q} onChangeText={setQ} placeholder="Cari produk" placeholderTextColor={colors.muted} style={{ flex: 1, minHeight: 44, color: colors.onSurface }} />
         </View>
         {err ? <Text style={adminStyles.err} testID="bp-error">{err}</Text> : null}
+        {!err && storeName ? (
+          <View style={styles.tools}>
+            <Pressable testID="bp-bulk-adjust" style={styles.tool} onPress={() => setBulk("adjust")}><Icon name="trending-up-outline" size={16} color={colors.brandPrimary} /><Text style={styles.toolText}>Ubah massal</Text></Pressable>
+            <Pressable testID="bp-export" style={styles.tool} onPress={async () => {
+              try { await downloadAuthed(api.branchExportUrl(admin ? branch : null), `harga-${branch}.xlsx`); } catch (e: any) { setErr(e.message); }
+            }}><Icon name="download-outline" size={16} color={colors.brandPrimary} /><Text style={styles.toolText}>Unduh Excel</Text></Pressable>
+            <Pressable testID="bp-import" style={styles.tool} onPress={() => setBulk("import")}><Icon name="cloud-upload-outline" size={16} color={colors.brandPrimary} /><Text style={styles.toolText}>Unggah Excel</Text></Pressable>
+          </View>
+        ) : null}
       </View>
       {items === null ? <ActivityIndicator color={colors.brandPrimary} style={{ marginTop: spacing.xl }} /> : (
         <FlatList
@@ -78,6 +90,7 @@ export default function BranchPrices() {
           )}
         />
       )}
+      <BranchBulkDialog kind={bulk} storeId={admin ? branch : null} storeName={storeName} q={q.trim()} onClose={() => setBulk(null)} onDone={() => { setItems(null); void load(true, 0); }} />
       <EditDialog item={editing} storeId={admin ? branch : null} onClose={() => setEditing(null)}
         onSaved={(n) => { setItems((cur) => (cur ?? []).map((x) => (x.product_id === n.product_id ? n : x))); setEditing(null); }} />
     </View>
@@ -185,6 +198,9 @@ const styles = StyleSheet.create({
   pair: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   input: { flex: 1, minWidth: 0, width: 10, minHeight: 44, borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm, paddingHorizontal: spacing.sm, color: colors.onSurface, backgroundColor: colors.surfaceSecondary },
   full: { flex: 0, width: "100%" },
+  tools: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  tool: { flexDirection: "row", alignItems: "center", gap: 4, minHeight: 44, paddingHorizontal: spacing.md, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.brandPrimary, backgroundColor: colors.surface },
+  toolText: { color: colors.brandPrimary, fontWeight: "600", fontSize: fontSize.sm },
   colHead: { fontSize: 11, color: colors.muted },
   iconBtn: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   add: { minHeight: 44, justifyContent: "center", alignSelf: "flex-start" },
