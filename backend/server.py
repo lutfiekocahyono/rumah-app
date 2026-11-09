@@ -26,6 +26,7 @@ import accurate_sync
 import product_notify
 import push
 import fonnte
+import branch_copy
 import customer_location
 import order_tasks
 from order_tasks import COD_PICKUP_HOURS, RELEASE_STATUSES
@@ -623,8 +624,9 @@ async def _visible(ctx: str) -> dict:
     return {"store_id": {"$nin": await _hidden_stores() + others}, "status": {"$ne": "inactive"}}
 
 
-async def _apply_stock(docs: List[dict], ctx: str) -> List[dict]:
-    """Catalog items show the stock of the buyer's chosen branch (or the total of all branches)."""
+async def _apply_stock(docs: List[dict], ctx: str, price_branch: Optional[str] = None) -> List[dict]:
+    """Catalog items show the stock of the buyer's chosen branch (or the total of all branches).
+    price_branch: in the all-branches view, still show the buyer's branch price (same as detail page & cart)."""
     if ctx == seller.PGS_STORE_ID:
         return docs
     # products with variants keep their own per-variant stock (sold by the store that owns them)
@@ -638,13 +640,19 @@ async def _apply_stock(docs: List[dict], ctx: str) -> List[dict]:
                 d["stock"] = own + sum(p.get(d["product_id"], 0) for p in per)
                 d["in_stock"] = d["stock"] > 0
                 d["store_name"] = "PGS · semua cabang"
+        if price_branch in seller.OFFICIAL_IDS and price_branch != seller.PGS_STORE_ID:
+            prices = await seller.branch_prices(db, price_branch, ids)
+            for d in docs:
+                d.update(prices.get(d["product_id"], {}))
         return docs
     stocks = await seller.branch_stocks(db, ctx, ids)
+    prices = await seller.branch_prices(db, ctx, ids)
     for d in docs:
         if d["product_id"] in stocks or d["product_id"] in ids:
             d["stock"] = stocks.get(d["product_id"], 0)
             d["in_stock"] = d["stock"] > 0
             d["store_name"] = next(o["name"] for o in seller.OFFICIAL if o["store_id"] == ctx)
+            d.update(prices.get(d["product_id"], {}))  # branch's own price, if set
     return docs
 
 
@@ -738,7 +746,7 @@ async def list_products(
         "newest": [("in_stock", -1), ("created_at", -1), ("product_id", -1)],
     }
     stock_ctx = x_store_id if in_stock and not store and x_store_id in seller.OFFICIAL_IDS else ctx  # "Tersedia di <cabang>": show that branch's stock
-    docs = await _apply_stock(await db.products.find(query, {"_id": 0}).sort(sort_map[sort]).skip(skip).limit(limit).to_list(limit), stock_ctx)
+    docs = await _apply_stock(await db.products.find(query, {"_id": 0}).sort(sort_map[sort]).skip(skip).limit(limit).to_list(limit), stock_ctx, x_store_id)
     if ctx == ALL_BRANCHES and sort in ("popular", "newest"):
         docs.sort(key=lambda d: not d.get("in_stock", True))  # stable: in-stock (any branch) first within the page
     flash = await promo.active_flash(db)
@@ -861,8 +869,10 @@ async def _load_cart_detailed(owner: str, only_store: Optional[str] = None) -> C
     prods = {p["product_id"]: p for p in await db.products.find({"product_id": {"$in": ids}}, {"_id": 0}).to_list(500)}
     names = await seller.store_names(db)
     stock_by: dict = {}
+    price_by: dict = {}
     for sid in {i.get("store_id", seller.PGS_STORE_ID) for i in items} - {seller.PGS_STORE_ID}:
         stock_by[sid] = await seller.branch_stocks(db, sid, ids)
+        price_by[sid] = await seller.branch_prices(db, sid, ids)
     detailed: List[CartItemDetailed] = []
     subtotal = savings = 0
     for it in items:
@@ -871,6 +881,8 @@ async def _load_cart_detailed(owner: str, only_store: Optional[str] = None) -> C
             continue
         sid = it.get("store_id", seller.PGS_STORE_ID)
         stock = stock_by[sid].get(p["product_id"], 0) if sid in stock_by and p.get("store_id") == seller.PGS_STORE_ID else p["stock"]
+        if sid in price_by and p.get("store_id") == seller.PGS_STORE_ID and not p.get("variants"):
+            p = {**p, **price_by[sid].get(p["product_id"], {})}
         v = _variant(p, it.get("variant_id"))
         if it.get("variant_id") and not v:
             continue  # variant was removed or switched off by the seller
@@ -1347,7 +1359,7 @@ async def recommendations(
             {"$sort": {"_fav": -1, "sold": -1, "created_at": -1, "product_id": -1}},
             {"$skip": skip}, {"$limit": limit}, {"$project": {"_id": 0, "_fav": 0}},
         ]).to_list(limit)
-    await _apply_stock(docs, ALL_BRANCHES)
+    await _apply_stock(docs, ALL_BRANCHES, x_store_id)
     docs = [d for d in docs if d.get("in_stock", True) and d.get("stock", 0) > 0]
     flash = await promo.active_flash(db)
     ctype = (user or {}).get("customer_type", "langsung")
@@ -1381,6 +1393,7 @@ accurate_sync.register(api, db, require_admin)
 _product_digest_loop = product_notify.register(api, db, require_admin, get_current_user)
 push.register(api, db, get_current_user, require_admin)
 fonnte.register(api, db, require_admin, account.normalize_phone)
+branch_copy.register(api, db, require_admin, seller)
 customer_location.register(api, db, get_owner=get_owner, require_admin=require_admin)
 
 app.include_router(api)

@@ -1,0 +1,41 @@
+{
+  "summary": "Tested Branch Copy (Salin Harga & Stok Sidoarjo -> Jombang/Jember) end-to-end. Backend 13/14 pass: preview auth (customer 403, no auth 401/403), validation (pgs-official/unknown/duplicate -> 400), preview counts (each branch: total 6618, price_changed 6618, stock_changed 6587, unchanged 0, zero_stock Jombang 1135 / Jember 1561). A REAL apply (with a backup taken first) updated 6618+6618 store_stock rows in about 2s. Checked on pgs-9955 (tiers), pgs-10649 (stock 9999 -> 9996/9994) and pgs-9947 (stock 3 -> 0): price +2000/+1000, every tier per customer type gets the same addition, stock is never negative. A second apply returns 400. 13236 price_history rows were written with source branch_copy and history shows 'Salin dari Sidoarjo'. No product_events or notifications were created. Product detail and ?store= lists show the branch price, Sidoarjo shows its own price. A guest cart with X-Store-Id pgs-jember used the Jember price and the qty-6 tier (+1000). Changing the Sidoarjo price afterwards did not change the Jombang price. One failure: home/search/category lists (GET /api/products without ?store=, and the recommended feed) still show the Sidoarjo price even when the buyer has picked Jombang. Data was RESTORED afterwards: all 13236 store_stock rows were replaced from the backup, 0 price fields are left, the 13236 branch_copy price_history rows and all test preview docs and guest carts were deleted. E1's original preview bc_275cdcad78 was kept. Frontend (390px): the admin menu item opens /admin/branch-copy, the 4 inputs are prefilled 2000/3/1000/5, preview shows the bc-sum-* cards and 16 bc-sample rows, bc-apply opens the confirm dialog, Batal closes it, and editing an input clears the preview. Confirm was only tested against a MOCKED (Playwright-intercepted) apply response, which showed bc-msg-ok and closed the dialog. No real UI apply was done.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "GET /api/products (no ?store=, i.e. home/search/category) and the recommended feed (server.py:1357)", "issue": "These use ctx=ALL_BRANCHES, so _apply_stock never applies seller.branch_prices. A buyer who picked Mitra PGS Jombang sees Rp213.000 on the product card but Rp215.000 on the detail page and in the cart. Verified after apply: pgs-9955 list price 213000, detail/cart 215000. The branch price only shows in lists when in_stock=true (stock_ctx = X-Store-Id). Price filter/sort (min_price/max_price, price_asc/desc) and facets also use the Sidoarjo products.price.", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "POST /api/admin/branch-copy/preview", "issue": "Each preview inserts a db.branch_copy doc that is never cleaned up (it expires logically after 2h but stays in the collection). Consider a TTL index or deleting stale previews."},
+      {"endpoint": "branch_copy.compute", "issue": "Products with variants are excluded (variants.0 exists=false). There are 0 today, but future variant products of Sidoarjo will silently not be copied and the preview won't say so."},
+      {"endpoint": "Flash sale + branch price", "issue": "_load_cart_detailed takes min(branch price, flash price), so a flash price set from the Sidoarjo price also undercuts the branch +2000. Business decision; worth confirming with the owner."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Buyer picks Jombang/Jember -> home/search card vs product detail/cart", "issue": "The card shows the Sidoarjo price while detail and cart show the branch price (backend ALL_BRANCHES context, see backend critical).", "affected_testIDs": ["product cards on home/search"]}
+    ],
+    "design_issues": [
+      {"screen": "/admin/branch-copy", "issues": ["The bc-add-*/bc-sub-* inputs are 36px tall, below the 44px touch target.", "Negative price difference can't be entered from the UI (num() strips '-') although the backend allows -1,000,000. Fine if intentional.", "A value of 0 renders as an empty field (value={r.price_add ? ... : ''}), which may look like a missing value."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_branch_copy.py", "/app/tests/backup/bc_backup.py", "/app/tests/backup/bc_restore.py", "/app/test_reports/pytest/pytest_iter46.xml"],
+  "action_items": [
+    "HIGH: Apply branch prices in ALL_BRANCHES listings when X-Store-Id is a branch (home/search/category GET /api/products without ?store=, and the recommended feed at server.py:1357), so cards match detail/cart. Also consider the price filter/sort/facets using the branch price.",
+    "Optional: clean up stale db.branch_copy preview docs (TTL index on created_at).",
+    "Optional: make admin inputs at least 44px tall; decide whether negative price_add should be allowed in the UI."
+  ],
+  "critical_code_review_comments": [
+    "branch_copy.apply re-computes at apply time (respects stock changes since the preview) and uses an atomic find_one_and_update status lock, so double apply returns 400. Good.",
+    "price_history logs include price, stock and tier_prices diffs per product. No buyer notifications or product_events are created, as required.",
+    "seller.branch_prices only returns rows with price>0, so branches without a copied price fall back to the Sidoarjo price, as expected."
+  ],
+  "updated_files": ["/app/backend/tests/test_branch_copy.py (new)", "/app/tests/backup/* (backup/restore helpers)"],
+  "success_rate": {"backend": "93% (13/14)", "frontend": "100% of requested UI steps (confirm only tested against a MOCKED apply response)"},
+  "seed_data_creation": "None left behind. Real apply done and fully restored from backup (store_stock 13236 rows replaced, price_history branch_copy rows deleted, previews and TEST_guest cart deleted). pgs-9955 Sidoarjo price temporarily +500 and restored to 213000.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Apply tests in test_branch_copy.py are skipped unless BC_ALLOW_APPLY=1. ALWAYS run python /app/tests/backup/bc_backup.py first and /app/tests/backup/bc_restore.py right after (it restores store_stock for pgs-jombang/pgs-jember and deletes branch_copy price_history and the tracked preview/guest ids in /app/tests/backup/created_ids.json). pytest.ini enables xdist, so run the apply tests with -n 0. Set EXPO_PUBLIC_BACKEND_URL from frontend/.env. In UI tests, intercept **/api/admin/branch-copy/*/apply with page.route to avoid a real apply. E1's original preview doc bc_275cdcad78 is still in db.branch_copy.",
+  "rca_of_issue": "list_products: ctx = _ctx(x_store_id) if store else ALL_BRANCHES. In _apply_stock the ALL_BRANCHES branch only sums stocks and never calls seller.branch_prices, so cards fall back to products.price (Sidoarjo)."
+}

@@ -71,7 +71,7 @@ const styles = StyleSheet.create({
   card: { backgroundColor: colors.surface, borderRadius: radius.md, padding: spacing.md, gap: spacing.md, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
   label: { fontSize: fontSize.sm, color: colors.onSurfaceSecondary },
   hint: { fontSize: 11, color: colors.muted },
-  input: { backgroundColor: colors.surfaceTertiary, borderRadius: radius.sm, paddingHorizontal: spacing.md, paddingVertical: 10, color: colors.onSurface, fontSize: fontSize.base },
+  input: { backgroundColor: colors.surfaceTertiary, borderRadius: radius.sm, paddingHorizontal: spacing.md, paddingVertical: 10, minHeight: 44, color: colors.onSurface, fontSize: fontSize.base },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   chip: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.pill, paddingHorizontal: spacing.md, minHeight: 44, justifyContent: "center" },
   chipOn: { backgroundColor: colors.brandPrimary, borderColor: colors.brandPrimary },

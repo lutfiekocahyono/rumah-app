@@ -103,6 +103,14 @@ async def branch_stocks(db, store_id: str, ids: list) -> dict:
         {"store_id": store_id, "product_id": {"$in": ids}}, {"product_id": 1, "stock": 1}).to_list(len(ids))}
 
 
+async def branch_prices(db, store_id: str, ids: list) -> dict:
+    """Own branch price of shared-catalog products (set by 'Salin harga & stok dari Sidoarjo'). Missing = Sidoarjo price."""
+    if not ids or store_id == PGS_STORE_ID:
+        return {}
+    return {d["product_id"]: {k: d[k] for k in ("price", "original_price", "tier_prices") if k in d} for d in await db.store_stock.find(
+        {"store_id": store_id, "product_id": {"$in": ids}, "price": {"$gt": 0}}, {"_id": 0, "product_id": 1, "price": 1, "original_price": 1, "tier_prices": 1}).to_list(len(ids))}
+
+
 async def adjust_stock(db, order: dict, sign: int) -> None:
     """sign=-1 reserve on checkout, +1 give back on cancel. 9999 = unlimited (website import)."""
     sid = order.get("store_id", PGS_STORE_ID)

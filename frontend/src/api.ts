@@ -236,6 +236,9 @@ export const api = {
   uncatPreview: (store_id?: string | null) => req<CategoryPreview>(`/product-editor/uncategorized/preview?${qs({ store_id })}`, { method: "POST" }),
   uncatApply: (id: string, skip: string[], overrides: Record<string, string>) =>
     req<{ saved: number }>(`/product-editor/uncategorized/${id}/apply`, { method: "POST", body: JSON.stringify({ skip, overrides }) }),
+  branchCopyPreview: (rules: { store_id: string; price_add: number; stock_sub: number }[]) =>
+    req<BranchCopyPreview>("/admin/branch-copy/preview", { method: "POST", body: JSON.stringify({ rules }) }),
+  branchCopyApply: (id: string) => req<{ branches: { store_id: string; store_name: string; updated: number }[] }>(`/admin/branch-copy/${id}/apply`, { method: "POST" }),
   nearestStores: (lat: number, lng: number) => req<NearestStores>(`/branches/nearest?${qs({ lat, lng })}`),
   saveLocation: (lat: number, lng: number, accuracy: number | null, platform: string) =>
     req<{ saved: boolean }>("/location", { method: "POST", body: JSON.stringify({ lat, lng, accuracy, platform }) }),
@@ -513,6 +516,8 @@ export type PriceLog = {
 export type EditorListItem = { product_id: string; name: string; image: string; sku: string; price: number; original_price: number; stock: number; status: "active" | "inactive"; variants: number; sold: number; store_id: string; weight_grams: number; weight_estimated: boolean; dims: number[]; dims_estimated: boolean };
 export type BulkEdit = { store_id?: string | null; product_ids: string[]; price_mode?: "" | "set" | "up_pct" | "down_pct" | "up" | "down"; price_value?: number; stock_mode?: "" | "set" | "add" | "sub"; stock_value?: number; status?: "" | "active" | "inactive"; weight_grams?: number; weight_only_missing?: boolean; dims?: number[]; dims_only_missing?: boolean };
 export type EstimateKind = "weight" | "dims";
+export type BranchCopyPreview = { preview_id: string; branches: { store_id: string; store_name: string; total: number; price_changed: number; stock_changed: number;
+  unchanged: number; zero_stock: number; sample: { product_id: string; name: string; sidoarjo_price: number; sidoarjo_stock: number; old_price: number; new_price: number; old_stock: number; new_stock: number }[] }[] };
 export type NearestStores = { nearest: { store_id: string; name: string; distance_km: number } | null; stores: { store_id: string; name: string; distance_km: number }[] };
 export type CategoryPreview = { preview_id: string; total: number; groups: { category_id: string; count: number }[];
   items: { product_id: string; name: string; image: string; suggested: string; confidence: "tinggi" | "sedang" | "rendah"; reason: string }[] };
