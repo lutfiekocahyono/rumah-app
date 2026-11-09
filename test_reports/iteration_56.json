@@ -1,0 +1,40 @@
+{
+  "summary": "Tested the per-branch Flash Sale schedule feature (request D). Backend: new suite test_iter56_flash_schedules.py passed 18/18. It covers GET scope per role (jombang sees only pgs-jombang, sidoarjo only pgs-official, admin sees all 3 with every field, demo customer gets 403, a logged-out call gets 401/403), PUT permissions (jombang on pgs-jember 403, jember on pgs-jombang 403, customer 403, own store 200) and the 400 validations (end <= start, end in the past, missing end, follow:true on pgs-official). It also checks the effects: a Jombang start at now+3h makes /flash-sale inactive for pgs-jombang, product detail flash_price null, and the cart line uses the normal Jombang price 12500 instead of the flash 12000, while Sidoarjo and Jember stay active with the Sidoarjo ends_at. A Jember own ends_at of now+1h shows up in /flash-sale and in the product's flash_ends_at, with Sidoarjo unchanged. follow:true resets a branch to the Sidoarjo schedule. Regression suites iter54 and iter55 (-n0) passed 59/59. Frontend at 390x844: the admin page /admin/flash-sale shows 'Jadwal per cabang' and all required testIDs (no follow toggle for pgs-official, which is correct). Toggling, a preset, saving, the client-side end<=start check and switching back to follow all work. For jombang@pgs.id, the Seller Center drawer has nav-jadwal-flash-sale and /seller/flash-schedule shows only the Mitra PGS Jombang card. Saving an upcoming schedule shows 'Belum mulai' and the server's past-end error appears in the UI. The home countdown follows the buyer's branch: Jember 00:59:55 (own +1h), Sidoarjo 19:02, and Jombang (upcoming) shows no flash section. Problems found: the wishlist ignores the branch schedule, and on mobile the Jadwal Flash Sale screen is hard to reach.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/wishlist", "issue": "server.py:1030 calls _product_out(p, ctype, flash) without a branch, so it always uses the Sidoarjo flash window and price. Reproduced: with pgs-jombang upcoming, demo with X-Store-Id pgs-jombang still sees flash_price=10000 and my_price=10000 in the wishlist, while product detail and cart show no flash (12500). The same happens in _product_out_for_user (server.py:1403)."},
+      {"endpoint": "PUT /api/flash-sale/schedules/{unknown}", "issue": "An unknown store_id (e.g. pgs-xyz), even from admin, returns 403 'hanya bisa mengatur jadwal toko Anda sendiri'. 404 would be the correct code."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Seller dashboard /seller (mobile)", "issue": "The /seller dashboard has no tile or link to 'Jadwal Flash Sale', and neither do /seller/branch-prices and the other seller pages, because they do not use SellerShell. A branch admin can only reach it through the drawer on the /product-editor/* screens. It is hard to discover.", "testID": "nav-jadwal-flash-sale", "priority": "MEDIUM"},
+      {"component": "SellerShell on /seller/flash-schedule (<900px)", "issue": "On phones the header shows only the hamburger (shell-menu) and no back button. The user has to open the drawer to leave the screen.", "testID": "shell-menu", "priority": "LOW"}
+    ],
+    "integration_issues": [
+      {"flow": "Wishlist price for a branch buyer during that branch's upcoming or ended schedule", "issue": "The wishlist shows the Sidoarjo flash price even though the buyer's branch has no flash running (see backend minor).", "affected_testIDs": []}
+    ],
+    "design_issues": [
+      {"screen": "flash-schedule Row (src/components/flash-schedule.tsx)", "issues": ["The start field's placeholder reads 'Tanpa batas (kosongkan)', but an empty start means 'langsung mulai'. The placeholder is misleading.", "DateTimeField only calls onChange for valid text. If the user types an invalid date and taps Save, the last valid (stale) value is saved without warning. Block the save while the text is invalid.", "Home: a branch whose schedule is upcoming hides the Flash Sale section completely, with no 'mulai dalam ...' teaser. Optional UX improvement."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iter56_flash_schedules.py", "/app/backend/tests/adhoc_iter56_lists.py", "/app/test_reports/pytest/iter56.xml"],
+  "action_items": [
+    "Pass the buyer's branch (X-Store-Id) to _product_out in GET /api/wishlist (server.py:1030) and in _product_out_for_user (server.py:1403), so the flash price and window follow the branch schedule. Also apply the branch prices there.",
+    "Add a 'Jadwal Flash Sale' entry, for example a tile next to 'Beranda', on the /seller dashboard for official branch admins, so it can be reached on mobile.",
+    "Optional: give SellerShell a back button on mobile, return 404 for an unknown store_id in PUT schedules, fix the start-field placeholder and block saving while a date field is invalid."
+  ],
+  "critical_code_review_comments": [
+    "After the Super Admin or the Sidoarjo admin saves the PGS Sidoarjo card once, schedules.pgs-official overrides the master settings.ends_at permanently. There is no UI or API to revert it, because follow:true is rejected for pgs-official, and the master ends_at that /admin/flash-sale still sends becomes stale and has no effect.",
+    "The Sidoarjo store admin can change the Sidoarjo schedule, and with it the schedule of every branch that follows Sidoarjo. This matches the spec, but it is worth confirming that this is intended."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter56_flash_schedules.py", "/app/backend/tests/adhoc_iter56_lists.py"],
+  "success_rate": {"backend": "100% (18/18 new + 59/59 regression)", "frontend": "95% (all requested flows pass; only menu reachability on mobile is lacking)"},
+  "seed_data_creation": "None. Temporary schedule changes for pgs-jombang and pgs-jember were reverted with follow:true. I never created schedules.pgs-official, and the module teardown runs $unset as a safeguard. Final DB state: active true, ends_at 2026-11-10T02:57:28.567Z, schedules {}. The temporary demo cart and wishlist lines were removed.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "The environment clock is around 2026-11-09 07:5x UTC. The suite reads the Sidoarjo ends_at dynamically. Run with -n0 because the tests share the flash_sale settings document. UI login: put the token in localStorage 'pgs_auth_token'; select a branch with localStorage pgs_store_id plus pgs_store_manual='1'. The Seller Center drawer (shell-menu) exists only on SellerShell pages: /product-editor/list, /product-editor/history, /product-editor/[id] and /seller/flash-schedule.",
+  "rca_of_issue": "Wishlist: list_wishlist builds products with _product_out(p, ctype, flash) and no branch argument. promo.flash_for() then defaults to PGS_STORE_ID, so the Sidoarjo window and price are used whatever the buyer's branch is."
+}

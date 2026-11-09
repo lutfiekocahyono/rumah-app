@@ -50,6 +50,12 @@ class FlashSaleIn(BaseModel):
     items: List[FlashItemIn] = []
 
 
+class ScheduleIn(BaseModel):
+    follow: bool = False  # Jombang / Jember: follow the PGS Sidoarjo schedule
+    starts_at: Optional[datetime] = None  # empty = starts right away
+    ends_at: Optional[datetime] = None
+
+
 class VoucherIn(BaseModel):
     code: str = Field(pattern="^[A-Za-z0-9]{3,20}$")
     title: str = Field(min_length=1, max_length=60)
@@ -99,7 +105,7 @@ def _check_voucher_in(body: VoucherIn) -> dict:
     return {**body.model_dump(), "code": body.code.upper(), "ends_at": promo.aware(body.ends_at)}
 
 
-def register(api, db, *, require_admin, get_owner, get_optional_owner, get_optional_user,
+def register(api, db, *, require_admin, get_owner, get_optional_owner, get_optional_user, get_current_user,
              product_out, load_cart_detailed, broadcast_promo, apply_stock) -> None:
     import seller
     branches = [s for s in seller.OFFICIAL_IDS if s != seller.PGS_STORE_ID]
@@ -116,15 +122,59 @@ def register(api, db, *, require_admin, get_owner, get_optional_owner, get_optio
     @api.get("/flash-sale")
     async def flash_sale(user=Depends(get_optional_user), x_store_id: Optional[str] = Header(default=None)):
         flash = await promo.active_flash(db)
-        if not flash:
+        branch = x_store_id if x_store_id in seller.OFFICIAL_IDS else seller.PGS_STORE_ID
+        if not flash or not promo.flash_ends(flash, branch):  # each branch runs on its own schedule
             return {"active": False, "items": []}
         ids = list(flash["prices"].keys())
-        branch = x_store_id if x_store_id in seller.OFFICIAL_IDS else seller.PGS_STORE_ID
         docs = {d["product_id"]: d for d in await db.products.find({"product_id": {"$in": ids}}, {"_id": 0}).to_list(100)}
         await apply_stock(list(docs.values()), branch)  # the branch's own price & stock next to its flash price
         ctype = (user or {}).get("customer_type", "langsung")
         items = [product_out(docs[i], ctype, flash, branch) for i in ids if i in docs]
-        return {"active": True, "title": flash["title"], "ends_at": flash["ends_at"], "items": items}
+        return {"active": True, "title": flash["title"], "ends_at": promo.flash_ends(flash, branch), "items": items}
+
+    # --- flash sale schedule per branch: branch admin = own store, Super Admin = all ---
+    async def schedule_stores(user: dict) -> list:
+        if user.get("role") == "admin":
+            return list(seller.OFFICIAL_IDS)
+        s = await db.stores.find_one({"owner_id": user["user_id"], "status": "active"}, {"store_id": 1})
+        if not s or s["store_id"] not in seller.OFFICIAL_IDS:
+            raise HTTPException(status_code=403, detail="Jadwal Flash Sale hanya untuk admin cabang PGS atau Super Admin")
+        return [s["store_id"]]
+
+    async def schedules_view(sids: list) -> list:
+        doc = await db.settings.find_one({"key": "flash_sale"}, {"_id": 0}) or {}
+        names = await seller.store_names(db)
+        out = []
+        for sid in sids:
+            s = promo.schedule_of(doc, sid)
+            start, end = promo.aware(s.get("starts_at")), promo.aware(s.get("ends_at"))
+            status = "off" if not doc.get("active") else "running" if promo.is_running(s) else "upcoming" if start and start > promo.now() and end and end > promo.now() else "ended"
+            out.append({"store_id": sid, "name": names.get(sid, sid), "own": s["own"], "starts_at": start, "ends_at": end, "status": status,
+                        "follows_sidoarjo": sid != seller.PGS_STORE_ID and not s["own"]})
+        return out
+
+    @api.get("/flash-sale/schedules")
+    async def get_schedules(user=Depends(get_current_user)):
+        return await schedules_view(await schedule_stores(user))
+
+    @api.put("/flash-sale/schedules/{store_id}")
+    async def set_schedule(store_id: str, body: ScheduleIn, user=Depends(get_current_user)):
+        if store_id not in await schedule_stores(user):
+            raise HTTPException(status_code=403, detail="Anda hanya bisa mengatur jadwal Flash Sale toko Anda sendiri")
+        if body.follow:
+            if store_id == seller.PGS_STORE_ID:
+                raise HTTPException(status_code=400, detail="PGS Sidoarjo memakai jadwalnya sendiri")
+            await db.settings.update_one({"key": "flash_sale"}, {"$unset": {f"schedules.{store_id}": ""}})
+        else:
+            start, end = promo.aware(body.starts_at), promo.aware(body.ends_at)
+            if not end:
+                raise HTTPException(status_code=400, detail="Isi waktu selesai Flash Sale")
+            if start and end <= start:
+                raise HTTPException(status_code=400, detail="Waktu selesai harus setelah waktu mulai")
+            if end <= promo.now():
+                raise HTTPException(status_code=400, detail="Waktu selesai harus di masa depan")
+            await db.settings.update_one({"key": "flash_sale"}, {"$set": {f"schedules.{store_id}": {"starts_at": start, "ends_at": end}}}, upsert=True)
+        return (await schedules_view([store_id]))[0]
 
     @api.get("/vouchers")
     async def list_vouchers(owner: Optional[str] = Depends(get_optional_owner)):

@@ -30,7 +30,7 @@ function menu(admin: boolean, storeId: string): (Item | Group)[] {
     ...(admin ? [i("Promosi", "megaphone-outline", "/admin/vouchers")] : []),
     ...(admin ? [] : [i("Chat", "chatbubbles-outline", "/chat?side=store")]),
     i("Komplain", "alert-circle-outline", admin ? "/complaint?scope=admin" : "/complaint?scope=store"),
-    ...(!admin && official ? [i("Beranda Toko", "flame-outline", "/seller/home-sections")] : []),
+    ...(!admin && official ? [i("Beranda Toko", "flame-outline", "/seller/home-sections"), i("Jadwal Flash Sale", "flash-outline", "/seller/flash-schedule")] : []),
     i("Laporan Penjualan", "bar-chart-outline", admin ? "/admin/report" : "/seller"),
     i("Pengaturan Toko", "settings-outline", admin ? "/admin/stores" : "/seller"),
   ];
@@ -86,9 +86,14 @@ export function SellerShell({ admin, title, right, children }: { admin: boolean;
               <Icon name="chevron-back" size={22} color={colors.onSurface} />
             </Pressable>
           ) : (
-            <Pressable testID="shell-menu" hitSlop={8} onPress={() => setDrawer(true)} style={styles.menuBtn}>
-              <Icon name="menu" size={22} color={colors.onSurface} />
-            </Pressable>
+            <>
+              <Pressable testID="shell-back" hitSlop={8} onPress={() => (router.canGoBack() ? router.back() : router.replace((admin ? "/admin" : "/seller") as any))} style={styles.menuBtn}>
+                <Icon name="chevron-back" size={22} color={colors.onSurface} />
+              </Pressable>
+              <Pressable testID="shell-menu" hitSlop={8} onPress={() => setDrawer(true)} style={styles.menuBtn}>
+                <Icon name="menu" size={22} color={colors.onSurface} />
+              </Pressable>
+            </>
           )}
           <Text style={styles.title} numberOfLines={1}>{title}</Text>
           {right}

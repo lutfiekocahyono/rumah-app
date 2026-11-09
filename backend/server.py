@@ -676,7 +676,7 @@ def _product_out(d: dict, ctype: str, flash: Optional[dict] = None, branch: Opti
                    my_price=fp or tiers[0]["price"],  # flash price of the buyer's branch replaces the normal price
                    price_tiers=[PriceTier(**t) for t in tiers],
                    price_min=min(all_prices), price_max=max(all_prices), price_matrix=matrix,
-                   flash_price=fp, flash_ends_at=flash["ends_at"] if fp else None)
+                   flash_price=fp, flash_ends_at=promo.flash_ends(flash, branch) if fp else None)
 
 
 async def _category_tree(category: str) -> List[str]:
@@ -1020,14 +1020,15 @@ async def clear_cart(owner: str = Depends(get_owner)):
 # Wishlist
 # ---------------------------------------------------------------------------
 @api.get("/wishlist", response_model=WishlistOut)
-async def get_wishlist(owner: str = Depends(get_owner)):
+async def get_wishlist(owner: str = Depends(get_owner), x_store_id: Optional[str] = Header(default=None)):
     doc = await db.wishlists.find_one({"owner": owner}, {"_id": 0}) or {"items": []}
     ids = doc.get("items", [])
     if not ids:
         return WishlistOut(items=[])
     ctype, flash = await _ctype_for_owner(owner), await promo.active_flash(db)
     prods = await db.products.find({"product_id": {"$in": ids}}, {"_id": 0}).to_list(500)
-    return WishlistOut(items=[_product_out(p, ctype, flash) for p in prods])
+    await _apply_stock(prods, _ctx(x_store_id))  # the buyer's branch price, stock & flash schedule
+    return WishlistOut(items=[_product_out(p, ctype, flash, _ctx(x_store_id)) for p in prods])
 
 
 @api.post("/wishlist/{product_id}", response_model=WishlistOut)
@@ -1406,7 +1407,7 @@ async def _product_out_for_user(d: dict, user: dict) -> Product:
 ACCT = account.register(api, db, get_current_user, _user_out, _make_token)
 _release_voucher, expire_cod_orders, remind_expiring_cod, _expire_loop = order_tasks.register(db, ACCT["notify_user"])
 marketing.register(api, db, require_admin=require_admin, get_owner=get_owner, get_optional_owner=get_optional_owner,
-                   get_optional_user=get_optional_user, product_out=_product_out, load_cart_detailed=_load_cart_detailed, apply_stock=_apply_stock,
+                   get_optional_user=get_optional_user, get_current_user=get_current_user, product_out=_product_out, load_cart_detailed=_load_cart_detailed, apply_stock=_apply_stock,
                    broadcast_promo=ACCT["broadcast_promo"])
 home_feed.register(api, db, get_current_user=get_current_user, require_admin=require_admin, get_optional_owner=get_optional_owner,
                    get_optional_user=get_optional_user, visible=_visible, apply_stock=_apply_stock, product_out=_product_out,

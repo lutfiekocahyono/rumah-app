@@ -193,3 +193,9 @@ Iteration 2: import all data from pusatgrosirsidoarjo.com; tiered pricing (pembe
 - Legacy POST /seller/products & Excel import by branch admins now set only_branch (fixed).
 - Branch copy preview: price_down + down_sample per branch; apply requires {confirm_down:true} when any price goes down (else 409). Rupiah field accepts negative values.
 - Branch bulk edit (pct/rp/Excel): preview down + down_sample; apply requires confirm_down when down>0. UI: red warning box + "Saya mengerti" toggle before confirm.
+
+## Iteration 56 — Jadwal Flash Sale per cabang
+- settings.flash_sale.schedules[store_id] = {starts_at, ends_at}; branch without own schedule follows PGS Sidoarjo; Sidoarjo fallback = doc.ends_at. doc.active = master switch.
+- promo.active_flash -> windows {branch: ends_at} of running branches; flash_for/flash_ends by buyer branch (X-Store-Id). Cart, detail, lists, /flash-sale countdown follow branch schedule.
+- GET /api/flash-sale/schedules, PUT /api/flash-sale/schedules/{store_id} {follow, starts_at, ends_at}: store admin = own store only (403 otherwise), Super Admin = all.
+- UI: Admin > Flash Sale "Jadwal per cabang"; Seller Center menu "Jadwal Flash Sale" (/seller/flash-schedule) for official branch admins.

@@ -142,7 +142,7 @@ export default function SellerHome() {
                   { icon: "car-outline", label: "Tarif Kurir", to: "/seller/couriers" },
                   { icon: "chatbubbles-outline", label: "Chat", to: "/chat?side=store", badge: unread.store },
                   { icon: "alert-circle-outline", label: "Komplain", to: "/complaint?scope=store" },
-                  ...(store.official ? [{ icon: "flame-outline", label: "Beranda", to: "/seller/home-sections" }] : []),
+                  ...(store.official ? [{ icon: "flame-outline", label: "Beranda", to: "/seller/home-sections" }, { icon: "flash-outline", label: "Flash Sale", to: "/seller/flash-schedule" }] : []),
                 ].map((n: { icon: string; label: string; to: string; badge?: number }) => (
                   <Pressable key={n.to} testID={`seller-nav-${n.to.split("/").pop()!.replace(/\?.*/, "")}`} style={styles.navItem} onPress={() => router.push(n.to as any)}>
                     <Icon name={n.icon as any} size={24} color={colors.brandPrimary} />

@@ -8,7 +8,7 @@ import { colors, fontSize, radius, spacing, formatIDR } from "@/src/theme";
 import { api, type AdminFlashSale } from "@/src/api";
 import { ScreenHeader } from "@/src/components/screen-header";
 import { ProductPicker } from "@/src/components/product-picker";
-import { DateTimeField } from "@/src/components/datetime-field";
+import { FlashScheduleList } from "@/src/components/flash-schedule";
 import { adminStyles, Card, digits, Field, PrimaryButton, ToggleRow } from "@/src/components/admin-form";
 
 export default function AdminFlashSaleScreen() {
@@ -32,7 +32,6 @@ export default function AdminFlashSaleScreen() {
       const b = i.branches.find((x) => x.flash_price && x.flash_price >= x.price);
       if (b) return setMsg({ err: `Harga flash ${b.name} untuk "${i.name}" harus di bawah harga cabangnya (${formatIDR(b.price)})`, ok: "" });
     }
-    if (f.active && new Date(f.ends_at).getTime() <= Date.now()) return setMsg({ err: "Waktu berakhir harus di masa depan", ok: "" });
     setSaving(true);
     try {
       setF(await api.adminSaveFlashSale({ title: f.title, active: f.active, ends_at: f.ends_at,
@@ -52,11 +51,12 @@ export default function AdminFlashSaleScreen() {
       {!f ? <ActivityIndicator color={colors.brandPrimary} style={{ marginTop: spacing.xl }} /> : (
         <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.md, paddingBottom: insets.bottom + spacing["2xl"] }} keyboardShouldPersistTaps="handled">
           <Card>
-            <ToggleRow testID="flash-active" label="Flash Sale aktif" sub="Harga flash berlaku di keranjang sampai waktu habis" value={f.active} onChange={(v) => set({ active: v })} />
+            <ToggleRow testID="flash-active" label="Flash Sale aktif" sub="Saklar utama semua cabang; jam mulai & selesai diatur per cabang di bawah" value={f.active} onChange={(v) => set({ active: v })} />
             <Field testID="flash-title" label="Judul" value={f.title} onChangeText={(t) => set({ title: t })} />
-            <Text style={adminStyles.section}>Berakhir pada</Text>
-            <DateTimeField testID="flash-ends" value={f.ends_at} onChange={(v) => v && set({ ends_at: v })} />
           </Card>
+          <Text style={styles.h}>Jadwal per cabang</Text>
+          <Text style={adminStyles.muted}>Tiap cabang bisa punya jam mulai & selesai sendiri; hitung mundur pembeli mengikuti cabangnya.</Text>
+          <FlashScheduleList />
 
           <Card>
             <Text style={styles.h}>Produk Flash Sale ({f.items.length})</Text>

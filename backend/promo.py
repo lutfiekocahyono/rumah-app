@@ -32,16 +32,47 @@ async def get_home(db) -> dict:
 
 
 async def active_flash(db) -> Optional[dict]:
-    """{title, ends_at, prices: {product_id: flash_price}} when a flash sale is running."""
+    """{title, windows: {branch: ends_at} of branches whose own schedule is running, prices, branch prices} or None."""
     doc = await db.settings.find_one({"key": "flash_sale"}, {"_id": 0})
     if not doc or not doc.get("active") or not doc.get("items"):
         return None
-    ends = aware(doc.get("ends_at"))
-    if not ends or ends <= now():
+    import seller
+    windows = {}
+    for sid in seller.OFFICIAL_IDS:
+        s = schedule_of(doc, sid)
+        if is_running(s):
+            windows[sid] = aware(s["ends_at"])
+    if not windows:
         return None
     prices = {i["product_id"]: int(i["flash_price"]) for i in doc["items"]}
-    return {"title": doc.get("title") or "Flash Sale", "ends_at": ends, "prices": prices,
+    return {"title": doc.get("title") or "Flash Sale", "ends_at": windows.get(seller.PGS_STORE_ID), "windows": windows, "prices": prices,
             "branch": await branch_flash(db, doc["items"])}
+
+
+def schedule_of(doc: dict, sid: str) -> dict:
+    """The branch's own {starts_at, ends_at}; a branch without its own schedule follows PGS Sidoarjo."""
+    import seller
+    own = (doc.get("schedules") or {}).get(sid)
+    if own:
+        return {**own, "own": True}
+    if sid != seller.PGS_STORE_ID:
+        return {**schedule_of(doc, seller.PGS_STORE_ID), "own": False}
+    return {"starts_at": None, "ends_at": doc.get("ends_at"), "own": False}
+
+
+def is_running(s: dict) -> bool:
+    start, end = aware(s.get("starts_at")), aware(s.get("ends_at"))
+    return bool(end and end > now() and (not start or start <= now()))
+
+
+def _branch_key(flash: dict, branch: Optional[str]) -> str:
+    import seller
+    return branch if branch in seller.OFFICIAL_IDS else seller.PGS_STORE_ID
+
+
+def flash_ends(flash: Optional[dict], branch: Optional[str] = None) -> Optional[datetime]:
+    """When the flash sale of the buyer's branch ends (None = not running there)."""
+    return (flash or {}).get("windows", {}).get(_branch_key(flash or {}, branch))
 
 
 async def branch_flash(db, items: list) -> dict:
@@ -66,9 +97,9 @@ async def branch_flash(db, items: list) -> dict:
 
 def flash_for(flash: Optional[dict], product_id: str, branch: Optional[str] = None) -> Optional[int]:
     """Flash price the buyer of this branch pays (None = product not in the flash sale)."""
-    if not flash or product_id not in flash["prices"]:
+    if not flash or product_id not in flash["prices"] or not flash_ends(flash, branch):
         return None
-    return (flash.get("branch") or {}).get(branch or "", {}).get(product_id) or flash["prices"][product_id]
+    return (flash.get("branch") or {}).get(_branch_key(flash, branch), {}).get(product_id) or flash["prices"][product_id]
 
 
 def voucher_check(v: Optional[dict], subtotal: int) -> tuple[int, Optional[str]]:

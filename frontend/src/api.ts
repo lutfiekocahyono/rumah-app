@@ -167,6 +167,9 @@ export const api = {
     req<Banner>(id ? `/admin/banners/${id}` : "/admin/banners", { method: id ? "PUT" : "POST", body: JSON.stringify(b) }),
   adminDeleteBanner: (id: string) => req<{ ok: boolean }>(`/admin/banners/${id}`, { method: "DELETE" }),
   adminFlashSale: () => req<AdminFlashSale>("/admin/flash-sale"),
+  flashSchedules: () => req<FlashSchedule[]>("/flash-sale/schedules"),
+  saveFlashSchedule: (storeId: string, b: { follow: boolean; starts_at: string | null; ends_at: string | null }) =>
+    req<FlashSchedule>(`/flash-sale/schedules/${storeId}`, { method: "PUT", body: JSON.stringify(b) }),
   adminSaveFlashSale: (f: { title: string; active: boolean; ends_at: string; items: { product_id: string; flash_price: number; branch_prices: Record<string, number> }[] }) =>
     req<AdminFlashSale>("/admin/flash-sale", { method: "PUT", body: JSON.stringify(f) }),
   adminVouchers: () => req<Voucher[]>("/admin/vouchers"),
@@ -403,6 +406,7 @@ export type HomeSettings = {
   recommend_mode: "personal" | "random";
 };
 export type FlashSale = { active: boolean; title?: string; ends_at?: string; items: Product[] };
+export type FlashSchedule = { store_id: string; name: string; own: boolean; starts_at: string | null; ends_at: string | null; status: "running" | "upcoming" | "ended" | "off"; follows_sidoarjo: boolean };
 export type FlashBranchRow = { store_id: string; name: string; price: number; auto_price: number; flash_price: number };
 export type AdminFlashSale = { title: string; active: boolean; ends_at: string; items: { product_id: string; flash_price: number; name: string; image: string; price: number; branches: FlashBranchRow[] }[] };
 export type Voucher = {
