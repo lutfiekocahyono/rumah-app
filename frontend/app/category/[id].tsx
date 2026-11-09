@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, StyleSheet, Pressable, FlatList, Dimensions, ActivityIndicator, ScrollView } from "react-native";
+import { View, Text, StyleSheet, Pressable, FlatList, Dimensions, ActivityIndicator, ScrollView, TextInput } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Icon from "@react-native-vector-icons/ionicons";
@@ -30,7 +30,10 @@ export default function CategoryPage() {
   const [sort, setSort] = useState("popular");
   const { ready, storeId, stores } = useStore();
   const shopName = toko ? stores.find((s) => s.store_id === toko)?.name : undefined;
-  const scope = toko ? { branch: toko } : {};
+  const [q, setQ] = useState("");
+  const [dq, setDq] = useState(""); // debounced search, only on a branch store category
+  useEffect(() => { const t = setTimeout(() => setDq(q.trim()), 300); return () => clearTimeout(t); }, [q]);
+  const scope = toko ? { branch: toko, q: dq || undefined } : {};
   const [loading, setLoading] = useState(true);
   const [done, setDone] = useState(false);
   const [moreLoading, setMoreLoading] = useState(false);
@@ -45,7 +48,7 @@ export default function CategoryPage() {
     setDone(false);
     api.products({ category: id, sort, ...scope }, !!toko).then((p) => { setProducts(p); setDone(p.length < 40); setLoading(false); }).catch(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, sort, ready, storeId, toko]);
+  }, [id, sort, ready, storeId, toko, dq]);
 
   const loadMore = async () => {
     if (done || moreLoading || loading || !id) return;
@@ -76,6 +79,15 @@ export default function CategoryPage() {
         )}
       </View>
 
+      {toko ? (
+        <View style={styles.searchBox}>
+          <Icon name="search" size={16} color={colors.muted} />
+          <TextInput testID="cat-shop-search" value={q} onChangeText={setQ} returnKeyType="search"
+            placeholder={`Cari ${cat?.name ?? "produk"} di ${shopName ?? "toko ini"}…`} placeholderTextColor={colors.muted} style={styles.searchInput} />
+          {q ? <Pressable testID="cat-shop-search-clear" hitSlop={10} onPress={() => setQ("")}><Icon name="close-circle" size={16} color={colors.muted} /></Pressable> : null}
+        </View>
+      ) : null}
+
       <View style={styles.chipsWrap}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsRow}>
           {SORTS.map((s) => {
@@ -99,7 +111,7 @@ export default function CategoryPage() {
       ) : products.length === 0 ? (
         <View style={styles.empty}>
           <Icon name="cube-outline" size={48} color={colors.muted} />
-          <Text style={styles.emptyText}>Belum ada produk</Text>
+          <Text style={styles.emptyText}>{dq ? `Tidak ada "${dq}" di kategori ini` : "Belum ada produk"}</Text>
         </View>
       ) : (
         <FlatList
@@ -128,6 +140,8 @@ const styles = StyleSheet.create({
   title: { fontSize: fontSize.lg, fontWeight: "500", color: colors.onSurface },
   titleWrap: { flex: 1, alignItems: "center" },
   sub: { fontSize: fontSize.sm, color: colors.muted },
+  searchBox: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginHorizontal: spacing.lg, marginTop: spacing.sm, minHeight: 40, paddingHorizontal: spacing.md, borderRadius: radius.pill, backgroundColor: colors.surfaceSecondary },
+  searchInput: { flex: 1, minHeight: 40, fontSize: fontSize.sm, color: colors.onSurface },
   chipsWrap: { height: 56, justifyContent: "center", borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
   chipsRow: { gap: spacing.sm, paddingHorizontal: spacing.lg, alignItems: "center" },
   chip: { height: 36, paddingHorizontal: spacing.md, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border, justifyContent: "center", flexShrink: 0 },
