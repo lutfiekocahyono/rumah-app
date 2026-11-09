@@ -137,6 +137,7 @@ export default function SellerHome() {
                 {[
                   { icon: "receipt-outline", label: "Pesanan", to: "/seller/orders" },
                   { icon: "cube-outline", label: "Stok", to: "/seller/stock" },
+                  ...(store?.store_id === "pgs-jombang" || store?.store_id === "pgs-jember" ? [{ icon: "cash-outline", label: "Harga Cabang", to: "/seller/branch-prices" }] : []),
                   { icon: "list-outline", label: "Kelola Produk", to: "/product-editor/list" },
                   { icon: "car-outline", label: "Tarif Kurir", to: "/seller/couriers" },
                   { icon: "chatbubbles-outline", label: "Chat", to: "/chat?side=store", badge: unread.store },

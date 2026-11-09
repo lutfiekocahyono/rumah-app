@@ -302,7 +302,9 @@ def register(api, db, get_current_user, require_admin, product_out_for_user, not
             .sort([("store_id", -1 if sid != PGS_STORE_ID else 1), ("name", 1)]).skip(max(0, skip)).limit(min(limit, 100)).to_list(100)
         shared = [d["product_id"] for d in docs if d["store_id"] != sid]
         stocks = await branch_stocks(db, sid, shared)
+        prices = await branch_prices(db, sid, shared)
         return [{**d, "stock": stocks.get(d["product_id"], 0) if d["store_id"] != sid else d.get("stock", 0),
+                 "price": prices.get(d["product_id"], {}).get("price", d.get("price", 0)) if d["store_id"] != sid else d.get("price", 0),
                  "own": d["store_id"] == sid} for d in docs]
 
     @api.put("/seller/inventory/{product_id}")

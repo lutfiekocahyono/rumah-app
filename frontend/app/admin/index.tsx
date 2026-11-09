@@ -27,6 +27,7 @@ const MENU = [
   { icon: "card-outline", label: "Pengaturan Pembayaran", sub: "Kunci Midtrans (Sandbox / Production)", to: "/admin/payments" },
   { icon: "navigate-outline", label: "Pengaturan Ongkir Otomatis", sub: "API key RajaOngkir & lokasi asal tiap toko", to: "/admin/shipping" },
   { icon: "sync-outline", label: "Integrasi Accurate Online", sub: "Kunci API, uji koneksi, gudang & pratinjau barang", to: "/admin/accurate" },
+  { icon: "cash-outline", label: "Harga Cabang", sub: "Ubah harga satuan & grosir Mitra PGS Jombang / Jember", to: "/seller/branch-prices" },
   { icon: "copy-outline", label: "Salin Harga & Stok ke Cabang", sub: "Dari PGS Sidoarjo ke Jombang/Jember: harga + selisih, stok − pengurang", to: "/admin/branch-copy" },
   { icon: "map-outline", label: "Analisa Pelanggan", sub: "Peta & posisi semua pelanggan yang mengizinkan lokasi", to: "/admin/customers-map" },
   { icon: "logo-whatsapp", label: "WhatsApp Fonnte", sub: "Token OTP & notifikasi pesanan, uji koneksi & kirim OTP", to: "/admin/fonnte" },

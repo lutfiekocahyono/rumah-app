@@ -236,6 +236,9 @@ export const api = {
   uncatPreview: (store_id?: string | null) => req<CategoryPreview>(`/product-editor/uncategorized/preview?${qs({ store_id })}`, { method: "POST" }),
   uncatApply: (id: string, skip: string[], overrides: Record<string, string>) =>
     req<{ saved: number }>(`/product-editor/uncategorized/${id}/apply`, { method: "POST", body: JSON.stringify({ skip, overrides }) }),
+  branchPrices: (store_id: string | null, q = "", skip = 0) => req<BranchPriceList>(`/branch-prices?${qs({ store_id, q, skip, limit: 40 })}`),
+  setBranchPrice: (id: string, b: { store_id: string | null; price: number; original_price: number; tier_prices: Record<string, { min_qty: number; price: number }[]> }) =>
+    req<BranchPriceItem>(`/branch-prices/${id}`, { method: "PUT", body: JSON.stringify(b) }),
   branchCopyPreview: (rules: { store_id: string; price_add: number; stock_sub: number }[]) =>
     req<BranchCopyPreview>("/admin/branch-copy/preview", { method: "POST", body: JSON.stringify({ rules }) }),
   branchCopyApply: (id: string) => req<{ branches: { store_id: string; store_name: string; updated: number }[] }>(`/admin/branch-copy/${id}/apply`, { method: "POST" }),
@@ -516,6 +519,9 @@ export type PriceLog = {
 export type EditorListItem = { product_id: string; name: string; image: string; sku: string; price: number; original_price: number; stock: number; status: "active" | "inactive"; variants: number; sold: number; store_id: string; weight_grams: number; weight_estimated: boolean; dims: number[]; dims_estimated: boolean };
 export type BulkEdit = { store_id?: string | null; product_ids: string[]; price_mode?: "" | "set" | "up_pct" | "down_pct" | "up" | "down"; price_value?: number; stock_mode?: "" | "set" | "add" | "sub"; stock_value?: number; status?: "" | "active" | "inactive"; weight_grams?: number; weight_only_missing?: boolean; dims?: number[]; dims_only_missing?: boolean };
 export type EstimateKind = "weight" | "dims";
+export type PriceSet = { price: number; original_price: number; tier_prices: Record<string, { min_qty: number; price: number }[]> };
+export type BranchPriceItem = { product_id: string; name: string; image: string; sidoarjo: PriceSet; branch: PriceSet; own_price: boolean; stock: number; price_set_at: string | null };
+export type BranchPriceList = { store_id: string; store_name: string; items: BranchPriceItem[] };
 export type BranchCopyPreview = { preview_id: string; branches: { store_id: string; store_name: string; total: number; price_changed: number; stock_changed: number;
   unchanged: number; zero_stock: number; sample: { product_id: string; name: string; sidoarjo_price: number; sidoarjo_stock: number; old_price: number; new_price: number; old_stock: number; new_stock: number }[] }[] };
 export type NearestStores = { nearest: { store_id: string; name: string; distance_km: number } | null; stores: { store_id: string; name: string; distance_km: number }[] };

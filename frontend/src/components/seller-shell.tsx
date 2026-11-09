@@ -19,6 +19,7 @@ function menu(admin: boolean): (Item | Group)[] {
       i("Daftar Produk", "list-outline", "/product-editor/list"),
       i("Kategori Produk", "pricetags-outline", "/(tabs)/kategori"),
       ...(admin ? [] : [i("Manajemen Stok", "layers-outline", "/seller/stock")]),
+      ...(admin ? [i("Harga Cabang", "cash-outline", "/seller/branch-prices")] : []), // branch admins: tile on their Seller Center
       i("Riwayat Harga & Stok", "time-outline", "/product-editor/history"),
     ] },
     i("Pesanan", "receipt-outline", admin ? "/admin/orders" : "/seller/orders"),

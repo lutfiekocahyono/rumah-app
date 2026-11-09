@@ -103,7 +103,7 @@ export default function PriceHistory() {
   const header = (
     <View style={styles.top}>
       <Text style={styles.muted}>
-        {admin ? "Super Admin: semua toko & cabang." : "Hanya perubahan di toko Anda."} Mencatat perubahan manual harga & stok (Ubah Produk, Edit Massal, Impor Excel, Manajemen Stok, Harga Grosir).
+        {admin ? "Super Admin: semua toko & cabang." : "Hanya perubahan di toko Anda."} Mencatat perubahan manual harga & stok (Ubah Produk, Edit Massal, Impor Excel, Manajemen Stok, Harga Grosir, Harga Cabang).
       </Text>
       {product ? (
         <Pressable testID="ph-clear-product" style={styles.chip} onPress={() => router.setParams({ product: undefined } as any)}>
