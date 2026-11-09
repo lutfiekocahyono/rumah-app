@@ -33,6 +33,14 @@ export default function CategoryPage() {
   const [q, setQ] = useState("");
   const [dq, setDq] = useState(""); // debounced search, only on a branch store category
   useEffect(() => { const t = setTimeout(() => setDq(q.trim()), 300); return () => clearTimeout(t); }, [q]);
+  const [subs, setSubs] = useState<Category[]>([]); // sub-categories with products priced in this branch
+  const [sub, setSub] = useState<string | null>(null);
+  useEffect(() => {
+    setSub(null);
+    if (toko && id) api.shopCategories(toko, id).then(setSubs).catch(() => setSubs([]));
+    else setSubs([]);
+  }, [toko, id]);
+  const catId = sub ?? id;
   const scope = toko ? { branch: toko, q: dq || undefined } : {};
   const [loading, setLoading] = useState(true);
   const [done, setDone] = useState(false);
@@ -46,15 +54,15 @@ export default function CategoryPage() {
     if (!id || !ready) return; // wait for the saved branch: prices follow it
     setLoading(true);
     setDone(false);
-    api.products({ category: id, sort, ...scope }, !!toko).then((p) => { setProducts(p); setDone(p.length < 40); setLoading(false); }).catch(() => setLoading(false));
+    api.products({ category: catId, sort, ...scope }, !!toko).then((p) => { setProducts(p); setDone(p.length < 40); setLoading(false); }).catch(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, sort, ready, storeId, toko, dq]);
+  }, [id, sort, ready, storeId, toko, dq, sub]);
 
   const loadMore = async () => {
     if (done || moreLoading || loading || !id) return;
     setMoreLoading(true);
     try {
-      const p = await api.products({ category: id, sort, skip: products.length, ...scope }, !!toko);
+      const p = await api.products({ category: catId, sort, skip: products.length, ...scope }, !!toko);
       setProducts((cur) => { const have = new Set(cur.map((x) => x.product_id)); return [...cur, ...p.filter((x) => !have.has(x.product_id))]; });
       if (p.length < 40) setDone(true);
     } finally {
@@ -85,6 +93,22 @@ export default function CategoryPage() {
           <TextInput testID="cat-shop-search" value={q} onChangeText={setQ} returnKeyType="search"
             placeholder={`Cari ${cat?.name ?? "produk"} di ${shopName ?? "toko ini"}…`} placeholderTextColor={colors.muted} style={styles.searchInput} />
           {q ? <Pressable testID="cat-shop-search-clear" hitSlop={10} onPress={() => setQ("")}><Icon name="close-circle" size={16} color={colors.muted} /></Pressable> : null}
+        </View>
+      ) : null}
+
+      {subs.length ? (
+        <View style={styles.subWrap}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.subRow} testID="cat-subs">
+          {[{ category_id: null, name: "Semua" } as { category_id: string | null; name: string; count?: number }, ...subs].map((c) => {
+            const on = sub === c.category_id;
+            return (
+              <Pressable key={c.category_id ?? "all"} testID={`cat-sub-${c.category_id ?? "all"}`} onPress={() => setSub(c.category_id)}
+                style={[styles.subChip, on && styles.subChipOn]}>
+                <Text style={[styles.chipText, on && styles.subTextOn]}>{c.name}{c.count ? ` (${c.count})` : ""}</Text>
+              </Pressable>
+            );
+          })}
+          </ScrollView>
         </View>
       ) : null}
 
@@ -142,6 +166,11 @@ const styles = StyleSheet.create({
   sub: { fontSize: fontSize.sm, color: colors.muted },
   searchBox: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginHorizontal: spacing.lg, marginTop: spacing.sm, minHeight: 40, paddingHorizontal: spacing.md, borderRadius: radius.pill, backgroundColor: colors.surfaceSecondary },
   searchInput: { flex: 1, minHeight: 40, fontSize: fontSize.sm, color: colors.onSurface },
+  subWrap: { height: 52, justifyContent: "center" },
+  subRow: { gap: spacing.sm, paddingHorizontal: spacing.lg, alignItems: "center" },
+  subChip: { minHeight: 36, paddingHorizontal: spacing.md, borderRadius: radius.pill, backgroundColor: colors.surfaceSecondary, justifyContent: "center" },
+  subChipOn: { backgroundColor: colors.brandTertiary },
+  subTextOn: { color: colors.brandPrimary, fontWeight: "500" },
   chipsWrap: { height: 56, justifyContent: "center", borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
   chipsRow: { gap: spacing.sm, paddingHorizontal: spacing.lg, alignItems: "center" },
   chip: { height: 36, paddingHorizontal: spacing.md, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border, justifyContent: "center", flexShrink: 0 },

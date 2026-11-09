@@ -76,27 +76,33 @@ def register(api, db, *, require_admin, get_current_user, get_optional_user, vis
         return out
 
     @api.get("/stores/{store_id}/categories")
-    async def store_categories(store_id: str):
-        """Main categories that have products priced in this PGS branch (stok 0 ikut), most products first."""
+    async def store_categories(store_id: str, parent: Optional[str] = None):
+        """Categories (main, or the sub-categories of `parent`) that have products priced in this PGS branch
+        (stok 0 ikut), most products first; deeper levels count towards their ancestor at that level."""
         if store_id not in seller.OFFICIAL_IDS:
             raise HTTPException(status_code=404, detail="Toko tidak ditemukan")
         shop_scope.ON.set(True)
         cats = await db.categories.find({}, {"_id": 0}).to_list(1000)
-        parent = {c["category_id"]: c.get("parent") for c in cats}
+        up = {c["category_id"]: c.get("parent") for c in cats}
 
-        def top(cid: str) -> str:
+        def level(cid: str) -> Optional[str]:
+            """The ancestor of cid (itself included) directly below `parent` (None = main category)."""
             seen = set()
-            while parent.get(cid) and cid not in seen:
+            while cid not in seen:
                 seen.add(cid)
-                cid = parent[cid]
-            return cid
+                if (up.get(cid) or None) == parent:
+                    return cid
+                if not up.get(cid):
+                    return None
+                cid = up[cid]
+            return None
 
         counts: dict = {}
         async for d in db.products.find(await visible(store_id), {"_id": 0, "categories": 1}):
-            for t in {top(c) for c in (d.get("categories") or ["lainnya"])}:
+            for t in {level(c) for c in (d.get("categories") or ["lainnya"])} - {None}:
                 counts[t] = counts.get(t, 0) + 1
-        mains = [{**c, "count": counts[c["category_id"]]} for c in cats if not c.get("parent") and counts.get(c["category_id"])]
-        return sorted(mains, key=lambda c: -c["count"])
+        rows = [{**c, "count": counts[c["category_id"]]} for c in cats if (c.get("parent") or None) == parent and counts.get(c["category_id"])]
+        return sorted(rows, key=lambda c: -c["count"])
 
     # ---------------- appearance editor ----------------
     @api.get("/stores/{store_id}/qr")

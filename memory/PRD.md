@@ -241,3 +241,5 @@ Iteration 2: import all data from pusatgrosirsidoarjo.com; tiered pricing (pembe
 - [Done] Kotak 'Cari di Katalog Produk' (AppChrome) disembunyikan di /akun, /keranjang, dan /category/{id}?toko=... (ikon cari di header kategori juga disembunyikan saat dari toko cabang).
 
 - [Done] Kotak cari kecil di halaman kategori toko cabang (/category/{id}?toko=...), testID cat-shop-search; mencari hanya produk cabang itu di kategori tsb (q + branch + X-Shop-Page).
+
+- [Done] Pilihan sub-kategori di halaman kategori toko cabang: GET /api/stores/{id}/categories?parent=<cat> (hanya sub-kategori berproduk berharga cabang, urut terbanyak, cucu dihitung ke sub-kategori). Chip 'Semua' + sub-kategori (testID cat-sub-<id>), bisa digabung dengan cari & urutan.
