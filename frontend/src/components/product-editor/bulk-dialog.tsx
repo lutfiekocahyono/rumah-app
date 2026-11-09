@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Modal, View, Text, Pressable, StyleSheet, ActivityIndicator, ScrollView, KeyboardAvoidingView, Platform } from "react-native";
+import { Modal, View, Text, Pressable, StyleSheet, ActivityIndicator, ScrollView, KeyboardAvoidingView, Platform, TextInput } from "react-native";
 
 import { colors, fontSize, radius, spacing } from "@/src/theme";
 import { api, type BulkEdit } from "@/src/api";
@@ -88,12 +88,15 @@ export function BulkDialog({ kind, ids, storeId, onClose, onDone }: {
                 </>
               ) : kind === "dims" ? (
                 <>
-                  <View style={[s.row, { gap: spacing.sm }]}>
-                    {(["Panjang", "Lebar", "Tinggi"] as const).map((lab, n) => (
-                      <View key={lab} style={{ flex: 1 }}>
-                        <Input compact testID={`bulk-dim-${n}`} label={`${lab} (cm)`} keyboardType="number-pad" value={dims[n] ? String(dims[n]) : ""}
+                  <Text style={s.label}>Ukuran dus (cm) — Panjang × Lebar × Tinggi</Text>
+                  <View style={s.dimsRow} testID="bulk-dims-row">
+                    {(["P", "L", "T"] as const).map((lab, n) => (
+                      <React.Fragment key={lab}>
+                        {n ? <Text style={s.sub}>×</Text> : null}
+                        <TextInput testID={`bulk-dim-${n}`} accessibilityLabel={["Panjang", "Lebar", "Tinggi"][n]} keyboardType="number-pad" placeholder={lab}
+                          placeholderTextColor={colors.muted} value={dims[n] ? String(dims[n]) : ""} maxLength={3} style={s.dimInput}
                           onChangeText={(t) => { setErr(""); setDims((d) => d.map((x, i) => (i === n ? Math.min(500, digitsOf(t)) : x))); }} />
-                      </View>
+                      </React.Fragment>
                     ))}
                   </View>
                   <Text style={s.sub}>Ukuran dus/kemasan untuk ongkir (berat volume). Dianggap sudah dicek (tanda perkiraan dihapus).</Text>
@@ -141,6 +144,10 @@ export const s = StyleSheet.create({
   box: { width: "100%", maxWidth: 480, backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.md },
   title: { fontSize: fontSize.lg, fontWeight: "700", color: colors.onSurface },
   sub: { fontSize: fontSize.sm, color: colors.onSurfaceSecondary },
+  label: { fontSize: fontSize.sm, color: colors.onSurfaceSecondary, fontWeight: "500" },
+  dimsRow: { flexDirection: "row", alignItems: "center", gap: 6, width: "100%" },
+  dimInput: { flex: 1, minWidth: 0, width: 10, minHeight: 44, borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm, backgroundColor: colors.surfaceSecondary,
+    textAlign: "center", color: colors.onSurface, fontSize: fontSize.base, paddingHorizontal: 4 },
   ok: { fontSize: fontSize.base, color: colors.success, fontWeight: "600" },
   errText: { fontSize: fontSize.sm, color: colors.error },
   pills: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },

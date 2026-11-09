@@ -1,8 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { View, Text, StyleSheet, Pressable, AppState, Linking, Platform, ActivityIndicator } from "react-native";
+import { View, Text, StyleSheet, Pressable, AppState, Linking, Platform, ActivityIndicator, Modal, ScrollView } from "react-native";
 import * as Location from "expo-location";
 import { usePathname, useRouter } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Icon from "@react-native-vector-icons/ionicons";
 
 import { colors, fontSize, radius, spacing } from "@/src/theme";
@@ -77,13 +76,14 @@ export function LocationGate({ children }: { children: React.ReactNode }) {
 }
 
 function LockScreen({ perm, asking, onAllow }: { perm: Perm; asking: boolean; onAllow: () => void }) {
-  const insets = useSafeAreaInsets();
   const router = useRouter();
   const web = Platform.OS === "web";
   const settings = perm === "blocked" && !web;
   return (
-    <View style={[StyleSheet.absoluteFill, styles.lock, { paddingTop: insets.top + spacing.xl, paddingBottom: insets.bottom + spacing.lg }]} testID="location-lock">
-      <View style={styles.icon}><Icon name="location" size={44} color={colors.brandPrimary} /></View>
+    <Modal visible transparent animationType="fade" statusBarTranslucent onRequestClose={() => {}}>
+    <View style={styles.backdrop} testID="location-lock">
+    <ScrollView style={styles.card} contentContainerStyle={styles.cardInner} testID="location-popup">
+      <View style={styles.icon}><Icon name="location" size={36} color={colors.brandPrimary} /></View>
       <Text style={styles.title}>Izinkan akses lokasi</Text>
       <Text style={styles.body}>
         {perm === "off" ? "Layanan lokasi (GPS) di HP Anda mati. Nyalakan GPS untuk memakai aplikasi Pusat Grosir Sidoarjo."
@@ -118,20 +118,24 @@ function LockScreen({ perm, asking, onAllow }: { perm: Perm; asking: boolean; on
       <Pressable testID="location-login" style={styles.link} onPress={() => router.push("/login" as any)}>
         <Text style={styles.linkText}>Admin / pemilik toko? Masuk di sini</Text>
       </Pressable>
+    </ScrollView>
     </View>
+    </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  lock: { backgroundColor: colors.surface, alignItems: "center", paddingHorizontal: spacing.xl, gap: spacing.md, zIndex: 1000 },
-  icon: { width: 88, height: 88, borderRadius: 44, backgroundColor: colors.brandTertiary, alignItems: "center", justifyContent: "center", marginBottom: spacing.sm },
-  title: { fontSize: fontSize.xl, fontWeight: "700", color: colors.onSurface, textAlign: "center" },
-  body: { fontSize: fontSize.base, color: colors.onSurfaceSecondary, textAlign: "center", lineHeight: 22, maxWidth: 420 },
-  steps: { alignSelf: "center", maxWidth: 420, width: "100%", alignItems: "flex-start", gap: 6, backgroundColor: colors.surfaceSecondary, borderRadius: radius.md, padding: spacing.md },
+  backdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.55)", alignItems: "center", justifyContent: "center", padding: spacing.lg },
+  card: { flexGrow: 0, width: "100%", maxWidth: 420, maxHeight: "90%", backgroundColor: colors.surface, borderRadius: radius.lg },
+  cardInner: { alignItems: "center", padding: spacing.lg, gap: spacing.md },
+  icon: { width: 72, height: 72, borderRadius: 36, backgroundColor: colors.brandTertiary, alignItems: "center", justifyContent: "center" },
+  title: { fontSize: fontSize.lg, fontWeight: "700", color: colors.onSurface, textAlign: "center" },
+  body: { fontSize: fontSize.sm, color: colors.onSurfaceSecondary, textAlign: "center", lineHeight: 20 },
+  steps: { width: "100%", gap: 6, backgroundColor: colors.surfaceSecondary, borderRadius: radius.md, padding: spacing.md },
   step: { fontSize: fontSize.sm, color: colors.onSurfaceSecondary },
-  btn: { alignSelf: "center", maxWidth: 420, width: "100%", minHeight: 52, borderRadius: radius.pill, backgroundColor: colors.brandPrimary, alignItems: "center", justifyContent: "center", marginTop: spacing.md },
+  btn: { width: "100%", minHeight: 50, borderRadius: radius.pill, backgroundColor: colors.brandPrimary, alignItems: "center", justifyContent: "center", marginTop: spacing.sm },
   btnText: { color: colors.onBrandPrimary, fontWeight: "600", fontSize: fontSize.base },
-  outline: { alignSelf: "center", maxWidth: 420, width: "100%", minHeight: 48, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.brandPrimary, alignItems: "center", justifyContent: "center" },
+  outline: { width: "100%", minHeight: 48, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.brandPrimary, alignItems: "center", justifyContent: "center" },
   outlineText: { color: colors.brandPrimary, fontWeight: "600" },
   link: { minHeight: 44, justifyContent: "center" },
   linkText: { color: colors.muted, fontSize: fontSize.sm, textDecorationLine: "underline" },
