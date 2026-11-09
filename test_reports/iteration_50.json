@@ -1,0 +1,46 @@
+{
+  "summary": "Tested the branch copy v2 changes: Rupiah/Persen mode, Salin harga and Salin stok switches, protection of prices set by the branch admin, overwrite option, big_rise warning, and apply. Backend: tests/test_branch_copy_pct.py has 16 tests, run with -n0 and BC_ALLOW_APPLY=1. 14 pass and 2 fail, both on a real float rounding bug in percent mode. Validation (422), pct preview values, copy_stock=false (stock_changed 0) and copy_price=false (price_changed 0) all pass. big_rise also passes (pct 60 gives 6618 = price_changed). Protection passes: a PUT by jombang@pgs.id sets manual_price_at, and preview then reports protected=1 with branch_price and would_be. With overwrite_manual it reports protected_overwritten=1. Apply in pct mode keeps the protected price and manual_price_at. Other products get the exact pct price, original_price and every tier price, and their stock is not touched. price_history rows contain only price fields. A second apply returns 400. Apply with copy_stock=true still copies stock onto the protected row, and its history row is stock only. Apply with overwrite sets the price to the rule value, clears manual_price_at, and writes no stock change. Frontend at 390px: all testIDs are present and work. Defaults are correct (copy_stock OFF, rp 2000/1000, sub 3/5). Switching chips works, and comma decimals work ('2,5' becomes 2.5). With both switches off, the 'Centang ...' error shows. bc-sum, bc-big, bc-protected with its sample and overwrite switch, and bc-sample all render. Recalculating flips the message to 'AKAN ditimpa'. The confirm dialog summary is correct, Cancel works, and a zero-change apply shows bc-msg-ok. DATA: all 13236 store_stock docs for jombang and jember were backed up and restored exactly (0 mismatches, 0 manual_price_at left). price_history (13236), product_events (0) and notifications (1043) are back to the backup counts. Test previews and TEST_ guest carts were deleted.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/admin/branch-copy/preview + apply (mode pct)", "issue": "Percent rounding uses floats in branch_copy.py:37 (math.ceil(v*(1+pct/100)/100)*100). Prices that should land exactly on Rp100 get bumped up by Rp100. pct=10: 3000->3400 (expected 3300), 6000->6700, 11000->12200. pct=7: 30000->32200 (expected 32100), 60000->64300. Measured over the real catalog's distinct prices (6458), including tier prices: 495 wrong at 10% and 18 at 7%. 1, 2, 2.5, 3, 5, 15, 20 and -10 were correct.", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "tests/test_branch_copy.py::test_preview_counts", "issue": "Stale test, not an app bug. The branches are already copied, so the rp preview has an empty sample and b['sample'][0] raises IndexError. Also, with BC_ALLOW_APPLY=1 its TestApply applies to both branches with stock (restored)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Percent hint", "issue": "The hint uses the same float formula (branch-copy.tsx:66). At 10% it shows 'Rp200.000 → Rp220.100' instead of Rp220.000.", "testID": "bc-pct-pgs-jombang", "priority": "HIGH"},
+      {"component": "Percent field clamp", "issue": "Typing 150 still shows '150' in the field, but price_pct is silently clamped to 100 (the hint shows 100%). The displayed value and the sent value differ. Negative percent (allowed by the backend down to -50) and negative Rp cannot be typed.", "testID": "bc-pct-pgs-jember", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/admin/branch-copy", "issues": [
+        "Protected sample lines use numberOfLines=1, so at 390px the rule price '(aturan: Rp218.400)' is cut off ('(atu...')",
+        "When overwrite_manual is on, the protected box lists no product names (protected_sample is empty); only the count shows",
+        "Toggling the overwrite switch clears the whole preview, so the switch itself disappears until the user recalculates (a message explains this)",
+        "Switch hit area is 40x20 on web; only the Switch is tappable, not the whole ToggleRow"
+      ]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_branch_copy_pct.py", "/app/test_reports/pytest/iter50_branch_copy_pct.xml", "/app/tests/backup/bc_pct_backup.py", "/app/tests/backup/bc_pct_restore.py", "/app/tests/backup/bc_pct_float.py"],
+  "action_items": [
+    "HIGH: Do the percent rounding in integers or Decimal in branch_copy.price_fn, e.g. math.ceil(round(v*(100+pct)*100) / 10000 / 100)*100, or use Decimal. Pick an approach that is exact for 1-decimal pct, e.g. compute v*(1000+pct*10) as an int, then divide by 1000 and ceil to 100. Mirror the same math in the branch-copy.tsx hint.",
+    "LOW: Clamp the shown percent text to 100 (or show an error). Consider allowing negative percent to match the backend's -50.",
+    "LOW: Show the full rule price in the protected sample (2 lines). Optionally keep the overwrite switch visible after toggling.",
+    "Update or delete the stale test_branch_copy.py::test_preview_counts sample assertion."
+  ],
+  "critical_code_review_comments": [
+    "branch_copy.py:37 float arithmetic in money rounding (see critical issue).",
+    "The protection logic is correct. Protected rows never get 'price' in set, so manual_price_at is kept. Overwritten rows get $unset manual_price_at. Stock is still copied for protected rows.",
+    "Rules for a branch with both copy flags off are still sent, and the success message lists them as '0 produk'. Harmless."
+  ],
+  "updated_files": ["/app/backend/tests/test_branch_copy_pct.py (new)", "/app/tests/backup/bc_pct_backup.py (new)", "/app/tests/backup/bc_pct_restore.py (new)", "/app/tests/backup/bc_pct_float.py (new)"],
+  "success_rate": {"backend": "87.5% (14/16; the 2 failures are the float rounding bug)", "frontend": "95% (all flows work; the hint shows the float rounding bug)"},
+  "seed_data_creation": "None kept. Temporary changes were a manual price on pgs-9955 (Jombang) and full pct/rp applies to Jombang. All were restored from the backup.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: python tests/backup/bc_pct_backup.py, then cd backend && EXPO_PUBLIC_BACKEND_URL=<frontend/.env> BC_ALLOW_APPLY=1 pytest tests/test_branch_copy_pct.py -n0, then python tests/backup/bc_pct_restore.py. The restore replaces jombang/jember store_stock from the pickle and removes branch_copy/branch_price history at or after t0, plus tracked previews. Do NOT run tests/test_branch_copy.py with BC_ALLOW_APPLY=1 unless you back up first. Login: email-input, password-input, login-submit. Confirm dialog: confirm-dialog, confirm-ok, confirm-cancel.",
+  "rca_of_issue": "1+pct/100 is not exactly representable as a float (1.1 = 1.100000000000000088...). v*1.1 gives e.g. 3300.0000000000005, and ceil(33.000000000000005) = 34, so the price goes up an extra Rp100. Reproduce: python tests/backup/bc_pct_float.py. Fix with integer or Decimal math."
+}

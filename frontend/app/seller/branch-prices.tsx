@@ -64,7 +64,7 @@ export default function BranchPrices() {
           contentContainerStyle={{ padding: spacing.lg, gap: spacing.sm, paddingBottom: insets.bottom + spacing.xl }}
           onEndReached={() => { if (!done && items.length) void load(false, items.length); }}
           onEndReachedThreshold={0.5}
-          ListEmptyComponent={err ? null : <Text style={adminStyles.muted}>Produk tidak ditemukan.</Text>}
+          ListEmptyComponent={err ? undefined : <Text style={adminStyles.muted}>Produk tidak ditemukan.</Text>}
           renderItem={({ item }) => (
             <Pressable style={styles.row} testID={`bp-row-${item.product_id}`} onPress={() => setEditing(item)}>
               <Image source={item.image} style={styles.img} contentFit="cover" />

@@ -90,7 +90,7 @@ def register(api, db, get_current_user, seller):
                   "tier_prices": (row.get("tier_prices") if own else p.get("tier_prices")) or {}}
         after = {"price": body.price, "original_price": orig, "tier_prices": tiers}
         await db.store_stock.update_one({"store_id": sid, "product_id": product_id},
-                                        {"$set": {**after, "price_set_at": datetime.now(timezone.utc)}, "$setOnInsert": {"stock": 0}}, upsert=True)
+                                        {"$set": {**after, "price_set_at": datetime.now(timezone.utc), "manual_price_at": datetime.now(timezone.utc)}, "$setOnInsert": {"stock": 0}}, upsert=True)
         await history.record(db, user, sid, p, before, after, SOURCE)
         new = await db.store_stock.find_one({"store_id": sid, "product_id": product_id}, {"_id": 0})
         return view(p, new)
