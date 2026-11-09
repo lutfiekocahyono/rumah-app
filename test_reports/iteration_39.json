@@ -1,0 +1,42 @@
+{
+  "summary": "Search filters + Merek (brand) + hidden-product notification regression (iter39). Backend: 18/20 pytest pass (tests/test_search_filters.py 14/16, tests/test_brand_editor_notify.py 4/4, run with -n 0 for the editor file). Verified: brand=Advance / Advance|Miyako, min/max range, min>max -> [] (200) and facets total 0, negative price -> 422, price_asc/price_desc ordering + paging consistency, category=dapur includes subcategories, in_stock=true + X-Store-Id pgs-jombang only returns Jombang-stocked items, q+brand+price+sort combined, facets total == /products count, price_min/max correct, brand counts correct. Editor: pe-9957 GET returns brand Suggo; publish with brand Advance persists (GET product + brand filter finds it, 'info' event created as expected); publish with status inactive + price change -> 0 product_events (regression FIXED); brand trimmed; >60 chars -> 422. Frontend (390x844): rice cooker search, sort chips Harga termurah/termahal reorder correctly, Filter sheet: categories with counts, brand search 'adv' -> Advance, min/max formatted (100.000), 'Tersedia di PGS Sidoarjo' toggle, 'Tampilkan N produk' updates live (55 -> 5), min>max shows filter-range-error and disables apply (opacity .5), Filter (3) badge, Advance tag removable (-> Filter (2)), Reset, filters with empty text (Tampilkan 6.618 -> Dapur 2.801), infinite scroll requests skip=40/80/120/160 (API pages have no duplicates). Product editor UI: pe-brand shows Suggo, typing 'adv' shows Advance suggestion, lowercase 'advance' shows 'Pakai \u201cAdvance\u201d' normalize, save succeeds. Only defect: category facet roll-up/counts wrong for 3-level category (furniture) and 'lainnya' products. All test edits restored (pgs-9957 restored to exact original doc, created product_events deleted, product_events count = 0).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/products/facets (categories)", "issue": "Roll-up assumes 2 levels. 'furniture' has parent 'rumah-tangga' and child 'pabrik-lemari-plastik'. Products in pabrik-lemari-plastik are rolled up to 'furniture', so 'Furniture (494)' is shown as a top-level chip, but category=furniture returns 1254 (760 furniture + 494 lemari). Also category=rumah-tangga only includes direct children, so the 494 lemari-plastik products are missing from the Rumah Tangga filter. Fix: walk up to the real root in the facet, and include all descendants (not only direct children) in _catalog_query. Reference: server.py:671-673, 745-752"},
+      {"endpoint": "GET /api/products/facets (categories)", "issue": "Counts are grouped by the primary `category` field, but the filter matches the `categories` array (142 products have several categories). Counts are off by 1-2 (dapur 2799 vs 2801, rumah-tangga 1798 vs 1800, audio-elektronik 550 vs 551, makanan-minuman 175 vs 176). Group with $unwind of categories (after mapping to the root, de-duplicated per product) to match the filter."},
+      {"endpoint": "GET /api/products/facets (categories)", "issue": "220 products have category='lainnya', which is not in db.categories. They are skipped in the category facet, so the chips do not add up to the total (rice cooker: 29+19+1+1=50 of 55) and those products cannot be reached through a category chip. Either add a 'lainnya' category or map them to one."},
+      {"endpoint": "GET /api/products min_price/max_price & price sort", "issue": "Filtering and sorting use the base `price` (langsung). Cards show the tier range (my_price/price_min..price_max) and the flash price. For pengecer/reseller buyers, or flash items, the shown price can fall outside the chosen range (e.g. min=150.000 still shows a card that starts at Rp147.840). This may be acceptable, but tell the owner or show a note."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Search filter: Tersedia di <cabang>", "issue": "The filter limits results to the chosen branch, but the cards still show the 'PGS \u00b7 semua cabang' label and the stock summed across all branches, not the stock of the chosen branch.", "affected_testIDs": ["filter-instock", "search-results"]}
+    ],
+    "design_issues": [
+      {"screen": "Search filter sheet", "issues": ["On the web, the focus outline of the max-price TextInput (filter-max) runs slightly past the right edge of the sheet (minor, web only)."]},
+      {"screen": "Product editor (390x844)", "issues": ["The sticky action bar (status row + Batalkan/Preview/Simpan Draft + Simpan & Tambah Baru/Simpan Perubahan) plus the tab bar take up about 250px of the 844px height. This was already the case before this change.", "The Merek hint 'Dipakai untuk filter merek di pencarian' wraps to 2 lines in the half-width column next to SKU."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_search_filters.py", "/app/backend/tests/test_brand_editor_notify.py", "/app/test_reports/pytest/search_filters.xml", "/app/test_reports/pytest/brand_editor_notify.xml"],
+  "action_items": [
+    "Fix category facet roll-up for 3-level trees (furniture -> pabrik-lemari-plastik) and include all descendants in the category filter (server.py _catalog_query & product_facets).",
+    "Make facet category counts use the categories array (same as the filter) so chip count == 'Tampilkan N produk' after selecting it.",
+    "Handle the 220 products with category 'lainnya' (missing from db.categories).",
+    "Optional: when in_stock is on (or always on search), show the chosen branch's stock on cards; and decide whether the price filter should use the buyer's own price (my_price) instead of the base price."
+  ],
+  "critical_code_review_comments": [
+    "product_facets runs 3 full _catalog_query builds and 3 aggregations per call. Each in_stock call also runs store_stock.distinct plus _hidden_stores several times. This is fine for 6.6k products, but cache _hidden_stores per request.",
+    "brand $in matching is case-sensitive. The backend only strips. The UI offers 'Pakai <exact>' but does not force it, so a seller can save 'advance' and create a second brand. Consider normalising to the existing casing on the server.",
+    "BrandInput loads its suggestions from the facets brands list (capped at 300; there are 116 brands today, so OK). The module-level cache never refreshes in a session, so a newly added brand won't be suggested until reload.",
+    "None of the 6618 imported products has weight_grams, so every existing product needs its weight filled in before 'Simpan Perubahan' works (422 weight_grams). This is expected validation, but bulk-filling weights would make admin edits smoother."
+  ],
+  "updated_files": ["/app/backend/tests/test_search_filters.py", "/app/backend/tests/test_brand_editor_notify.py"],
+  "success_rate": {"backend": "90% (18/20)", "frontend": "100% of requested flows"},
+  "seed_data_creation": "None. pgs-9957 was edited (brand/inactive/price), then restored with replace_one of the original doc. All product_events created were deleted by _id. Total is 0, the same as before.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run test_brand_editor_notify.py with -n 0 (pytest.ini adds xdist; module-scoped restore fixture). Editor publish needs weight_grams>0 (test sets 1000, restored afterwards). Do NOT call /api/admin/product-digest/run. Frontend env key is EXPO_PUBLIC_BACKEND_URL. On web, the FlatList DOM card count is virtualised, so check pagination through the network requests."
+}

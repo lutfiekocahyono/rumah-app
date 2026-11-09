@@ -102,17 +102,8 @@ export const api = {
   categories: (parent?: string) => req<Category[]>(`/categories${parent ? `?parent=${encodeURIComponent(parent)}` : ""}`),
   allCategories: () => req<Category[]>("/categories?all=true"),
   productCount: () => req<{ count: number }>("/products/count"),
-  products: (params: { category?: string; q?: string; sort?: string; skip?: number; limit?: number; store?: string } = {}) => {
-    const qs = new URLSearchParams();
-    if (params.store) qs.set("store", params.store);
-    if (params.category) qs.set("category", params.category);
-    if (params.q) qs.set("q", params.q);
-    if (params.sort) qs.set("sort", params.sort);
-    if (params.skip) qs.set("skip", String(params.skip));
-    if (params.limit) qs.set("limit", String(params.limit));
-    const s = qs.toString();
-    return req<Product[]>(`/products${s ? "?" + s : ""}`);
-  },
+  products: (params: ProductQuery = {}) => req<Product[]>(`/products?${productQs(params)}`),
+  productFacets: (params: ProductQuery = {}) => req<ProductFacets>(`/products/facets?${productQs(params)}`),
   product: (id: string) => req<Product>(`/products/${id}`),
 
   // cart
@@ -425,6 +416,26 @@ export type Report = {
   top_products: { product_id: string; name: string; qty: number; revenue: number }[];
 };
 export type Category = { category_id: string; name: string; icon: string; image: string; parent?: string | null; count: number };
+export type ProductQuery = {
+  category?: string; q?: string; sort?: string; skip?: number; limit?: number; store?: string;
+  brands?: string[]; min_price?: number | null; max_price?: number | null; in_stock?: boolean; wholesale?: boolean;
+};
+export type ProductFacets = {
+  total: number; price_min: number; price_max: number;
+  brands: { name: string; count: number }[]; categories: { category_id: string; name: string; count: number }[];
+};
+function productQs(p: ProductQuery) {
+  const qs = new URLSearchParams();
+  for (const k of ["store", "category", "q", "sort"] as const) if (p[k]) qs.set(k, p[k]!);
+  if (p.skip) qs.set("skip", String(p.skip));
+  if (p.limit) qs.set("limit", String(p.limit));
+  if (p.brands?.length) qs.set("brand", p.brands.join("|"));
+  if (p.min_price != null) qs.set("min_price", String(p.min_price));
+  if (p.max_price != null) qs.set("max_price", String(p.max_price));
+  if (p.in_stock) qs.set("in_stock", "true");
+  if (p.wholesale) qs.set("wholesale", "true");
+  return qs.toString();
+}
 export type Product = {
   product_id: string; name: string; category: string; price: number; original_price: number;
   discount: number; rating: number; sold: number; image: string; images: string[]; description: string; stock: number;

@@ -143,3 +143,7 @@ Iteration 2: import all data from pusatgrosirsidoarjo.com; tiered pricing (pembe
 ## Iteration 38 (Jun 2026)
 - Notifikasi info produk ke SEMUA pembeli (lonceng + email terverifikasi): produk baru, harga, stok/tersedia lagi, keterangan/foto/info lain. Digabung jadi 1 ringkasan per pembeli maks 1x per jam (product_notify.py). Halaman /product-updates/[id]. Pembeli bisa mematikan di Akun → Pengaturan (Info produk / Email info produk). Admin: POST /api/admin/product-digest/run untuk kirim sekarang.
 - Penjualan (stok berkurang karena pesanan) tidak memicu notifikasi; produk yang disembunyikan tidak diumumkan.
+
+## Iteration 39 (Jun 2026)
+- Filter pencarian: urutan (Terbaru, Terlaris, Harga termurah/termahal), rentang harga min/maks, merek (multi, cari), kategori (dengan semua sub-level; "Lainnya" untuk produk tanpa kategori), tersedia di cabang pilihan, ada harga grosir. GET /api/products/facets.
+- Merek: diimpor dari atribut Brand website (import_brands.py, 4607/6618 produk). Input Merek di editor dengan saran merek yang ada; server menyamakan ejaan merek yang sudah ada.

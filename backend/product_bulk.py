@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field, ValidationError
 import history
 import product_notify
 from pricing import scale_tiers
-from product_editor import ProductForm, TierRow, to_form, to_product, validate
+from product_editor import ProductForm, TierRow, canonical_brand, to_form, to_product, validate
 
 MAX_ROWS = 10000
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -477,6 +477,7 @@ def register(api, db, *, actor: Callable, target_store: Callable, editable: Call
                     f["tier_prices"] = scale_tiers(f["tier_prices"], base["discount_price"] or base["price"], f["discount_price"] or f["price"])
                 try:
                     form = ProductForm(**f)
+                    form.brand = await canonical_brand(db, form.brand)
                 except ValidationError as e:
                     errs.append(e.errors()[0]["msg"])
                 if not errs:
@@ -505,6 +506,7 @@ def register(api, db, *, actor: Callable, target_store: Callable, editable: Call
                 f, errs = apply_patch(ProductForm().model_dump(), d, cats)
                 try:
                     form = ProductForm(**f)
+                    form.brand = await canonical_brand(db, form.brand)
                 except ValidationError as e:
                     add(n, name, "skip", e.errors()[0]["msg"])
                     continue

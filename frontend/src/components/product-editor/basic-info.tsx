@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors, fontSize, radius, spacing } from "@/src/theme";
 import type { Category, EditorContext, ProductForm } from "@/src/api";
 import { FieldError, Input, Pill, Section, ui } from "./ui";
+import { BrandInput } from "./brand-input";
 import { RichEditor } from "./rich-editor";
 import type { Errors } from "./form";
 
@@ -79,7 +80,7 @@ export function BasicInfo({ form, set, errors, cats, ctx, storeId, onStore }: {
         </View>
       </View>
       <View style={ui.row}>
-        <Input testID="pe-brand" label="Brand / merek" value={form.brand} maxLength={60} onChangeText={(t) => set({ brand: t })} placeholder="Contoh: Advance" />
+        <BrandInput value={form.brand} onChange={(t) => set({ brand: t })} />
         <Input testID="pe-sku" label="SKU produk" value={form.sku} maxLength={40} onChangeText={(t) => set({ sku: t.toUpperCase() })} placeholder="Contoh: KAOS-001" autoCapitalize="characters" />
       </View>
       <View style={ui.row}>

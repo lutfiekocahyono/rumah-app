@@ -125,6 +125,15 @@ def combos(options: List[VariantOption]) -> List[List[str]]:
     return [list(c) for c in itertools.product(*groups)] if groups else []
 
 
+async def canonical_brand(db, brand: str) -> str:
+    """Reuse the spelling of an existing brand ("advance" -> "Advance") so the brand filter has no duplicates."""
+    b = (brand or "").strip()
+    if not b:
+        return ""
+    hit = await db.products.find_one({"brand": {"$regex": f"^{re.escape(b)}$", "$options": "i"}}, {"brand": 1})
+    return hit["brand"] if hit else b
+
+
 async def validate(db, f: ProductForm) -> dict:
     """Field -> message, same rules as the app's form."""
     e: dict = {}
@@ -410,6 +419,7 @@ def register(api, db, *, get_current_user, log_activity, origin_label):
             if not f.ship_regular:
                 raise HTTPException(status_code=422, detail={"message": "Toko belum punya kurir kargo", "errors": {
                     "shipping": "Toko belum punya kurir kargo. Aktifkan pengiriman reguler atau tambahkan kurir kargo di menu Pengiriman"}})
+        f.brand = await canonical_brand(db, f.brand)
         if body.product_id:
             doc = to_product(f, store)
             await db.products.update_one({"product_id": body.product_id}, {"$set": doc})

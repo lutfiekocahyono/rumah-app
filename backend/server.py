@@ -64,6 +64,7 @@ INDEXES: dict[str, list[IndexModel]] = {
         IndexModel([("name", ASCENDING)], name="name"),
         IndexModel([("in_stock", DESCENDING), ("created_at", DESCENDING), ("product_id", DESCENDING)], name="newest"),
         IndexModel([("price", ASCENDING)], name="price"),
+        IndexModel([("brand", ASCENDING)], name="brand"),
         IndexModel([("store_id", ASCENDING), ("created_at", DESCENDING)], name="store"),
     ],
     "categories": [
@@ -663,6 +664,46 @@ def _product_out(d: dict, ctype: str, flash: Optional[dict] = None) -> Product:
                    flash_price=fp, flash_ends_at=flash["ends_at"] if fp else None)
 
 
+async def _category_tree(category: str) -> List[str]:
+    """The category plus every level below it (categories can be nested more than once)."""
+    parent_of = {c["category_id"]: c.get("parent") for c in await db.categories.find({}, {"category_id": 1, "parent": 1}).to_list(5000)}
+    out, frontier = {category}, {category}
+    while frontier:
+        frontier = {cid for cid, par in parent_of.items() if par in frontier and cid not in out}
+        out |= frontier
+    return list(out)
+
+
+async def _catalog_query(ctx: str, category: Optional[str], q: Optional[str], brand: Optional[str], min_price: Optional[int],
+                         max_price: Optional[int], in_stock: bool, wholesale: bool, stock_branch: Optional[str]) -> dict:
+    """Shared by the product list and the search facets: category (incl. sub), name, brands, price range, stock, grosir."""
+    query: dict = await _visible(ctx)
+    if category:
+        query["categories"] = {"$in": await _category_tree(category)}
+        if category == "lainnya":  # imported products without any category are listed under "Lainnya"
+            query.pop("categories")
+            query.setdefault("$and", []).append({"$or": [{"categories": "lainnya"}, {"categories": {"$in": [None, []]}}, {"categories": {"$exists": False}}]})
+    if q:
+        query["name"] = {"$regex": re.escape(q), "$options": "i"}
+    brands = [b.strip() for b in (brand or "").split("|") if b.strip()]
+    if brands:
+        query["brand"] = {"$in": brands}
+    if min_price is not None or max_price is not None:
+        query["price"] = {k: v for k, v in (("$gte", min_price), ("$lte", max_price)) if v is not None}
+    if wholesale:  # products with their own tiered (grosir) prices
+        query["$or"] = [{"tier_prices.langsung.0": {"$exists": True}}, {"tier_prices.pengecer.0": {"$exists": True}},
+                        {"tier_prices.reseller.0": {"$exists": True}}]
+    if in_stock:  # available in the buyer's branch (or any branch when none is chosen)
+        branches = [stock_branch] if stock_branch in seller.OFFICIAL_IDS else [b for b in seller.OFFICIAL_IDS if b not in await _hidden_stores()]
+        others = [b for b in branches if b != seller.PGS_STORE_ID]
+        ids = await db.store_stock.distinct("product_id", {"store_id": {"$in": others}, "stock": {"$gt": 0}}) if others else []
+        own = {"stock": {"$gt": 0}, "in_stock": {"$ne": False}}
+        if seller.PGS_STORE_ID not in branches:
+            own["store_id"] = {"$in": others}
+        query.setdefault("$and", []).append({"$or": [own, {"product_id": {"$in": ids}}]})
+    return query
+
+
 @api.get("/products", response_model=List[Product])
 async def list_products(
     category: Optional[str] = None,
@@ -671,17 +712,17 @@ async def list_products(
     limit: int = Query(40, ge=1, le=200),
     skip: int = Query(0, ge=0),
     store: Optional[str] = None,
+    brand: Optional[str] = Query(None, description="merek, pisahkan dengan |"),
+    min_price: Optional[int] = Query(None, ge=0),
+    max_price: Optional[int] = Query(None, ge=0),
+    in_stock: bool = False,
+    wholesale: bool = False,
     user=Depends(get_optional_user),
     x_store_id: Optional[str] = Header(default=None),
 ):
     # Home, search & categories list every branch at once; a store page (?store=) keeps the chosen branch's view
     ctx = _ctx(x_store_id) if store else ALL_BRANCHES
-    query: dict = await _visible(ctx)
-    if category:
-        children = [c["category_id"] for c in await db.categories.find({"parent": category}, {"category_id": 1}).to_list(200)]
-        query["categories"] = {"$in": [category, *children]}
-    if q:
-        query["name"] = {"$regex": re.escape(q), "$options": "i"}
+    query = await _catalog_query(ctx, category, q, brand, min_price, max_price, in_stock, wholesale, x_store_id)
     if store:
         if store in await _hidden_stores():
             return []
@@ -693,12 +734,45 @@ async def list_products(
         "rating": [("rating", -1), ("product_id", -1)],
         "newest": [("in_stock", -1), ("created_at", -1), ("product_id", -1)],
     }
-    docs = await _apply_stock(await db.products.find(query, {"_id": 0}).sort(sort_map[sort]).skip(skip).limit(limit).to_list(limit), ctx)
+    stock_ctx = x_store_id if in_stock and not store and x_store_id in seller.OFFICIAL_IDS else ctx  # "Tersedia di <cabang>": show that branch's stock
+    docs = await _apply_stock(await db.products.find(query, {"_id": 0}).sort(sort_map[sort]).skip(skip).limit(limit).to_list(limit), stock_ctx)
     if ctx == ALL_BRANCHES and sort in ("popular", "newest"):
         docs.sort(key=lambda d: not d.get("in_stock", True))  # stable: in-stock (any branch) first within the page
     flash = await promo.active_flash(db)
     ctype = (user or {}).get("customer_type", "langsung")
     return [_product_out(d, ctype, flash) for d in docs]
+
+
+@api.get("/products/facets")
+async def product_facets(category: Optional[str] = None, q: Optional[str] = None, brand: Optional[str] = None,
+                         min_price: Optional[int] = Query(None, ge=0), max_price: Optional[int] = Query(None, ge=0),
+                         in_stock: bool = False, wholesale: bool = False, x_store_id: Optional[str] = Header(default=None)):
+    """Filter options for the search page: brands & categories (with counts) and the price range of the current results."""
+    base = await _catalog_query(ALL_BRANCHES, category, q, brand, min_price, max_price, in_stock, wholesale, x_store_id)
+    no_brand = await _catalog_query(ALL_BRANCHES, category, q, None, min_price, max_price, in_stock, wholesale, x_store_id)
+    no_cat = await _catalog_query(ALL_BRANCHES, None, q, brand, min_price, max_price, in_stock, wholesale, x_store_id)
+    brands = await db.products.aggregate([{"$match": {**no_brand, "brand": {"$nin": [None, ""]}}}, {"$group": {"_id": "$brand", "n": {"$sum": 1}}},
+                                          {"$sort": {"n": -1, "_id": 1}}, {"$limit": 300}]).to_list(300)
+    names = {c["category_id"]: c for c in await db.categories.find({}, {"_id": 0, "category_id": 1, "name": 1, "parent": 1}).to_list(5000)}
+
+    def root_of(cid: str) -> str:
+        seen = set()
+        while names.get(cid, {}).get("parent") and cid not in seen:
+            seen.add(cid)
+            cid = names[cid]["parent"]
+        return cid
+
+    # count each product once per top-level category, over all its categories (same rule as the category filter)
+    top: dict = {}
+    async for d in db.products.find(no_cat, {"_id": 0, "categories": 1, "category": 1}):
+        for root in {root_of(c) for c in (d.get("categories") or [d.get("category") or "lainnya"])}:
+            top[root] = top.get(root, 0) + 1
+    rng = await db.products.aggregate([{"$match": base}, {"$group": {"_id": None, "min": {"$min": "$price"}, "max": {"$max": "$price"}, "n": {"$sum": 1}}}]).to_list(1)
+    r = rng[0] if rng else {"min": 0, "max": 0, "n": 0}
+    return {"total": r["n"], "price_min": r["min"] or 0, "price_max": r["max"] or 0,
+            "brands": [{"name": b["_id"], "count": b["n"]} for b in brands],
+            "categories": sorted([{"category_id": k, "name": names.get(k, {}).get("name") or k.replace("-", " ").title(), "count": n}
+                                  for k, n in top.items()], key=lambda x: -x["count"])}
 
 
 @api.get("/products/count")
