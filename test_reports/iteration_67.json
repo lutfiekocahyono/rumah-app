@@ -1,0 +1,37 @@
+{
+  "summary": "Tested the Filter button on the branch store category page (/category/dapur?toko=pgs-jombang|pgs-jember), the backend facets and filters (7/7 pytest), and the Beranda category page and shop page FilterSheet for regressions. Found 1 CRITICAL bug and fixed it: once Filter was added, the product list request no longer sent category=<id>, so the branch category page listed the whole branch catalogue (for example Vanstar gave 412 products instead of 100 in Dapur). Root cause: in category/[id].tsx, `...scope` (from toQuery) comes after `category: catId` and holds category: undefined, which overwrites it. After the fix everything in the review passes: Kategori hidden in the sheet, brands and 'Tampilkan N produk' match the category or sub-category, Filter (1)/(3) badge, price range uses the Jombang price, 'Tersedia di Mitra PGS Jombang' uses Jombang stock, sub chips, search, sort and the empty-state 'Hapus filter' work, and all requests send X-Shop-Page:1 and branch=pgs-jombang.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/products?wholesale=true", "issue": "'Ada harga grosir' changes nothing with the current data: all 6618 products have tier_prices, so it always returns 2805 of 2805 in Dapur. It also checks the catalogue tier_prices, not the branch's store_stock.tier_prices."},
+      {"endpoint": "GET /api/products?min_price/max_price", "issue": "The range uses the branch base price, but pengecer/reseller users and flash sales see a different my_price on the card, so some products may look out of range to those users."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "CategoryPage product query", "issue": "FIXED by testing agent: api.products({ category: catId, sort, ...scope }) let scope.category=undefined (from toQuery) overwrite catId, so the category was dropped from /products on the branch category page (list request was /products?branch=pgs-jombang&sort=popular). Changed to { sort, ...scope, category: catId } in both the load and loadMore calls.", "testID": "category-screen", "priority": "CRITICAL"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "category/[id] (toko)", "issues": ["Sub-category chip counts (e.g. 'Peralatan Masak (933)') stay the same while brand, price or stock filters are on.", "Brand filters stay on when switching sub-category chips, which can lead to an empty list for no obvious reason (the empty state does offer Hapus filter).", "Sort and Filter chips are 36px high (below the 44px touch target)."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iter67_category_filter.py", "/app/test_reports/pytest/iter67.xml"],
+  "action_items": [
+    "Review the fix in frontend/app/category/[id].tsx lines 61 and 69: category: catId must come after ...scope (toQuery returns category: undefined). Consider dropping category from toQuery output when it is empty.",
+    "Optional: decide whether 'Ada harga grosir' should check branch store_stock.tier_prices. With the current data it never filters anything.",
+    "Optional: reset brand filters (or show counts) when the sub-category chip changes; update sub chip counts while filters are on."
+  ],
+  "critical_code_review_comments": [
+    "toQuery() always returns a category key (undefined when empty), so spreading it after explicit params silently wipes them. This was the critical bug; it can also bite other callers.",
+    "FilterSheet correctly sends fixedCategory after toQuery, so facets were right while the list was wrong. That is why the count and the list did not match before the fix."
+  ],
+  "updated_files": ["/app/frontend/app/category/[id].tsx", "/app/backend/tests/test_iter67_category_filter.py"],
+  "success_rate": {"backend": "100% (7/7)", "frontend": "100% after fix (list category scoping was broken before the fix)"},
+  "seed_data_creation": "None. Read-only tests; no DB changes.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "The location-lock modal sits inside two nested position:fixed portal divs. Hide every fixed ancestor of [data-testid=location-lock] up to BODY via JS, or clicks go to the overlay. Test env var: the frontend .env key is EXPO_PUBLIC_BACKEND_URL; run pytest with EXPO_BACKEND_URL set to it and -p no:xdist -o addopts=''. Jombang has its own price for every product (all 6618), and branch prices differ from Sidoarjo prices.",
+  "rca_of_issue": "Reproduction: open /category/dapur?toko=pgs-jombang and capture requests: GET /api/products?branch=pgs-jombang&sort=popular has no category. Pick brand Vanstar: the sheet says 100 but the list API returns the 412 Vanstar products from the whole branch. Cause: object spread order. Fix: put category: catId last."
+}

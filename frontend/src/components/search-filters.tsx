@@ -24,8 +24,9 @@ const fmt = (n: number | null) => (n == null ? "" : n.toLocaleString("id-ID"));
 const BRANDS_SHOWN = 40;
 
 /** Lembar filter pencarian: kategori, merek, rentang harga, ketersediaan stok cabang & harga grosir. */
-export function FilterSheet({ visible, q, value, storeName, onApply, onClose, branch }: {
+export function FilterSheet({ visible, q, value, storeName, onApply, onClose, branch, fixedCategory }: {
   visible: boolean; q: string; value: SearchFilters; storeName: string; onApply: (f: SearchFilters) => void; onClose: () => void; branch?: string;
+  fixedCategory?: string; // category page: the category is already chosen, the sheet only filters brand / price / stock
 }) {
   const insets = useSafeAreaInsets();
   const [f, setF] = useState(value);
@@ -38,9 +39,10 @@ export function FilterSheet({ visible, q, value, storeName, onApply, onClose, br
   useEffect(() => {
     if (!visible) return;
     setLoading(true);
-    const t = setTimeout(() => api.productFacets({ ...toQuery(q, f), branch }, !!branch).then(setFacets).catch(() => {}).finally(() => setLoading(false)), 300);
+    const t = setTimeout(() => api.productFacets({ ...toQuery(q, f), ...(fixedCategory ? { category: fixedCategory } : {}), branch }, !!branch)
+      .then(setFacets).catch(() => {}).finally(() => setLoading(false)), 300);
     return () => clearTimeout(t);
-  }, [visible, q, f, storeId, branch]);
+  }, [visible, q, f, storeId, branch, fixedCategory]);
 
   const set = (p: Partial<SearchFilters>) => setF((x) => ({ ...x, ...p }));
   const brands = useMemo(() => {
@@ -64,6 +66,7 @@ export function FilterSheet({ visible, q, value, storeName, onApply, onClose, br
             <Pressable testID="filter-close" hitSlop={12} onPress={onClose}><Icon name="close" size={22} color={colors.onSurface} /></Pressable>
           </View>
           <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: spacing.md, paddingBottom: spacing.md }}>
+            {fixedCategory ? null : (<>
             <Text style={styles.label}>Kategori</Text>
             <View style={styles.wrap}>
               <Chip label="Semua" on={!f.category} onPress={() => set({ category: "" })} testID="filter-cat-all" />
@@ -72,6 +75,7 @@ export function FilterSheet({ visible, q, value, storeName, onApply, onClose, br
                   onPress={() => set({ category: f.category === c.category_id ? "" : c.category_id })} />
               ))}
             </View>
+            </>)}
 
             <Text style={styles.label}>Rentang harga</Text>
             <View style={styles.row}>

@@ -8,6 +8,7 @@ import { colors, fontSize, radius, spacing } from "@/src/theme";
 import { useStore } from "@/src/store-context";
 import { api, type Category, type Product } from "@/src/api";
 import { ProductCard } from "@/src/components/product-card";
+import { FilterSheet, NO_FILTERS, activeCount, toQuery, type SearchFilters } from "@/src/components/search-filters";
 
 const { width: screenW } = Dimensions.get("window");
 const CARD_GAP = spacing.md;
@@ -41,7 +42,10 @@ export default function CategoryPage() {
     else setSubs([]);
   }, [toko, id]);
   const catId = sub ?? id;
-  const scope = toko ? { branch: toko, q: dq || undefined } : {};
+  const [filters, setFilters] = useState<SearchFilters>(NO_FILTERS); // brand / price / stock, branch store only
+  const [sheet, setSheet] = useState(false);
+  const nFilters = activeCount(filters);
+  const scope = toko ? { ...toQuery(dq, filters), branch: toko } : {};
   const [loading, setLoading] = useState(true);
   const [done, setDone] = useState(false);
   const [moreLoading, setMoreLoading] = useState(false);
@@ -54,15 +58,15 @@ export default function CategoryPage() {
     if (!id || !ready) return; // wait for the saved branch: prices follow it
     setLoading(true);
     setDone(false);
-    api.products({ category: catId, sort, ...scope }, !!toko).then((p) => { setProducts(p); setDone(p.length < 40); setLoading(false); }).catch(() => setLoading(false));
+    api.products({ sort, ...scope, category: catId }, !!toko).then((p) => { setProducts(p); setDone(p.length < 40); setLoading(false); }).catch(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, sort, ready, storeId, toko, dq, sub]);
+  }, [id, sort, ready, storeId, toko, dq, sub, filters]);
 
   const loadMore = async () => {
     if (done || moreLoading || loading || !id) return;
     setMoreLoading(true);
     try {
-      const p = await api.products({ category: catId, sort, skip: products.length, ...scope }, !!toko);
+      const p = await api.products({ sort, skip: products.length, ...scope, category: catId }, !!toko);
       setProducts((cur) => { const have = new Set(cur.map((x) => x.product_id)); return [...cur, ...p.filter((x) => !have.has(x.product_id))]; });
       if (p.length < 40) setDone(true);
     } finally {
@@ -114,6 +118,12 @@ export default function CategoryPage() {
 
       <View style={styles.chipsWrap}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsRow}>
+          {toko ? (
+            <Pressable testID="cat-filter-btn" onPress={() => setSheet(true)} style={[styles.chip, styles.filterChip, nFilters > 0 && styles.chipActive]}>
+              <Icon name="options-outline" size={16} color={nFilters ? colors.onBrandPrimary : colors.onSurface} />
+              <Text style={[styles.chipText, nFilters > 0 && styles.chipTextActive]}>Filter{nFilters ? ` (${nFilters})` : ""}</Text>
+            </Pressable>
+          ) : null}
           {SORTS.map((s) => {
             const active = s.id === sort;
             return (
@@ -135,7 +145,8 @@ export default function CategoryPage() {
       ) : products.length === 0 ? (
         <View style={styles.empty}>
           <Icon name="cube-outline" size={48} color={colors.muted} />
-          <Text style={styles.emptyText}>{dq ? `Tidak ada "${dq}" di kategori ini` : "Belum ada produk"}</Text>
+          <Text style={styles.emptyText}>{dq || nFilters ? "Tidak ada produk yang cocok di kategori ini" : "Belum ada produk"}</Text>
+          {nFilters ? <Pressable testID="cat-filter-reset" onPress={() => setFilters(NO_FILTERS)}><Text style={styles.resetText}>Hapus filter</Text></Pressable> : null}
         </View>
       ) : (
         <FlatList
@@ -150,6 +161,10 @@ export default function CategoryPage() {
           renderItem={({ item }) => <ProductCard product={item} style={{ width: CARD_WIDTH }} />}
         />
       )}
+      {toko ? (
+        <FilterSheet visible={sheet} q={dq} value={filters} storeName={shopName ?? "toko ini"} branch={toko} fixedCategory={catId}
+          onApply={setFilters} onClose={() => setSheet(false)} />
+      ) : null}
     </View>
   );
 }
@@ -171,6 +186,8 @@ const styles = StyleSheet.create({
   subChip: { minHeight: 36, paddingHorizontal: spacing.md, borderRadius: radius.pill, backgroundColor: colors.surfaceSecondary, justifyContent: "center" },
   subChipOn: { backgroundColor: colors.brandTertiary },
   subTextOn: { color: colors.brandPrimary, fontWeight: "500" },
+  filterChip: { flexDirection: "row", alignItems: "center", gap: 4 },
+  resetText: { color: colors.brandPrimary, fontWeight: "500", padding: spacing.sm },
   chipsWrap: { height: 56, justifyContent: "center", borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
   chipsRow: { gap: spacing.sm, paddingHorizontal: spacing.lg, alignItems: "center" },
   chip: { height: 36, paddingHorizontal: spacing.md, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border, justifyContent: "center", flexShrink: 0 },
