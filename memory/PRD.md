@@ -235,3 +235,5 @@ Iteration 2: import all data from pusatgrosirsidoarjo.com; tiered pricing (pembe
 - [Done] Halaman toko cabang: 'Rekomendasi untukmu' kini memakai susunan kartu horizontal seperti 'Produk Populer' (prop recsAsRail di HomeFeedSections; Beranda utama tetap grid). Harga/stok cabang, auto muat lebih saat geser ke ujung.
 
 - [Done] Halaman toko cabang (Jombang/Jember) hanya menampilkan produk yang punya harga cabang (store_stock price>0, salinan massal/manual, stok 0 tampil 'Stok habis') + produk khusus cabang. Berlaku untuk semua bagian halaman toko. Header X-Shop-Page:1 dikirim per-request dari halaman toko (shop_scope.py). Rail Beranda di halaman toko memakai stok cabang sendiri. Beranda utama tidak terpengaruh.
+
+- [Done] Ikon Kategori di halaman toko cabang (Jombang/Jember/Sidoarjo): GET /api/stores/{id}/categories, hanya kategori utama berproduk berharga cabang (stok 0 ikut), urut terbanyak; ketuk -> /category/{id}?toko={cabang} (khusus cabang). 'Lihat Semua' disembunyikan di halaman toko. Sidoarjo kini ikut aturan toko cabang (produk price>0, label & stok PGS Sidoarjo).

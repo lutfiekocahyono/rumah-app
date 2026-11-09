@@ -31,7 +31,7 @@ export function HomeFeedSections({ refreshKey = 0, onLoaded, shop = false }: { r
   const load = useCallback(async () => {
     const safe = <T,>(p: Promise<T>, fb: T) => p.catch(() => fb);
     const [cats, flash, vouchers, settings, feed] = await Promise.all([
-      safe(api.categories(), []), safe(api.flashSale(shop), EMPTY.flash), safe(api.vouchers(), []),
+      safe(shop ? api.shopCategories(storeId) : api.categories(), []), safe(api.flashSale(shop), EMPTY.flash), safe(api.vouchers(), []),
       safe(api.homeSettings(), null), safe(api.homeSections(shop), null),
     ]);
     const recs = feed?.recommended.items ?? [];
@@ -39,7 +39,7 @@ export function HomeFeedSections({ refreshKey = 0, onLoaded, shop = false }: { r
     recSkip.current = recs.length;
     recPage.current = feed?.recommended.limit ?? 20;
     setRecDone(!feed?.recommended.more || recs.length < recPage.current);
-  }, [shop]);
+  }, [shop, storeId]);
 
   useEffect(() => {
     setLoading(true);
@@ -70,12 +70,12 @@ export function HomeFeedSections({ refreshKey = 0, onLoaded, shop = false }: { r
       {/* Kategori */}
       <SectionHeader
         title="Kategori"
-        right={<Pressable onPress={() => router.push("/kategori" as any)}><Text style={styles.linkText}>Lihat Semua</Text></Pressable>}
+        right={shop ? undefined : <Pressable onPress={() => router.push("/kategori" as any)}><Text style={styles.linkText}>Lihat Semua</Text></Pressable>}
       />
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.catsRow}>
         {data.cats.map((c) => (
           <Pressable key={c.category_id} testID={`category-${c.category_id}`} style={styles.catItem}
-            onPress={() => router.push(`/category/${c.category_id}` as any)}>
+            onPress={() => router.push(`/category/${c.category_id}${shop ? `?toko=${storeId}` : ""}` as any)}>
             <View style={styles.catIconWrap}><Icon name={c.icon as any} size={22} color={colors.brandPrimary} /></View>
             <Text style={styles.catName} numberOfLines={2}>{c.name}</Text>
           </Pressable>

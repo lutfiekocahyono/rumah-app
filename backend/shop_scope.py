@@ -26,8 +26,8 @@ class Middleware:
 
 
 def branch(b: Optional[str]) -> Optional[str]:
-    """The branch whose store page is being viewed, or None (not on a branch store page / Sidoarjo = master catalog)."""
-    return b if ON.get() and b in seller.OFFICIAL_IDS and b != seller.PGS_STORE_ID else None
+    """The PGS branch whose store page is being viewed, or None (not on a PGS branch store page)."""
+    return b if ON.get() and b in seller.OFFICIAL_IDS else None
 
 
 async def priced_ids(db, b: str) -> List[str]:
@@ -35,5 +35,8 @@ async def priced_ids(db, b: str) -> List[str]:
 
 
 async def clause(db, b: str) -> dict:
-    """Branch price set (salinan massal atau manual, stok 0 ikut) or a product added for this branch only."""
+    """Branch price set (salinan massal atau manual, stok 0 ikut) or a product added for this branch only.
+    Sidoarjo: its price lives on the catalog product itself."""
+    if b == seller.PGS_STORE_ID:
+        return {"$or": [{"only_branch": b}, {"store_id": b, "price": {"$gt": 0}}]}
     return {"$or": [{"only_branch": b}, {"product_id": {"$in": await priced_ids(db, b)}}]}

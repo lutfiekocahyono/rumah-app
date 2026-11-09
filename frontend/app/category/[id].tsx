@@ -21,13 +21,16 @@ const SORTS = [
 ];
 
 export default function CategoryPage() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  // ?toko=<cabang>: opened from a branch store page, only products priced in that branch
+  const { id, toko } = useLocalSearchParams<{ id: string; toko?: string }>();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const [cat, setCat] = useState<Category | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [sort, setSort] = useState("popular");
-  const { ready, storeId } = useStore();
+  const { ready, storeId, stores } = useStore();
+  const shopName = toko ? stores.find((s) => s.store_id === toko)?.name : undefined;
+  const scope = toko ? { branch: toko } : {};
   const [loading, setLoading] = useState(true);
   const [done, setDone] = useState(false);
   const [moreLoading, setMoreLoading] = useState(false);
@@ -40,14 +43,15 @@ export default function CategoryPage() {
     if (!id || !ready) return; // wait for the saved branch: prices follow it
     setLoading(true);
     setDone(false);
-    api.products({ category: id, sort }).then((p) => { setProducts(p); setDone(p.length < 40); setLoading(false); }).catch(() => setLoading(false));
-  }, [id, sort, ready, storeId]);
+    api.products({ category: id, sort, ...scope }, !!toko).then((p) => { setProducts(p); setDone(p.length < 40); setLoading(false); }).catch(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, sort, ready, storeId, toko]);
 
   const loadMore = async () => {
     if (done || moreLoading || loading || !id) return;
     setMoreLoading(true);
     try {
-      const p = await api.products({ category: id, sort, skip: products.length });
+      const p = await api.products({ category: id, sort, skip: products.length, ...scope }, !!toko);
       setProducts((cur) => { const have = new Set(cur.map((x) => x.product_id)); return [...cur, ...p.filter((x) => !have.has(x.product_id))]; });
       if (p.length < 40) setDone(true);
     } finally {
@@ -61,7 +65,10 @@ export default function CategoryPage() {
         <Pressable testID="cat-back" hitSlop={8} onPress={() => router.back()}>
           <Icon name="chevron-back" size={24} color={colors.onSurface} />
         </Pressable>
-        <Text style={styles.title}>{cat?.name ?? "Kategori"}</Text>
+        <View style={styles.titleWrap}>
+          <Text style={styles.title}>{cat?.name ?? "Kategori"}</Text>
+          {shopName ? <Text testID="cat-shop-name" style={styles.sub}>di {shopName}</Text> : null}
+        </View>
         <Pressable testID="cat-search" hitSlop={8} onPress={() => router.push("/search?focus=1" as any)}>
           <Icon name="search" size={22} color={colors.onSurface} />
         </Pressable>
@@ -117,6 +124,8 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border,
   },
   title: { fontSize: fontSize.lg, fontWeight: "500", color: colors.onSurface },
+  titleWrap: { flex: 1, alignItems: "center" },
+  sub: { fontSize: fontSize.sm, color: colors.muted },
   chipsWrap: { height: 56, justifyContent: "center", borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
   chipsRow: { gap: spacing.sm, paddingHorizontal: spacing.lg, alignItems: "center" },
   chip: { height: 36, paddingHorizontal: spacing.md, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border, justifyContent: "center", flexShrink: 0 },

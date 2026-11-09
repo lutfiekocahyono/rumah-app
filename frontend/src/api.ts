@@ -217,6 +217,7 @@ export const api = {
   editStore: (s: StoreInput) => req<Store>("/me/store", { method: "PUT", body: JSON.stringify(s) }),
   storePage: (id: string) => req<Store>(`/stores/${id}`),
   shopPage: (id: string) => req<ShopPage>(`/stores/${id}/page`),
+  shopCategories: (id: string) => req<Category[]>(`/stores/${id}/categories`),
   suggest: (q: string) => req<{ products: { product_id: string; name: string; image: string }[]; brands: string[]; categories: { category_id: string; name: string }[] }>(`/products/suggest?${qs({ q })}`),
   storeAppearance: () => req<StoreAppearance[]>("/store-appearance"),
   saveStoreAppearance: (id: string, b: Omit<StoreAppearance, "store_id" | "name" | "city" | "featured"> & { featured_ids: string[] }) =>
