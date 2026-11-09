@@ -1,0 +1,32 @@
+{
+  "summary": "Frontend-only test at 390x844 of the branch store pages (which now reuse the Beranda layout) and the refactored Beranda (shared src/components/home-feed.tsx). Tested as guest and as demo@pgs.id. Everything requested passed except pull-to-refresh, which cannot be tested on web. Beranda shows banner-section, 14 category chips, free-shipping-banner, flash-sale-section, voucher-section, popular, newest and recommend sections. home-load-more takes the list from 20 to 40 cards. Tapping store-switch then pick-store-pgs-jember opens /shop/pgs-jember. That page has no global-search-bar. It shows shop-banner, shop-logo, shop-name, then home-feed-sections, then shop-all-title 'Semua Produk Toko', shop-search with placeholder 'Cari di Mitra PGS Jember…', shop-filter-btn, the 4 shop-sort chips and the grid, in the correct vertical order. Prices follow the branch on cards: product pgs-45768 shows Rp2.785.000-2.901.000 for Jember, matching GET /api/products/pgs-45768 with X-Store-Id pgs-jember (Sidoarjo 2.900.000, Jombang 2.902.000). Flash prices also follow the branch: pgs-26611 is Rp11.000 at Jember and Rp12.000 at Jombang, matching /api/flash-sale for each X-Store-Id. As demo@pgs.id with Sidoarjo selected, opening /shop/pgs-jombang directly switches the branch. The section requests are sent only with X-Store-Id pgs-jombang, with no wasted Sidoarjo fetch. Back on Beranda the header shows Mitra PGS Jombang and the prices and flash prices are Jombang's. Opening /shop/pgs-official switches back to PGS Sidoarjo. On the shop page these work: search typing (the field keeps focus and the grid filters), clearing the search, price_asc sort, the FilterSheet, load-more in the shop recommendations (20 to 40) and the category tap to /category/dapur. /product/pgs-9955 and /wishlist still show global-search-bar. There were no console errors and no 'VirtualizedLists should never be nested' warning.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Shop page pull-to-refresh", "issue": "On shop/[id].tsx, onRefresh only calls load() for the shop info and resets the filters. <HomeFeedSections /> gets no refreshKey (line 82), so pulling to refresh on a branch page does not reload Flash Sale, vouchers or the popular, newest and recommended sections.", "affected_testIDs": ["home-feed-sections", "shop-screen"]}
+    ],
+    "design_issues": [
+      {"screen": "/shop/[id]", "issues": ["The shop-filter-btn and shop-sort-* chips are 36px tall, below the 44px touch-target minimum.", "Branch stores (pgs-jember, pgs-jombang, pgs-official) have no banner or logo in the data, so a plain orange placeholder banner is shown. Jember and Jombang also have no address, phone or pickup_hours, so their info card is nearly empty. This is a data gap, not a code bug."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [
+    "LOW: shop/[id].tsx: pass a refreshKey to <HomeFeedSections> and bump it in the RefreshControl onRefresh, so pull-to-refresh on a branch page reloads the sections.",
+    "LOW: Beranda onRefresh sets refreshing=false after banners load but before the sections finish loading. The onLoaded prop of HomeFeedSections exists but is unused; it could be used to end the spinner.",
+    "LOW: The OWN_SEARCH regex /^\\/shop\\// hides the global search on every store page, including non-branch seller stores such as /shop/st_c789b1a7c3 (Toko Satu). Those pages do have their own shop-search, so this is acceptable; confirm it is intended.",
+    "LOW: Raise the shop sort and filter chips to minHeight 44."
+  ],
+  "critical_code_review_comments": [
+    "home-feed.tsx: the load useCallback has an empty dependency list and relies on the storeId and refreshKey effect, which is fine. A stale response can still overwrite newer data if the branch changes quickly, because there is no cancellation flag the way shop/[id].tsx has 'live'.",
+    "shop/[id].tsx: the homeReady (storeId===id) gate correctly prevents fetching sections with the previous branch header. Verified: only pgs-jombang requests were sent.",
+    "Pull-to-refresh (RefreshControl) is a no-op on web preview and cannot be checked by automation. Code review only: Beranda bumps refreshKey and calls load()."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (not requested)", "frontend": "100% of testable requested flows (pull-to-refresh not testable on web)"},
+  "seed_data_creation": "None. The selected branch is stored locally (AsyncStorage) in the throwaway browser contexts only.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Grant geolocation and call set_geolocation in Playwright to avoid the location gate. After login the app lands on /akun, so tap tab-home to reach Beranda. Scope selectors to [data-testid=shop-screen] or [data-testid=home-screen] because both stay mounted. Test product pgs-45768 has branch prices Sidoarjo 2.900.000, Jember 2.901.000, Jombang 2.902.000. Flash item pgs-26611 is 10.000 / 11.000 / 12.000 for the same branches. Toko Satu store_id is st_c789b1a7c3 (0 products)."
+}

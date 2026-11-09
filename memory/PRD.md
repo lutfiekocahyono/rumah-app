@@ -228,3 +228,6 @@ Iteration 2: import all data from pusatgrosirsidoarjo.com; tiered pricing (pembe
 ## Iteration 64 — Kode QR Toko
 - GET /api/stores/{id}/qr?format=png|pdf&base= (public): A4 150dpi poster (store name, city, address, logo in header + center of QR level H) via store_qr.py (qrcode + Pillow). QR -> {origin}/shop/{id}?toko={id}; origin = base only if same host as request.
 - Tampilan Toko editor: 'Kode QR toko' card with Unduh PNG / Cetak PDF (admin cabang own store, Super Admin all 3).
+
+## Iteration 63 — Halaman toko cabang = Beranda cabang
+- src/components/home-feed.tsx HomeFeedSections (Kategori, Gratis Ongkir, Flash Sale, Voucher, Populer, Terbaru, Rekomendasi) shared by Beranda and /shop/[id]. Shop page (official): store banner+logo+info, featured, HomeFeedSections, then 'Semua Produk Toko' (search+filter+sort). Opening a branch shop switches buyer branch. Global search bar hidden on /shop/*.

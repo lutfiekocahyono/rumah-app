@@ -12,6 +12,7 @@ import { ProductCard } from "@/src/components/product-card";
 import { adminStyles } from "@/src/components/admin-form";
 import { FilterSheet, NO_FILTERS, activeCount, toQuery, type SearchFilters } from "@/src/components/search-filters";
 import { useStore } from "@/src/store-context";
+import { HomeFeedSections } from "@/src/components/home-feed";
 
 const SORTS = [
   { key: "popular", label: "Terlaris" }, { key: "newest", label: "Terbaru" },
@@ -32,8 +33,8 @@ function InfoRow({ icon, text, testID }: { icon: string; text: string; testID: s
   );
 }
 
-function Header({ s, q, setQ, sort, setSort, nFilters, openFilter }: {
-  s: Shop; q: string; setQ: (v: string) => void; sort: string; setSort: (v: string) => void; nFilters: number; openFilter: () => void;
+function Header({ s, q, setQ, sort, setSort, nFilters, openFilter, homeReady, refreshKey }: {
+  s: Shop; q: string; setQ: (v: string) => void; sort: string; setSort: (v: string) => void; nFilters: number; openFilter: () => void; homeReady: boolean; refreshKey: number;
 }) {
   return (
     <View style={{ marginBottom: spacing.sm }}>
@@ -77,7 +78,9 @@ function Header({ s, q, setQ, sort, setSort, nFilters, openFilter }: {
             renderItem={({ item }) => <ProductCard product={item} style={{ width: 150 }} />} />
         </View>
       ) : null}
-      <Text style={[styles.h, { paddingHorizontal: spacing.lg, marginTop: spacing.md }]}>Produk Toko</Text>
+      {/* same sections as Beranda, priced for this branch (the buyer's branch is switched to it on open) */}
+      {s.official && homeReady ? <HomeFeedSections refreshKey={refreshKey} /> : null}
+      <Text style={[styles.h, { paddingHorizontal: spacing.lg, marginTop: spacing.lg }]} testID="shop-all-title">Semua Produk Toko</Text>
       <View style={{ gap: spacing.sm, marginTop: spacing.sm }}>
         <View style={styles.searchBox}>
           <Icon name="search" size={18} color={colors.muted} />
@@ -110,6 +113,7 @@ export default function ShopPage() {
   const [more, setMore] = useState(false);
   const [done, setDone] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
   const [q, setQ] = useState("");
   const [sort, setSort] = useState("popular");
   const [filters, setFilters] = useState<SearchFilters>(NO_FILTERS);
@@ -136,13 +140,12 @@ export default function ShopPage() {
     return () => { live = false; clearTimeout(t); };
   }, [store, fetchPage]);
 
-  // shared link ?toko=<branch>: the buyer continues shopping (detail, cart) at that branch
-  const { toko } = useLocalSearchParams<{ toko?: string }>();
+  // a branch store page shows that branch: the buyer continues shopping (detail, cart) there
   const { ready, storeId, stores, choose } = useStore();
   useEffect(() => {
-    if (ready && toko && toko === id && toko !== storeId && stores.some((s) => s.store_id === toko)) void choose(toko);
+    if (ready && id && id !== storeId && stores.some((s) => s.store_id === id)) void choose(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, toko, stores.length]);
+  }, [ready, id, stores.length]);
 
   const [toast, setToast] = useState("");
   const showToast = (t: string) => { setToast(t); setTimeout(() => setToast(""), 2500); };
@@ -190,9 +193,9 @@ export default function ShopPage() {
           contentContainerStyle={{ gap: GAP, paddingBottom: insets.bottom + spacing.xl }}
           onEndReached={loadMore}
           onEndReachedThreshold={0.5}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); setQ(""); setFilters(NO_FILTERS); setSort("popular"); await load(); setRefreshing(false); }} />}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); setQ(""); setFilters(NO_FILTERS); setSort("popular"); setRefreshKey((k) => k + 1); await load(); setRefreshing(false); }} />}
           keyboardShouldPersistTaps="handled"
-          ListHeaderComponent={<Header s={store} q={q} setQ={setQ} sort={sort} setSort={setSort} nFilters={nFilters} openFilter={() => setSheet(true)} />}
+          ListHeaderComponent={<Header s={store} q={q} setQ={setQ} sort={sort} setSort={setSort} nFilters={nFilters} openFilter={() => setSheet(true)} homeReady={storeId === id} refreshKey={refreshKey} />}
           ListEmptyComponent={filtered ? (
             <View style={styles.empty} testID="shop-no-match">
               <Icon name="search-outline" size={32} color={colors.muted} />
@@ -237,7 +240,7 @@ const styles = StyleSheet.create({
   empty: { alignItems: "center", gap: spacing.sm, padding: spacing.xl },
   searchBox: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginHorizontal: spacing.lg, paddingHorizontal: spacing.md, minHeight: 44, borderRadius: radius.pill, backgroundColor: colors.surfaceTertiary, borderWidth: 1, borderColor: colors.border },
   searchInput: { flex: 1, color: colors.onSurface, paddingVertical: 10, fontSize: fontSize.sm },
-  chip: { minHeight: 36, paddingHorizontal: spacing.md, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border, justifyContent: "center", backgroundColor: colors.surface },
+  chip: { minHeight: 44, paddingHorizontal: spacing.md, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border, justifyContent: "center", backgroundColor: colors.surface },
   filterChip: { flexDirection: "row", alignItems: "center", gap: 4 },
   toast: { position: "absolute", bottom: 96, alignSelf: "center", zIndex: 10, backgroundColor: colors.onSurface, borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
   toastText: { color: colors.surface, fontSize: fontSize.sm, fontWeight: "600" },
