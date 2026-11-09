@@ -1,0 +1,25 @@
+{
+  "summary": "RETEST of the iteration 47 frontend bugs: both are FIXED. Backend: tests/test_branch_price_filters.py with -n 0 passes 17/17. I put temporary Jombang prices directly on db.store_stock rows (pgs-9849 at 169000, pgs-9955 at 215000, pgs-45768 at 2902000, each Sidoarjo price +2000) and removed them afterwards. Final count of store_stock rows with a price field is 0, and the Jombang API price for pgs-9849 is back to 167000. /api/admin/branch-copy/*/apply was NOT called. (1) Deep links at 390px with localStorage pgs_store_id=pgs-jombang, manual=1 and geolocation near Jombang: a cold load of /product/pgs-9849 shows pd-unit-price Rp169.000, and both GET /products/pgs-9849 and /availability send X-Store-Id pgs-jombang. A cold load of /category/peralatan-masak sends GET /products?category=... with pgs-jombang, and the cards show Rp169.000 (Happy Call) and Rp215.000 (Casserole). (2) Branch switch: in the Katalog tab (search 'Happy Call Double Pan 32') I switched branch via Beranda store-switch, /pilih-toko and back. The tab refetched /products and /products/count with the new X-Store-Id: Jombang Rp169.000, then official Rp167.000, then Jombang Rp169.000. The search text was kept. The filter sheet facets request follows the branch: the hint changed between 'Rp167.000 – Rp167.000' and 'Rp169.000 – Rp169.000', and the label 'Tersedia di PGS Sidoarjo' / 'Mitra PGS Jombang' also updates. On the product detail page, pd-branch-switch-<id> ('Belanja di sini') updates the price in place: 169000 to 167000 and back to 169000. The category screen underneath also refetched, and after go_back its cards showed 167000/213000 for official and 169000/215000 for Jombang. Regression: trackView is called once per product open and not again after a branch switch. pgs-official prices are unchanged.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_branch_price_filters.py", "/app/test_reports/pytest/iter48_branch_price.xml"],
+  "action_items": [
+    "Optional: after 'Belanja di sini' on the product page, GET /products/{id} runs twice (once from the storeId dependency, once from onSwitched -> reloadKey). It can be dropped to one request.",
+    "Optional/business check: grosir tiers stay at Sidoarjo's absolute prices when a branch has only a base price override. For example, with Jombang base 169000 the tier minimum is still 160320 (Sidoarjo 167000 -4%), so the 'Hemat' amount is larger than at Sidoarjo. Confirm this is intended."
+  ],
+  "critical_code_review_comments": [
+    "search.tsx loadMore uses a useCallback that does not depend on storeId. It still reads the current header at call time, and req.current guards against stale pages, so this is acceptable.",
+    "product/[id].tsx:61 trackView runs before the store context is ready (header pgs-official). This is harmless because /activity/view does not depend on the store."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (17/17)", "frontend": "100% (deep link product + category, Katalog switch, facets switch, product in-place switch, category refresh after switch)"},
+  "seed_data_creation": "None kept. Temporary price fields on 3 pgs-jombang store_stock rows (pgs-9849, pgs-9955, pgs-45768) were removed with $unset; count with price is 0. Side effect: products.views for pgs-9849 went up by about 5 from the test opens.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Run test_branch_price_filters.py with -n 0. The location gate blocks the UI unless you call context.grant_permissions(['geolocation']) and set_geolocation. pd-branch-switch-pgs-official can sit under the fixed bottom CTA bar: scrollIntoView({block:'center'}) first and click without force, because a forced click lands on the bar."
+}

@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Icon from "@react-native-vector-icons/ionicons";
 
 import { colors, fontSize, radius, spacing } from "@/src/theme";
+import { useStore } from "@/src/store-context";
 import { api, type Category, type Product } from "@/src/api";
 import { ProductCard } from "@/src/components/product-card";
 
@@ -26,6 +27,7 @@ export default function CategoryPage() {
   const [cat, setCat] = useState<Category | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [sort, setSort] = useState("popular");
+  const { ready, storeId } = useStore();
   const [loading, setLoading] = useState(true);
   const [done, setDone] = useState(false);
   const [moreLoading, setMoreLoading] = useState(false);
@@ -35,11 +37,11 @@ export default function CategoryPage() {
   }, [id]);
 
   useEffect(() => {
-    if (!id) return;
+    if (!id || !ready) return; // wait for the saved branch: prices follow it
     setLoading(true);
     setDone(false);
     api.products({ category: id, sort }).then((p) => { setProducts(p); setDone(p.length < 40); setLoading(false); }).catch(() => setLoading(false));
-  }, [id, sort]);
+  }, [id, sort, ready, storeId]);
 
   const loadMore = async () => {
     if (done || moreLoading || loading || !id) return;

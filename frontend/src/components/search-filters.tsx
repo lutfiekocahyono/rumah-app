@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Icon from "@react-native-vector-icons/ionicons";
 
 import { colors, fontSize, radius, spacing, formatIDR } from "@/src/theme";
+import { useStore } from "@/src/store-context";
 import { api, type ProductFacets } from "@/src/api";
 
 export type SearchFilters = { category: string; brands: string[]; min: number | null; max: number | null; in_stock: boolean; wholesale: boolean };
@@ -33,12 +34,13 @@ export function FilterSheet({ visible, q, value, storeName, onApply, onClose }: 
   const [loading, setLoading] = useState(false);
 
   useEffect(() => { if (visible) { setF(value); setBrandQ(""); } }, [visible, value]);
+  const { storeId } = useStore();
   useEffect(() => {
     if (!visible) return;
     setLoading(true);
     const t = setTimeout(() => api.productFacets(toQuery(q, f)).then(setFacets).catch(() => {}).finally(() => setLoading(false)), 300);
     return () => clearTimeout(t);
-  }, [visible, q, f]);
+  }, [visible, q, f, storeId]);
 
   const set = (p: Partial<SearchFilters>) => setF((x) => ({ ...x, ...p }));
   const brands = useMemo(() => {

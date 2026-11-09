@@ -26,7 +26,7 @@ export default function ProductDetail() {
   const router = useRouter();
   const { user } = useAuth();
   const { addToCart, toggleWishlist, isWished, refresh } = useCart();
-  const { storeId } = useStore();
+  const { storeId, ready } = useStore();
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
   const [qty, setQty] = useState(1);
@@ -51,14 +51,14 @@ export default function ProductDetail() {
   const [picked, setPicked] = useState<Record<number, string>>({}); // option index -> chosen value
 
   useEffect(() => {
-    if (!id) return;
+    if (!id || !ready) return; // wait for the saved branch: prices follow it
     api.product(id).then((p) => {
       setProduct(p); setQty(Math.max(1, p.min_order ?? 1)); setLoading(false);
       // options with a single choice are picked automatically
       setPicked(Object.fromEntries((p.variant_options ?? []).map((o, i) => [i, o.values.length === 1 ? o.values[0] : ""]).filter(([, v]) => v)));
     }).catch(() => setLoading(false));
-    if (!reloadKey) api.trackView(id).catch(() => {});
-  }, [id, reloadKey]);
+  }, [id, reloadKey, ready, storeId]);
+  useEffect(() => { if (id) api.trackView(id).catch(() => {}); }, [id]);
 
   const handleAdd = async (goCart: boolean) => {
     if (!product) return;

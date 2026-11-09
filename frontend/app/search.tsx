@@ -22,7 +22,7 @@ const SORTS = [
 export default function Search() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { store } = useStore();
+  const { store, ready, storeId } = useStore();
   const params = useLocalSearchParams<{ q?: string; focus?: string }>();
   const inTab = usePathname() === "/katalog";  // bottom-nav "Katalog": no back button, keyboard stays closed
   const [q, setQ] = useState(params.q ?? "");
@@ -38,6 +38,7 @@ export default function Search() {
   const nFilters = activeCount(filters);
 
   useEffect(() => {
+    if (!ready) return; // wait for the saved branch: prices follow it
     const t = setTimeout(() => {
       const id = ++req.current;
       setLoading(true);
@@ -46,7 +47,7 @@ export default function Search() {
         .catch(() => {}).finally(() => { if (id === req.current) setLoading(false); });
     }, 300);
     return () => clearTimeout(t);
-  }, [q, sort, filters]);
+  }, [q, sort, filters, ready, storeId]);
 
   const loadMore = useCallback(async () => {
     if (done || more || loading) return;

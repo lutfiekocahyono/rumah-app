@@ -685,6 +685,20 @@ async def _category_tree(category: str) -> List[str]:
     return list(out)
 
 
+async def _priced_branch(x_store_id: Optional[str]) -> Optional[str]:
+    """The buyer's branch if it has its own prices (Salin Harga & Stok), else None (Sidoarjo price applies)."""
+    if x_store_id not in seller.OFFICIAL_IDS or x_store_id == seller.PGS_STORE_ID:
+        return None
+    return x_store_id if await db.store_stock.find_one({"store_id": x_store_id, "price": {"$gt": 0}}, {"_id": 1}) else None
+
+
+def _branch_price_stages(branch: str) -> list:
+    """Adds _bp = the branch price (fallback: product price), for sorting / range by the price the buyer sees."""
+    return [{"$lookup": {"from": "store_stock", "localField": "product_id", "foreignField": "product_id",
+                         "pipeline": [{"$match": {"store_id": branch, "price": {"$gt": 0}}}, {"$project": {"_id": 0, "price": 1}}], "as": "_bs"}},
+            {"$addFields": {"_bp": {"$ifNull": [{"$first": "$_bs.price"}, "$price"]}}}]
+
+
 async def _catalog_query(ctx: str, category: Optional[str], q: Optional[str], brand: Optional[str], min_price: Optional[int],
                          max_price: Optional[int], in_stock: bool, wholesale: bool, stock_branch: Optional[str]) -> dict:
     """Shared by the product list and the search facets: category (incl. sub), name, brands, price range, stock, grosir."""
@@ -700,7 +714,14 @@ async def _catalog_query(ctx: str, category: Optional[str], q: Optional[str], br
     if brands:
         query["brand"] = {"$in": brands}
     if min_price is not None or max_price is not None:
-        query["price"] = {k: v for k, v in (("$gte", min_price), ("$lte", max_price)) if v is not None}
+        rng = {k: v for k, v in (("$gte", min_price), ("$lte", max_price)) if v is not None}
+        pb = await _priced_branch(stock_branch)
+        if pb:  # range on the buyer's branch price: own branch price in range, or no branch price and Sidoarjo price in range
+            own = await db.store_stock.distinct("product_id", {"store_id": pb, "price": {"$gt": 0}})
+            hit = await db.store_stock.distinct("product_id", {"store_id": pb, "price": {"$gt": 0, **rng}})
+            query.setdefault("$and", []).append({"$or": [{"product_id": {"$in": hit}}, {"price": rng, "product_id": {"$nin": own}}]})
+        else:
+            query["price"] = rng
     if wholesale:  # products with their own tiered (grosir) prices
         query["$or"] = [{"tier_prices.langsung.0": {"$exists": True}}, {"tier_prices.pengecer.0": {"$exists": True}},
                         {"tier_prices.reseller.0": {"$exists": True}}]
@@ -746,7 +767,14 @@ async def list_products(
         "newest": [("in_stock", -1), ("created_at", -1), ("product_id", -1)],
     }
     stock_ctx = x_store_id if in_stock and not store and x_store_id in seller.OFFICIAL_IDS else ctx  # "Tersedia di <cabang>": show that branch's stock
-    docs = await _apply_stock(await db.products.find(query, {"_id": 0}).sort(sort_map[sort]).skip(skip).limit(limit).to_list(limit), stock_ctx, x_store_id)
+    pb = await _priced_branch(x_store_id) if sort in ("price_asc", "price_desc") else None
+    if pb:  # sort by the price the buyer sees in his branch
+        rows = await db.products.aggregate([{"$match": query}, *_branch_price_stages(pb),
+                                            {"$sort": {"_bp": 1 if sort == "price_asc" else -1, "product_id": 1 if sort == "price_asc" else -1}},
+                                            {"$skip": skip}, {"$limit": limit}, {"$project": {"_id": 0, "_bs": 0, "_bp": 0}}]).to_list(limit)
+    else:
+        rows = await db.products.find(query, {"_id": 0}).sort(sort_map[sort]).skip(skip).limit(limit).to_list(limit)
+    docs = await _apply_stock(rows, stock_ctx, x_store_id)
     if ctx == ALL_BRANCHES and sort in ("popular", "newest"):
         docs.sort(key=lambda d: not d.get("in_stock", True))  # stable: in-stock (any branch) first within the page
     flash = await promo.active_flash(db)
@@ -778,7 +806,9 @@ async def product_facets(category: Optional[str] = None, q: Optional[str] = None
     async for d in db.products.find(no_cat, {"_id": 0, "categories": 1, "category": 1}):
         for root in {root_of(c) for c in (d.get("categories") or [d.get("category") or "lainnya"])}:
             top[root] = top.get(root, 0) + 1
-    rng = await db.products.aggregate([{"$match": base}, {"$group": {"_id": None, "min": {"$min": "$price"}, "max": {"$max": "$price"}, "n": {"$sum": 1}}}]).to_list(1)
+    pb = await _priced_branch(x_store_id)
+    rng = await db.products.aggregate([{"$match": base}, *(_branch_price_stages(pb) if pb else [{"$addFields": {"_bp": "$price"}}]),
+                                       {"$group": {"_id": None, "min": {"$min": "$_bp"}, "max": {"$max": "$_bp"}, "n": {"$sum": 1}}}]).to_list(1)
     r = rng[0] if rng else {"min": 0, "max": 0, "n": 0}
     return {"total": r["n"], "price_min": r["min"] or 0, "price_max": r["max"] or 0,
             "brands": [{"name": b["_id"], "count": b["n"]} for b in brands],
