@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field, ValidationError
 import history
 import product_notify
 from pricing import scale_tiers
+from weight_estimate import MISSING as MISSING_WEIGHT
 from product_editor import ProductForm, TierRow, canonical_brand, to_form, to_product, validate
 
 MAX_ROWS = 10000
@@ -127,13 +128,16 @@ class BulkIn(BaseModel):
     stock_mode: str = Field(default="", pattern="^(|set|add|sub)$")
     stock_value: int = Field(default=0, ge=0, le=999999)
     status: str = Field(default="", pattern="^(|active|inactive)$")
+    weight_grams: int = Field(default=0, ge=0, le=500000)  # >0: set this packed weight (marks it as checked, not estimated)
+    weight_only_missing: bool = False  # only products that have no weight yet
 
 
 def list_row(p: dict) -> dict:
     vs = p.get("variants") or []
     return {"product_id": p["product_id"], "name": p.get("name", ""), "image": p.get("image", ""), "sku": p.get("sku", ""),
             "price": p.get("price", 0), "original_price": p.get("original_price") or p.get("price", 0), "stock": p.get("stock", 0),
-            "status": p.get("status", "active"), "variants": len(vs), "sold": p.get("sold", 0), "store_id": p.get("store_id")}
+            "status": p.get("status", "active"), "variants": len(vs), "sold": p.get("sold", 0), "store_id": p.get("store_id"),
+            "weight_grams": p.get("weight_grams") or 0, "weight_estimated": bool(p.get("weight_estimated"))}
 
 
 def register(api, db, *, actor: Callable, target_store: Callable, editable: Callable, owner_key: Callable, form_of: Callable, load_parents: Callable, log_activity):
@@ -156,6 +160,10 @@ def register(api, db, *, actor: Callable, target_store: Callable, editable: Call
             query["status"] = {"$ne": "inactive"}
         elif status == "empty":
             query["stock"] = 0
+        elif status == "no_weight":
+            query.setdefault("$and", []).append(MISSING_WEIGHT)  # keep the search $or intact
+        elif status == "estimated_weight":
+            query["weight_estimated"] = True
         total = await db.products.count_documents(query)
         docs = await db.products.find(query, {"_id": 0}).sort([("updated_at", -1), ("product_id", 1)]).skip(max(0, skip)).limit(limit).to_list(limit)
         return {"total": total, "items": [list_row(d) for d in docs], "store_id": store["store_id"]}
@@ -188,7 +196,7 @@ def register(api, db, *, actor: Callable, target_store: Callable, editable: Call
 
     @api.post("/product-editor/bulk")
     async def bulk_edit(body: BulkIn, ctx=Depends(actor)):
-        if not (body.price_mode or body.stock_mode or body.status):
+        if not (body.price_mode or body.stock_mode or body.status or body.weight_grams):
             raise HTTPException(status_code=400, detail="Pilih perubahan yang ingin diterapkan")
         if body.price_mode == "set" and body.price_value < 100:
             raise HTTPException(status_code=400, detail="Harga minimal Rp100")
@@ -202,6 +210,10 @@ def register(api, db, *, actor: Callable, target_store: Callable, editable: Call
                 skipped.append({"product_id": pid, "name": "", "reason": "Produk tidak ditemukan di toko ini"})
                 continue
             f = ProductForm(**to_form(p))
+            set_weight = body.weight_grams and not (body.weight_only_missing and (p.get("weight_grams") or 0) > 0)
+            if body.weight_grams and not set_weight and not (body.price_mode or body.stock_mode or body.status):
+                skipped.append({"product_id": pid, "name": p.get("name", ""), "reason": "Sudah punya berat"})
+                continue
             if body.price_mode:
                 err = new_price(f, body.price_mode, body.price_value)
                 if err:
@@ -213,6 +225,8 @@ def register(api, db, *, actor: Callable, target_store: Callable, editable: Call
             upd = {k: doc[k] for k in ("price", "original_price", "discount", "stock", "in_stock", "variants", "tier_prices", "updated_at")}
             if body.status:
                 upd["status"] = body.status
+            if set_weight:
+                upd["weight_grams"], upd["weight_estimated"] = body.weight_grams, False
             if upd["stock"] > p.get("stock", 0):
                 upd["restocked_at"] = _now()
             await db.products.update_one({"product_id": pid}, {"$set": upd})
@@ -492,6 +506,8 @@ def register(api, db, *, actor: Callable, target_store: Callable, editable: Call
                 if errs:
                     add(n, name or p["name"], "skip", "; ".join(errs[:3]))
                     continue
+                if "weight_grams" in changed:
+                    form.weight_estimated = False
                 if commit:
                     doc = to_product(form, store)
                     if doc["stock"] > p.get("stock", 0):

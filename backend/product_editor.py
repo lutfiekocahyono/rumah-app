@@ -77,6 +77,7 @@ class ProductForm(BaseModel):
     # Tahap 2: specifications + shipping
     specs: Dict[str, str] = {}
     weight_grams: int = Field(default=0, ge=0, le=500000)
+    weight_estimated: bool = False  # berat hasil perkiraan otomatis, belum dicek pemilik
     length_cm: int = Field(default=0, ge=0, le=500)
     width_cm: int = Field(default=0, ge=0, le=500)
     height_cm: int = Field(default=0, ge=0, le=500)
@@ -225,7 +226,7 @@ def to_product(f: ProductForm, store: dict) -> dict:
         "stock": stock, "in_stock": stock > 0, "min_order": f.min_order, "max_order": f.max_order,
         "low_stock_alert": f.low_stock_alert,
         "variant_options": [o.model_dump() for o in f.variant_options] if rows else [], "variants": rows,
-        "specs": f.specs, "weight_grams": f.weight_grams, "length_cm": f.length_cm, "width_cm": f.width_cm, "height_cm": f.height_cm,
+        "specs": f.specs, "weight_grams": f.weight_grams, "weight_estimated": f.weight_estimated and f.weight_grams > 0, "length_cm": f.length_cm, "width_cm": f.width_cm, "height_cm": f.height_cm,
         "couriers": f.couriers, "ship_regular": f.ship_regular, "ship_cargo": f.ship_cargo,
         "preorder": f.preorder, "preorder_days": f.preorder_days if f.preorder else 0, "processing_days": f.processing_days,
         "seo_title": f.seo_title.strip(), "meta_description": f.meta_description.strip(),
@@ -249,7 +250,7 @@ def to_form(p: dict) -> dict:
         low_stock_alert=p.get("low_stock_alert", 0), variants_enabled=has_v,
         variant_options=p.get("variant_options", []) if has_v else [],
         variants=[VariantRow(**{k: v.get(k) for k in VariantRow.model_fields if k in v}) for v in p.get("variants", [])],
-        specs=p.get("specs") or {}, weight_grams=min(p.get("weight_grams") or 0, 500000),
+        specs=p.get("specs") or {}, weight_grams=min(p.get("weight_grams") or 0, 500000), weight_estimated=bool(p.get("weight_estimated")),
         length_cm=p.get("length_cm") or 0, width_cm=p.get("width_cm") or 0, height_cm=p.get("height_cm") or 0,
         couriers=p.get("couriers") or [], ship_regular=p.get("ship_regular", True), ship_cargo=p.get("ship_cargo", False),
         preorder=p.get("preorder", False), preorder_days=p.get("preorder_days") or 0, processing_days=p.get("processing_days") or 1,
@@ -440,3 +441,5 @@ def register(api, db, *, get_current_user, log_activity, origin_label):
     import product_bulk  # imports this module's form helpers
     product_bulk.register(api, db, actor=actor, target_store=target_store, editable=editable, owner_key=owner_key,
                           form_of=form_of, load_parents=load_parents, log_activity=log_activity)
+    import weight_estimate
+    weight_estimate.register(api, db, actor=actor, target_store=target_store, log_activity=log_activity)

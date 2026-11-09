@@ -228,6 +228,10 @@ export const api = {
   editorList: (p: { store_id?: string | null; q?: string; status?: string; skip?: number }) =>
     req<{ total: number; items: EditorListItem[]; store_id: string }>(`/product-editor/products?${qs({ ...p, limit: 30 })}`),
   editorDuplicate: (id: string) => req<ProductDraft>(`/product-editor/products/${id}/duplicate`, { method: "POST" }),
+  weightSummary: (store_id?: string | null) => req<{ missing: number; estimated: number }>(`/product-editor/weight/summary?${qs({ store_id })}`),
+  weightPreview: (store_id?: string | null) => req<WeightPreview>(`/product-editor/weight/preview?${qs({ store_id })}`, { method: "POST" }),
+  weightApply: (id: string, skip: string[], overrides: Record<string, number>) =>
+    req<{ saved: number }>(`/product-editor/weight/${id}/apply`, { method: "POST", body: JSON.stringify({ skip, overrides }) }),
   editorBulk: (b: BulkEdit) => req<{ updated: number; skipped: { product_id: string; name: string; reason: string }[] }>("/product-editor/bulk", { method: "POST", body: JSON.stringify(b) }),
   editorImport: async (file: LocalFile, storeId: string | null, commit: boolean): Promise<ImportReport> => {
     const token = await getToken();
@@ -463,7 +467,7 @@ export type ProductForm = {
   status: "active" | "inactive"; description: string; images: string[]; video: string; price: number; discount_price: number;
   stock: number; min_order: number; max_order: number; low_stock_alert: number;
   variants_enabled: boolean; variant_options: VariantOption[]; variants: VariantRow[];
-  specs: Partial<Record<SpecKey, string>>; weight_grams: number; length_cm: number; width_cm: number; height_cm: number;
+  specs: Partial<Record<SpecKey, string>>; weight_grams: number; weight_estimated?: boolean; length_cm: number; width_cm: number; height_cm: number;
   couriers: string[]; ship_regular: boolean; ship_cargo: boolean; preorder: boolean; preorder_days: number; processing_days: number;
   seo_title: string; meta_description: string; keywords: string[];
   tier_prices: Partial<Record<CustomerType, PriceTier[]>>;
@@ -494,8 +498,9 @@ export type PriceLog = {
   source: string; source_label: string; at: string;
   changes: { field: string; label: string; kind: "price" | "stock"; variant: string; before: number | string | null; after: number | string }[];
 };
-export type EditorListItem = { product_id: string; name: string; image: string; sku: string; price: number; original_price: number; stock: number; status: "active" | "inactive"; variants: number; sold: number; store_id: string };
-export type BulkEdit = { store_id?: string | null; product_ids: string[]; price_mode?: "" | "set" | "up_pct" | "down_pct" | "up" | "down"; price_value?: number; stock_mode?: "" | "set" | "add" | "sub"; stock_value?: number; status?: "" | "active" | "inactive" };
+export type EditorListItem = { product_id: string; name: string; image: string; sku: string; price: number; original_price: number; stock: number; status: "active" | "inactive"; variants: number; sold: number; store_id: string; weight_grams: number; weight_estimated: boolean };
+export type BulkEdit = { store_id?: string | null; product_ids: string[]; price_mode?: "" | "set" | "up_pct" | "down_pct" | "up" | "down"; price_value?: number; stock_mode?: "" | "set" | "add" | "sub"; stock_value?: number; status?: "" | "active" | "inactive"; weight_grams?: number; weight_only_missing?: boolean };
+export type WeightPreview = { preview_id: string; total: number; items: { product_id: string; name: string; image: string; grams: number; rule: string }[]; groups: { rule: string; count: number }[] };
 export type ImportRow = { row: number; name: string; action: "update" | "same" | "create" | "draft" | "skip"; message: string };
 export type ImportReport = { committed: boolean; counts: Record<ImportRow["action"], number>; rows: ImportRow[]; format: "xlsx" | "csv";
   columns: { sheet: string; header: string; field: string | null; label: string }[]; missing: string[] };

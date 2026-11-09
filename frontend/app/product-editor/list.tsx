@@ -12,9 +12,11 @@ import { SellerShell } from "@/src/components/seller-shell";
 import { Pill } from "@/src/components/product-editor/ui";
 import { BulkDialog, type BulkKind } from "@/src/components/product-editor/bulk-dialog";
 import { ImportDialog } from "@/src/components/product-editor/import-dialog";
+import { WeightEstimateDialog } from "@/src/components/product-editor/weight-estimate-dialog";
 import { downloadAuthed } from "@/src/utils/download";
 
-const FILTERS = [{ id: "", label: "Semua" }, { id: "active", label: "Aktif" }, { id: "inactive", label: "Nonaktif" }, { id: "empty", label: "Stok habis" }];
+const FILTERS = [{ id: "", label: "Semua" }, { id: "active", label: "Aktif" }, { id: "inactive", label: "Nonaktif" }, { id: "empty", label: "Stok habis" },
+  { id: "no_weight", label: "Belum ada berat" }, { id: "estimated_weight", label: "Berat perkiraan" }];
 
 function Row({ p, on, toggle, onEdit, onDuplicate, dup }: { p: EditorListItem; on: boolean; toggle: () => void; onEdit: () => void; onDuplicate: () => void; dup: boolean }) {
   return (
@@ -31,6 +33,9 @@ function Row({ p, on, toggle, onEdit, onDuplicate, dup }: { p: EditorListItem; o
           {p.original_price > p.price ? <Text style={styles.strike}>{formatIDR(p.original_price)}</Text> : null}
           <Text style={[styles.muted, !p.stock && { color: colors.error }]}>· {p.stock ? `Stok ${p.stock}` : "Stok habis"}</Text>
           {p.status === "inactive" ? <Text style={styles.badge} testID={`pl-inactive-${p.product_id}`}>Nonaktif</Text> : null}
+          {!p.weight_grams ? <Text style={styles.badge} testID={`pl-noweight-${p.product_id}`}>Belum ada berat</Text>
+            : p.weight_estimated ? <Text style={[styles.badge, { color: colors.onSurface, borderColor: colors.warning }]} testID={`pl-estweight-${p.product_id}`}>⚠ Berat perkiraan {p.weight_grams} g</Text>
+            : <Text style={styles.muted}>· {p.weight_grams} g</Text>}
         </View>
       </Pressable>
       <Pressable testID={`pl-duplicate-${p.product_id}`} style={styles.iconBtn} onPress={onDuplicate} disabled={dup} accessibilityLabel="Duplikat produk">
@@ -60,7 +65,11 @@ export default function ProductList() {
   const [exporting, setExporting] = useState(false);
   const [dup, setDup] = useState("");
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [weight, setWeight] = useState<{ missing: number; estimated: number } | null>(null);
+  const [estimating, setEstimating] = useState(false);
   const busy = useRef(false);
+  const refreshWeight = useCallback(() => { if (storeId) api.weightSummary(admin ? storeId : null).then(setWeight).catch(() => {}); }, [storeId, admin]);
+  useEffect(refreshWeight, [refreshWeight]);
 
   useEffect(() => { api.editorContext().then((c) => { setCtx(c); setStoreId((c.stores.find((s) => s.store_id === "pgs-official") ?? c.stores[0])?.store_id ?? null); }).catch((e) => setMsg({ ok: false, text: e.message })); }, []);
 
@@ -120,6 +129,20 @@ export default function ProductList() {
               <Icon name="cloud-upload-outline" size={18} color={colors.brandPrimary} /><Text style={styles.outlineText}>Impor Excel</Text>
             </Pressable>
           </View>
+          {weight && (weight.missing || weight.estimated) ? (
+            <View style={styles.weightBox} testID="pl-weight-banner">
+              <Icon name="barbell-outline" size={18} color={colors.warning} />
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text style={styles.name} testID="pl-weight-counts">{weight.missing.toLocaleString("id-ID")} produk belum ada berat{weight.estimated ? ` · ${weight.estimated.toLocaleString("id-ID")} berat perkiraan` : ""}</Text>
+                <Text style={styles.muted}>Berat dipakai menghitung ongkir. Isi lewat Edit Massal, Excel (kolom Berat), atau perkiraan otomatis.</Text>
+                <View style={styles.actions}>
+                  {weight.missing ? <Pressable testID="pl-weight-show" style={styles.linkBtn} onPress={() => setFilter("no_weight")}><Text style={styles.outlineText}>Tampilkan</Text></Pressable> : null}
+                  {weight.missing ? <Pressable testID="pl-weight-estimate" style={styles.linkBtn} onPress={() => setEstimating(true)}><Text style={styles.outlineText}>Perkiraan otomatis</Text></Pressable> : null}
+                  {weight.estimated ? <Pressable testID="pl-weight-review" style={styles.linkBtn} onPress={() => setFilter("estimated_weight")}><Text style={styles.outlineText}>Cek berat perkiraan</Text></Pressable> : null}
+                </View>
+              </View>
+            </View>
+          ) : null}
           <View style={styles.search}>
             <Icon name="search" size={16} color={colors.muted} />
             <TextInput testID="pl-search" value={q} onChangeText={setQ} placeholder="Cari nama atau SKU" placeholderTextColor={colors.muted} style={styles.searchInput} />
@@ -164,12 +187,14 @@ export default function ProductList() {
               <Pressable testID="pl-bulk-price" style={styles.outline} onPress={() => setBulk("price")}><Icon name="pricetag-outline" size={16} color={colors.brandPrimary} /><Text style={styles.outlineText}>Ubah Harga</Text></Pressable>
               <Pressable testID="pl-bulk-stock" style={styles.outline} onPress={() => setBulk("stock")}><Icon name="layers-outline" size={16} color={colors.brandPrimary} /><Text style={styles.outlineText}>Ubah Stok</Text></Pressable>
               <Pressable testID="pl-bulk-status" style={styles.outline} onPress={() => setBulk("status")}><Icon name="eye-outline" size={16} color={colors.brandPrimary} /><Text style={styles.outlineText}>Status</Text></Pressable>
+              <Pressable testID="pl-bulk-weight" style={styles.outline} onPress={() => setBulk("weight")}><Icon name="barbell-outline" size={16} color={colors.brandPrimary} /><Text style={styles.outlineText}>Isi Berat</Text></Pressable>
             </View>
           </View>
         ) : null}
       </View>
-      <BulkDialog kind={bulk} ids={[...sel]} storeId={admin ? storeId : null} onClose={() => setBulk(null)} onDone={() => void load(true)} />
-      <ImportDialog visible={importing} storeId={admin ? storeId : null} storeName={storeName} onClose={() => setImporting(false)} onDone={() => void load(true)} />
+      <BulkDialog kind={bulk} ids={[...sel]} storeId={admin ? storeId : null} onClose={() => setBulk(null)} onDone={() => { void load(true); refreshWeight(); }} />
+      <WeightEstimateDialog visible={estimating} storeId={admin ? storeId : null} onClose={() => setEstimating(false)} onDone={() => { void load(true); refreshWeight(); }} />
+      <ImportDialog visible={importing} storeId={admin ? storeId : null} storeName={storeName} onClose={() => setImporting(false)} onDone={() => { void load(true); refreshWeight(); }} />
     </SellerShell>
   );
 }
@@ -198,4 +223,6 @@ const styles = StyleSheet.create({
   bar: { position: "absolute", left: 0, right: 0, bottom: 0, backgroundColor: colors.surface, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, paddingHorizontal: spacing.lg, paddingTop: spacing.md, gap: spacing.sm },
   barHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   barTitle: { fontSize: fontSize.base, fontWeight: "700", color: colors.onSurface },
+  linkBtn: { minHeight: 44, justifyContent: "center", paddingRight: spacing.md },
+  weightBox: { flexDirection: "row", gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.warning, backgroundColor: colors.surface },
 });

@@ -151,3 +151,8 @@ Iteration 2: import all data from pusatgrosirsidoarjo.com; tiered pricing (pembe
 ## Iteration 40 (Jun 2026)
 - Fondasi push HP (Emergent managed push / SuprSend): backend push.py (/api/push/config, /api/register-push [auth, own user only], /api/admin/push GET/PUT), default NONAKTIF; ringkasan info produk per jam ikut dikirim sebagai push bila aktif (chunk 100). Frontend: expo-notifications + expo-device, handler & channel di _layout, PushManager (tap routing, daftar token hanya jika push aktif, ajakan buka Pengaturan mingguan), halaman Admin → Notifikasi Push HP.
 - Belum: google-services.json (pemilik belum punya Firebase) → android.googleServicesFile sengaja belum dipasang agar build tidak gagal. EMERGENT_PUSH_KEY=placeholder diisi otomatis saat deploy.
+
+## Iteration 41 (Jun 2026)
+- Berat produk: semua 6.618 produk impor belum punya berat. Daftar Produk menampilkan jumlah "belum ada berat" / "berat perkiraan", filter keduanya, badge per baris, Edit Massal "Isi Berat" (hanya yang kosong / timpa), Excel (kolom Berat (gram)).
+- Perkiraan otomatis (weight_estimate.py): aturan nama (AC, TV per ukuran, kulkas, dispenser, speaker, kipas, lemari, dll.) lalu kategori; ×N untuk per dus/isi N; pratinjau dengan edit/buang per baris, konfirmasi, lalu disimpan dengan tanda weight_estimated sampai dikoreksi (editor/massal/Excel).
+- Perubahan berat tidak memicu notifikasi pembeli; perbaikan on_info agar field default produk impor tidak dianggap berubah.

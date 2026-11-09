@@ -19,7 +19,7 @@ logger = logging.getLogger("product_notify")
 INTERVAL = timedelta(hours=1)
 CHECK_EVERY_S = 300
 INFO_FIELDS = ("name", "description", "images", "image", "video", "specs", "category", "subcategory", "brand", "condition",
-               "weight_grams", "variant_options", "min_order", "preorder")
+               "variant_options", "min_order", "preorder")
 KIND_TEXT = {"new": "produk baru", "price": "harga berubah", "restock": "stok tersedia lagi", "stock": "stok diperbarui", "info": "info diperbarui"}
 DIGEST_KEY = {"key": "product_digest"}
 
@@ -54,7 +54,9 @@ async def on_info(db, old: dict, new: dict) -> None:
         return
     if not _visible(old):  # baru diaktifkan = baru tampil untuk pembeli
         return await _event(db, merged, "new", after=merged.get("price"))
-    if any(f in new and new[f] != old.get(f) for f in INFO_FIELDS):
+    empty = lambda v: v in (None, "", 0, False) or v == [] or v == {}  # missing field == default empty value
+    defaults = {"condition": "new", "min_order": 1}  # editor fills these for imported products that never had them
+    if any(f in new and not (empty(new[f]) and empty(old.get(f))) and new[f] != old.get(f, defaults.get(f)) for f in INFO_FIELDS):
         await _event(db, merged, "info")
 
 

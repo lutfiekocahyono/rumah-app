@@ -1,5 +1,5 @@
 import React from "react";
-import { View, Text, StyleSheet, Switch } from "react-native";
+import { View, Text, StyleSheet, Switch, Pressable } from "react-native";
 import Icon from "@react-native-vector-icons/ionicons";
 
 import { colors, radius, spacing } from "@/src/theme";
@@ -67,11 +67,17 @@ export function ShippingSection({ form, set, errors, ctx, storeId }: { form: Pro
     <Section title="Pengaturan Pengiriman" icon="car-outline" testID="pe-shipping" subtitle="Berat dan ukuran dipakai untuk menghitung ongkir otomatis.">
       <View style={ui.row}>
         <Input testID="pe-weight" label="Berat (gram)" required keyboardType="number-pad" value={form.weight_grams ? String(form.weight_grams) : ""}
-          onChangeText={(t) => set({ weight_grams: Math.min(500000, digitsOf(t)) })} error={errors.weight_grams} placeholder="Mis. 1200" />
+          onChangeText={(t) => set({ weight_grams: Math.min(500000, digitsOf(t)), weight_estimated: false })} error={errors.weight_grams} placeholder="Mis. 1200"
+          hint={form.weight_estimated ? "Berat perkiraan otomatis — cek & ubah bila perlu (mempengaruhi ongkir)" : undefined} />
         <Input testID="pe-length" label="Panjang (cm)" keyboardType="number-pad" value={form.length_cm ? String(form.length_cm) : ""} onChangeText={(t) => set({ length_cm: Math.min(500, digitsOf(t)) })} />
         <Input testID="pe-width" label="Lebar (cm)" keyboardType="number-pad" value={form.width_cm ? String(form.width_cm) : ""} onChangeText={(t) => set({ width_cm: Math.min(500, digitsOf(t)) })} />
         <Input testID="pe-height" label="Tinggi (cm)" keyboardType="number-pad" value={form.height_cm ? String(form.height_cm) : ""} onChangeText={(t) => set({ height_cm: Math.min(500, digitsOf(t)) })} />
       </View>
+      {form.weight_estimated ? (
+        <Pressable testID="pe-weight-estimated" onPress={() => set({ weight_estimated: false })} style={{ alignSelf: "flex-start", minHeight: 36, justifyContent: "center" }}>
+          <Text style={[ui.hint, { color: colors.warning }]}>⚠ Berat perkiraan · ketuk untuk menandai sudah benar</Text>
+        </Pressable>
+      ) : null}
       <FieldError msg={errors.dimensions} testID="pe-dimensions-error" />
       {vol > form.weight_grams && form.weight_grams > 0 ? (
         <Text style={ui.hint} testID="pe-volumetric">Berat volume {weightText(Math.round(vol))} lebih besar dari berat asli — ongkir dihitung dari berat volume.</Text>
