@@ -21,16 +21,23 @@ export default function AdminFlashSaleScreen() {
 
   const set = (patch: Partial<AdminFlashSale>) => setF((x) => (x ? { ...x, ...patch } : x));
   const setPrice = (pid: string, v: number) => set({ items: f!.items.map((i) => (i.product_id === pid ? { ...i, flash_price: v } : i)) });
+  const setBranch = (pid: string, sid: string, v: number) => set({ items: f!.items.map((i) => (i.product_id === pid
+    ? { ...i, branches: i.branches.map((b) => (b.store_id === sid ? { ...b, flash_price: v } : b)) } : i)) });
 
   const save = async () => {
     if (!f) return;
     const bad = f.items.find((i) => !i.flash_price || i.flash_price >= i.price);
     if (bad) return setMsg({ err: `Harga flash "${bad.name}" harus di bawah harga eceran`, ok: "" });
+    for (const i of f.items) {
+      const b = i.branches.find((x) => x.flash_price && x.flash_price >= x.price);
+      if (b) return setMsg({ err: `Harga flash ${b.name} untuk "${i.name}" harus di bawah harga cabangnya (${formatIDR(b.price)})`, ok: "" });
+    }
     if (f.active && new Date(f.ends_at).getTime() <= Date.now()) return setMsg({ err: "Waktu berakhir harus di masa depan", ok: "" });
     setSaving(true);
     try {
       setF(await api.adminSaveFlashSale({ title: f.title, active: f.active, ends_at: f.ends_at,
-        items: f.items.map((i) => ({ product_id: i.product_id, flash_price: i.flash_price })) }));
+        items: f.items.map((i) => ({ product_id: i.product_id, flash_price: i.flash_price,
+          branch_prices: Object.fromEntries(i.branches.filter((b) => b.flash_price > 0).map((b) => [b.store_id, b.flash_price])) })) }));
       setMsg({ err: "", ok: "Flash Sale disimpan" });
     } catch (e: any) {
       setMsg({ err: e.message, ok: "" });
@@ -55,7 +62,7 @@ export default function AdminFlashSaleScreen() {
             <Text style={styles.h}>Produk Flash Sale ({f.items.length})</Text>
             <ProductPicker testID="flash-picker" onPick={(p) => {
               if (f.items.some((i) => i.product_id === p.product_id)) return;
-              set({ items: [...f.items, { product_id: p.product_id, name: p.name, image: p.image, price: p.price, flash_price: Math.round(p.price * 0.9 / 100) * 100 }] });
+              set({ items: [...f.items, { product_id: p.product_id, name: p.name, image: p.image, price: p.price, flash_price: Math.round(p.price * 0.9 / 100) * 100, branches: [] }] });
             }} />
             {f.items.map((i) => {
               const off = i.price > i.flash_price ? Math.round(((i.price - i.flash_price) / i.price) * 100) : 0;
@@ -64,12 +71,27 @@ export default function AdminFlashSaleScreen() {
                   <Image source={i.image} style={styles.img} contentFit="cover" />
                   <View style={{ flex: 1, gap: 4 }}>
                     <Text style={styles.name} numberOfLines={2}>{i.name}</Text>
-                    <Text style={adminStyles.muted}>Eceran {formatIDR(i.price)}{off ? ` · hemat ${off}%` : ""}</Text>
+                    <Text style={adminStyles.muted}>Sidoarjo · eceran {formatIDR(i.price)}{off ? ` · hemat ${off}%` : ""}</Text>
                     <View style={styles.priceRow}>
                       <Text style={styles.rp}>Rp</Text>
                       <TextInput testID={`flash-price-${i.product_id}`} keyboardType="number-pad" value={String(i.flash_price || "")}
-                        onChangeText={(t) => setPrice(i.product_id, digits(t))} style={styles.priceInput} placeholder="Harga flash" placeholderTextColor={colors.muted} />
+                        onChangeText={(t) => setPrice(i.product_id, digits(t))} style={styles.priceInput} placeholder="Harga flash Sidoarjo" placeholderTextColor={colors.muted} />
                     </View>
+                    {i.branches.map((b) => {
+                      const auto = i.flash_price ? Math.max(100, i.flash_price + b.price - i.price) : b.auto_price;
+                      return (
+                        <View key={b.store_id} style={{ gap: 2 }} testID={`flash-branch-${i.product_id}-${b.store_id}`}>
+                          <Text style={adminStyles.muted}>{b.name} · harga cabang {formatIDR(b.price)}</Text>
+                          <View style={styles.priceRow}>
+                            <Text style={styles.rp}>Rp</Text>
+                            <TextInput testID={`flash-branch-price-${i.product_id}-${b.store_id}`} keyboardType="number-pad" value={String(b.flash_price || "")}
+                              onChangeText={(t) => setBranch(i.product_id, b.store_id, digits(t))} style={styles.priceInput}
+                              placeholder={`Otomatis ${formatIDR(auto)} (ikut selisih harga)`} placeholderTextColor={colors.muted} />
+                          </View>
+                        </View>
+                      );
+                    })}
+                    {!i.branches.length ? <Text style={adminStyles.muted}>Harga flash Jombang & Jember muncul setelah disimpan</Text> : null}
                   </View>
                   <Pressable testID={`flash-remove-${i.product_id}`} hitSlop={10} onPress={() => set({ items: f.items.filter((x) => x.product_id !== i.product_id) })}>
                     <Icon name="trash-outline" size={20} color={colors.error} />

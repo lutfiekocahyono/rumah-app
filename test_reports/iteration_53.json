@@ -1,0 +1,60 @@
+{
+  "summary": "The bug is fixed. Branch admin Daftar Produk now shows the shared PGS catalog. jombang@pgs.id and jember@pgs.id each see a total of 6618 (store_id pgs-jombang / pgs-jember, 0 own products yet). Shared rows have shared=true, and their price/stock match the branch values from /api/branch-prices (Jombang price differs from Sidoarjo, e.g. pgs-10611 is Rp747.000 at Jombang vs Rp745.000 at Sidoarjo). Search works by name, SKU and product_id. Status filters: empty=1135 (all stock 0), active+inactive=total. Sidoarjo sees 6618 pgs-official rows with no shared flag. Admin with store_id=pgs-jombang gets the same view as the Jombang admin. Isolation holds: GET and duplicate of a shared product by Jombang return 403/404; a bulk edit on a shared product is skipped (0 updated, Sidoarjo doc unchanged); /branch-prices?store_id=pgs-jember returns 403; a foreign store_id on the list is ignored; all /admin/* GETs return non-200 for Jombang. Backend: 24/24 pytest passed. UI at 390px as Jombang: 30 rows, each with pl-shared label and lock icon, 0 duplicate buttons; the locked checkbox does nothing. Tapping a shared row opens /seller/branch-prices?q=pgs-10611 and bp-dialog auto-opens (also works for admin with &store=pgs-jombang). pl-add opens /product-editor/new. Search and filter chips work. Drawer menus match the spec for Jombang, Sidoarjo (wide sidebar) and admin; Chat, Komplain, Beranda Toko, Harga Cabang, Riwayat and Pesanan all navigate correctly. Nothing was saved; no data was changed. One MEDIUM UI bug found: 'Pilih semua' selects the locked shared rows.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/product-editor/export (branch admin)", "issue": "Only exports the branch's own products (currently 0), so the branch gets an empty Excel file while the list shows 6618 products. Import also only matches own-store product_ids. This is consistent with isolation, but the UI offers 'Ekspor/Impor Excel' on a list that is 100% shared rows."},
+      {"endpoint": "GET /api/product-editor/products status=inactive/active (branch)", "issue": "For shared rows, 'status' is the Sidoarjo product status. A branch cannot deactivate a shared product only for its own branch. Acceptable, but worth noting."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Daftar Produk 'Pilih semua yang tampil'", "issue": "toggleAll/allOn (list.tsx:109-110) include shared rows. For Jombang, tapping select-all shows the bulk bar '30 produk dipilih' with Ubah Harga/Stok/Status/Berat/Ukuran, even though every shared row is locked. Any bulk action would skip all 30 rows ('Produk tidak ditemukan di toko ini'). Fix: filter out p.shared in toggleAll/allOn, and disable or hide select-all when no selectable rows are shown.", "testID": "pl-select-all", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Daftar Produk (branch)", "issues": [
+        "'Ekspor Excel'/'Impor Excel' are shown to branch admins, but they only cover own products (an empty export). Hide them for branches, or point them to Harga Cabang Unduh/Unggah.",
+        "Filter chips 'Belum ada berat' and 'Belum ada ukuran dus' list 6618 shared rows that a branch cannot fix (weight and dims are owned by Sidoarjo). Hide these chips for branches or explain why."
+      ]},
+      {"screen": "SellerShell menu (non-admin)", "issues": [
+        "'Laporan Penjualan' and 'Pengaturan Toko' both route to /seller, the same as Dashboard, so they are duplicate items rather than real screens.",
+        "Items with query routes (/chat?side=store, /complaint?scope=store) can never show as active, because usePathname has no query string (minor)."
+      ]},
+      {"screen": "/seller/branch-prices", "issues": ["Does not use SellerShell, so there is no sidebar on wide screens (inconsistent with Daftar Produk and Riwayat)."]},
+      {"screen": "/product-editor/new (390px)", "issues": ["The bottom action area (Batalkan/Preview, Simpan Draft, Simpan & Tambah Baru, Publikasikan) plus the tab bar covers about 40% of the viewport."]}
+    ],
+    "react_native_issues": []
+  },
+  "branch_admin_feature_gaps": [
+    "Promosi: Voucher (/admin/vouchers) is admin-only, with no per-branch voucher screen.",
+    "Banner (/admin/banners) is admin-only.",
+    "Flash Sale (/admin/flash-sale) is admin-only.",
+    "Home settings (/admin/home-settings) are admin-only. Branches only have Beranda Toko (/seller/home-sections).",
+    "Laporan Penjualan: the detailed /admin/report has no per-branch version. Branches only see the summary cards on the /seller dashboard (the menu item goes to /seller).",
+    "Pengaturan Toko: there is no dedicated store settings screen for branches (the menu item goes to /seller). Admin uses /admin/stores.",
+    "Pelanggan / customer types (/admin/customers): admin-only (system feature).",
+    "Push notifications (/admin/push) and product digest are admin-only.",
+    "Excel export/import of the shared catalog with branch values: only via Harga Cabang Unduh/Unggah (price), not from Daftar Produk.",
+    "A branch cannot set its own product status or weight on shared catalog items."
+  ],
+  "test_report_links": ["/app/backend/tests/test_branch_product_list.py", "/app/test_reports/pytest/iter53_branch_list.xml"],
+  "action_items": [
+    "MEDIUM: In list.tsx, exclude shared rows from select-all (toggleAll/allOn), and hide or disable pl-select-all when every visible row is shared.",
+    "LOW: For branch admins, hide 'Ekspor/Impor Excel' on Daftar Produk or link them to Harga Cabang Unduh/Unggah. Consider hiding the weight/dims filter chips.",
+    "LOW: Make 'Laporan Penjualan' and 'Pengaturan Toko' for non-admins go to real screens, or remove these duplicate entries.",
+    "LOW: Wrap /seller/branch-prices in SellerShell for a consistent sidebar on wide screens.",
+    "INFO: Tell the user which Super Admin features are still missing for branches (see branch_admin_feature_gaps)."
+  ],
+  "critical_code_review_comments": [
+    "product_bulk.list_products: status=empty for a branch uses $nin over about 5.5k stocked ids. It is fast now (~0.1s), but use an aggregation/$lookup if the catalog grows a lot.",
+    "branch-prices list excludes variant products ('variants.0' $exists false), while Daftar Produk includes shared variant products. There are 0 today, but if a shared variant product appears, tapping it opens branch-prices without a match and the dialog will not open."
+  ],
+  "updated_files": ["/app/backend/tests/test_branch_product_list.py"],
+  "success_rate": {"backend": "100% (24/24)", "frontend": "95% (all requested flows pass; select-all bug)"},
+  "seed_data_creation": "None. Read-only testing; the bulk test on a shared product was skipped by the server, and the Sidoarjo doc was verified unchanged.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "UI login: /login with email-input/password-input/login-submit. Grant geolocation (-7.5469,112.2331). pl-select-all needs about 1.5s after rows render before a click registers. Jombang has 0 own products, 6618 shared, 1135 empty; pgs-10611 is Jombang Rp747.000 vs Sidoarjo Rp745.000. Run pytest with EXPO_PUBLIC_BACKEND_URL (falls back to reading frontend/.env).",
+  "rca_of_issue": "The original bug: list_products queried only {store_id: <branch>}, and branches have 0 own products. It now queries store_id $in [pgs-official, branch] and overlays store_stock price/stock (product_bulk.py:159-192). Verified fixed."
+}

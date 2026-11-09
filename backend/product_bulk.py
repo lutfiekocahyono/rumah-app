@@ -3,6 +3,8 @@ import csv
 import html
 import io
 import re
+
+import seller
 import uuid
 from datetime import datetime, timezone
 from typing import Callable, List, Optional
@@ -139,6 +141,7 @@ def list_row(p: dict) -> dict:
     return {"product_id": p["product_id"], "name": p.get("name", ""), "image": p.get("image", ""), "sku": p.get("sku", ""),
             "price": p.get("price", 0), "original_price": p.get("original_price") or p.get("price", 0), "stock": p.get("stock", 0),
             "status": p.get("status", "active"), "variants": len(vs), "sold": p.get("sold", 0), "store_id": p.get("store_id"),
+            "only_branch": p.get("only_branch") or (p.get("store_id") if p.get("store_id") in seller.OFFICIAL_IDS[1:] else ""),
             "weight_grams": p.get("weight_grams") or 0, "weight_estimated": bool(p.get("weight_estimated")),
             "dims": [p.get("length_cm") or 0, p.get("width_cm") or 0, p.get("height_cm") or 0], "dims_estimated": bool(p.get("dims_estimated"))}
 
@@ -153,7 +156,10 @@ def register(api, db, *, actor: Callable, target_store: Callable, editable: Call
     async def list_products(store_id: Optional[str] = None, q: str = "", status: str = "", skip: int = 0,
                             limit: int = Query(default=30, le=100), ctx=Depends(actor)):
         store = await scope(ctx, store_id)
-        query: dict = {"store_id": store["store_id"]}
+        sid = store["store_id"]
+        branch = sid in seller.OFFICIAL_IDS and sid != seller.PGS_STORE_ID
+        # branch (Jombang/Jember): the shared PGS catalog with this branch's price & stock, plus the branch's own products
+        query: dict = {"store_id": {"$in": [seller.PGS_STORE_ID, sid]}, "only_branch": {"$in": [None, sid]}} if branch else {"store_id": sid}
         if q.strip():
             rx = {"$regex": re.escape(q.strip()), "$options": "i"}
             query["$or"] = [{"name": rx}, {"sku": rx}, {"product_id": q.strip()}]
@@ -161,6 +167,9 @@ def register(api, db, *, actor: Callable, target_store: Callable, editable: Call
             query["status"] = "inactive"
         elif status == "active":
             query["status"] = {"$ne": "inactive"}
+        elif status == "empty" and branch:
+            stocked = await db.store_stock.distinct("product_id", {"store_id": sid, "stock": {"$gt": 0}})
+            query.setdefault("$and", []).append({"$or": [{"store_id": sid, "stock": 0}, {"store_id": seller.PGS_STORE_ID, "product_id": {"$nin": stocked}}]})
         elif status == "empty":
             query["stock"] = 0
         elif status == "no_weight":
@@ -173,7 +182,16 @@ def register(api, db, *, actor: Callable, target_store: Callable, editable: Call
             query["dims_estimated"] = True
         total = await db.products.count_documents(query)
         docs = await db.products.find(query, {"_id": 0}).sort([("updated_at", -1), ("product_id", 1)]).skip(max(0, skip)).limit(limit).to_list(limit)
-        return {"total": total, "items": [list_row(d) for d in docs], "store_id": store["store_id"]}
+        rows = [list_row(d) for d in docs]
+        if branch:
+            shared = [r["product_id"] for r in rows if r["store_id"] == seller.PGS_STORE_ID]
+            stocks, prices = await seller.branch_stocks(db, sid, shared), await seller.branch_prices(db, sid, shared)
+            for r in rows:
+                if r["store_id"] == seller.PGS_STORE_ID:
+                    bp = prices.get(r["product_id"], {})
+                    r.update(shared=True, stock=stocks.get(r["product_id"], 0), price=bp.get("price", r["price"]),
+                             original_price=bp.get("original_price", r["original_price"]))
+        return {"total": total, "items": rows, "store_id": sid}
 
     # ---------------- bulk edit ----------------
     def new_price(f: ProductForm, mode: str, v: int) -> Optional[str]:
@@ -547,6 +565,8 @@ def register(api, db, *, actor: Callable, target_store: Callable, editable: Call
                         pid = f"sp_{uuid.uuid4().hex[:10]}"
                         new_doc = {**to_product(form, store), "product_id": pid, "rating": 0, "sold": 0, "views": 0,
                                    "created_at": _now(), "published_at": _now()}
+                        if not ctx["admin"] and store["store_id"] in seller.OFFICIAL_IDS:  # branch admin: only this branch's buyers see it
+                            new_doc["only_branch"] = store["store_id"]
                         await db.products.insert_one(new_doc)
                         await product_notify.on_new(db, new_doc)
                     add(n, form.name, "create")

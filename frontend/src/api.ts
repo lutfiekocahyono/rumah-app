@@ -167,7 +167,7 @@ export const api = {
     req<Banner>(id ? `/admin/banners/${id}` : "/admin/banners", { method: id ? "PUT" : "POST", body: JSON.stringify(b) }),
   adminDeleteBanner: (id: string) => req<{ ok: boolean }>(`/admin/banners/${id}`, { method: "DELETE" }),
   adminFlashSale: () => req<AdminFlashSale>("/admin/flash-sale"),
-  adminSaveFlashSale: (f: { title: string; active: boolean; ends_at: string; items: { product_id: string; flash_price: number }[] }) =>
+  adminSaveFlashSale: (f: { title: string; active: boolean; ends_at: string; items: { product_id: string; flash_price: number; branch_prices: Record<string, number> }[] }) =>
     req<AdminFlashSale>("/admin/flash-sale", { method: "PUT", body: JSON.stringify(f) }),
   adminVouchers: () => req<Voucher[]>("/admin/vouchers"),
   adminSaveVoucher: (v: VoucherInput, isNew: boolean) =>
@@ -403,7 +403,8 @@ export type HomeSettings = {
   recommend_mode: "personal" | "random";
 };
 export type FlashSale = { active: boolean; title?: string; ends_at?: string; items: Product[] };
-export type AdminFlashSale = { title: string; active: boolean; ends_at: string; items: { product_id: string; flash_price: number; name: string; image: string; price: number }[] };
+export type FlashBranchRow = { store_id: string; name: string; price: number; auto_price: number; flash_price: number };
+export type AdminFlashSale = { title: string; active: boolean; ends_at: string; items: { product_id: string; flash_price: number; name: string; image: string; price: number; branches: FlashBranchRow[] }[] };
 export type Voucher = {
   code: string; title: string; description: string; mode: DiscountMode; value: number; max_discount: number;
   min_purchase: number; quota: number; used: number; active: boolean; show_on_home: boolean; ends_at: string | null; claimed: boolean;
@@ -527,7 +528,7 @@ export type PriceLog = {
   source: string; source_label: string; at: string;
   changes: { field: string; label: string; kind: "price" | "stock"; variant: string; before: number | string | null; after: number | string }[];
 };
-export type EditorListItem = { product_id: string; name: string; image: string; sku: string; price: number; original_price: number; stock: number; status: "active" | "inactive"; variants: number; sold: number; store_id: string; weight_grams: number; weight_estimated: boolean; dims: number[]; dims_estimated: boolean };
+export type EditorListItem = { product_id: string; name: string; image: string; sku: string; price: number; original_price: number; stock: number; status: "active" | "inactive"; variants: number; sold: number; store_id: string; weight_grams: number; weight_estimated: boolean; dims: number[]; dims_estimated: boolean; shared?: boolean; only_branch?: string };
 export type BulkEdit = { store_id?: string | null; product_ids: string[]; price_mode?: "" | "set" | "up_pct" | "down_pct" | "up" | "down"; price_value?: number; stock_mode?: "" | "set" | "add" | "sub"; stock_value?: number; status?: "" | "active" | "inactive"; weight_grams?: number; weight_only_missing?: boolean; dims?: number[]; dims_only_missing?: boolean };
 export type EstimateKind = "weight" | "dims";
 export type BranchBulkPreview = { preview_id: string; store_id: string; changed: number; up: number; down: number; error_count: number;

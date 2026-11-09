@@ -70,7 +70,7 @@ def register(api, db, *, get_current_user, require_admin, get_optional_owner, ge
         """Ordered list = in-stock pins, then the automatic list (in stock only); the page is sliced from that list."""
         limit = limit or cfg["limit"]
         want = skip + limit
-        base = {**await visible(all_branches)}
+        base = {**await visible(all_branches, branch)}
         cf = await cat_filter(cfg["categories"])
         if cf:
             base["categories"] = cf
@@ -119,7 +119,7 @@ def register(api, db, *, get_current_user, require_admin, get_optional_owner, ge
         page = (pinned_docs + auto)[skip:want]
         flash = await promo.active_flash(db)
         ctype = (user or {}).get("customer_type", "langsung")
-        return [product_out(d, ctype, flash) for d in page]
+        return [product_out(d, ctype, flash, branch) for d in page]
 
     def branch_of(x_store_id: Optional[str]) -> str:
         return x_store_id if x_store_id in seller.OFFICIAL_IDS else seller.PGS_STORE_ID

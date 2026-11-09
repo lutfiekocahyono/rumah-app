@@ -47,7 +47,7 @@ def _tiers(t: dict, f) -> dict:
 
 def register(api, db, require_admin, seller):
     async def compute(rules: List[Rule]) -> tuple[list, dict]:
-        prods = await db.products.find({"store_id": seller.PGS_STORE_ID, "variants.0": {"$exists": False}},
+        prods = await db.products.find({"store_id": seller.PGS_STORE_ID, "variants.0": {"$exists": False}, "only_branch": None},
                                        {"_id": 0, "product_id": 1, "name": 1, "price": 1, "original_price": 1, "stock": 1, "tier_prices": 1}).to_list(50000)
         ids = [p["product_id"] for p in prods]
         out, rows = [], {}

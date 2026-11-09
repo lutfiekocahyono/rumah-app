@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { View, Text, StyleSheet, FlatList, ActivityIndicator, TextInput, Pressable, Modal, ScrollView, KeyboardAvoidingView, Platform } from "react-native";
 import { Image } from "expo-image";
+import { useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Icon from "@react-native-vector-icons/ionicons";
 
@@ -22,8 +23,10 @@ export default function BranchPrices() {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const admin = user?.role === "admin";
-  const [branch, setBranch] = useState("pgs-jombang");
-  const [q, setQ] = useState("");
+  const params = useLocalSearchParams<{ q?: string; store?: string }>();
+  const [branch, setBranch] = useState(params.store === "pgs-jember" ? "pgs-jember" : "pgs-jombang");
+  const [q, setQ] = useState(params.q ?? "");
+  const autoOpen = useRef(params.q ?? ""); // opened from Daftar Produk: edit that product right away
   const [items, setItems] = useState<BranchPriceItem[] | null>(null);
   const [storeName, setStoreName] = useState("");
   const [err, setErr] = useState("");
@@ -39,6 +42,8 @@ export default function BranchPrices() {
       if (id !== reqId.current) return;
       setStoreName(r.store_name); setErr("");
       setItems((cur) => (reset ? r.items : [...(cur ?? []), ...r.items.filter((p) => !(cur ?? []).some((c) => c.product_id === p.product_id))]));
+      const hit = autoOpen.current && r.items.find((p) => p.product_id === autoOpen.current);
+      if (hit) { autoOpen.current = ""; setEditing(hit); }
       setDone(r.items.length < 40);
     } catch (e: any) { if (id === reqId.current) { setErr(e.message); setItems((c) => c ?? []); } }
   }, [admin, branch, q]);

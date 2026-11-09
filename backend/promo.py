@@ -39,8 +39,36 @@ async def active_flash(db) -> Optional[dict]:
     ends = aware(doc.get("ends_at"))
     if not ends or ends <= now():
         return None
-    return {"title": doc.get("title") or "Flash Sale", "ends_at": ends,
-            "prices": {i["product_id"]: int(i["flash_price"]) for i in doc["items"]}}
+    prices = {i["product_id"]: int(i["flash_price"]) for i in doc["items"]}
+    return {"title": doc.get("title") or "Flash Sale", "ends_at": ends, "prices": prices,
+            "branch": await branch_flash(db, doc["items"])}
+
+
+async def branch_flash(db, items: list) -> dict:
+    """{branch_id: {product_id: flash price}} for Jombang / Jember.
+    Own value set by the owner wins; otherwise the Sidoarjo flash price + the branch's price difference (min Rp100)."""
+    import seller
+    ids = [i["product_id"] for i in items]
+    base = {p["product_id"]: p["price"] for p in await db.products.find(
+        {"product_id": {"$in": ids}, "store_id": seller.PGS_STORE_ID, "variants.0": {"$exists": False}}, {"product_id": 1, "price": 1}).to_list(len(ids) or 1)}
+    out: dict = {}
+    async for r in db.store_stock.find({"product_id": {"$in": list(base)}, "price": {"$gt": 0}}, {"_id": 0, "store_id": 1, "product_id": 1, "price": 1}):
+        fp = next(int(i["flash_price"]) for i in items if i["product_id"] == r["product_id"])
+        out.setdefault(r["store_id"], {})[r["product_id"]] = max(100, fp + int(r["price"]) - int(base[r["product_id"]]))
+    for i in items:
+        if i["product_id"] not in base:
+            continue
+        for sid, v in (i.get("branch_prices") or {}).items():
+            if int(v or 0) > 0:
+                out.setdefault(sid, {})[i["product_id"]] = int(v)
+    return out
+
+
+def flash_for(flash: Optional[dict], product_id: str, branch: Optional[str] = None) -> Optional[int]:
+    """Flash price the buyer of this branch pays (None = product not in the flash sale)."""
+    if not flash or product_id not in flash["prices"]:
+        return None
+    return (flash.get("branch") or {}).get(branch or "", {}).get(product_id) or flash["prices"][product_id]
 
 
 def voucher_check(v: Optional[dict], subtotal: int) -> tuple[int, Optional[str]]:

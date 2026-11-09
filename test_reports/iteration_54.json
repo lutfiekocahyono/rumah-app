@@ -1,0 +1,36 @@
+{
+  "summary": "Tested branch-admin own products (only_branch) and per-branch Flash Sale. Backend: 50 of 51 pytest checks passed. Publish as jombang creates store_id=pgs-jombang with only_branch=pgs-jombang. Publish as sidoarjo creates store_id=pgs-official with only_branch=pgs-official. /products search, /products/count (+1 for own branch, +0 for Jember), /recommendations and /home/sections all respect only_branch, and the detail page still opens from any branch. The Sidoarjo-only product is missing from Jombang's editor list, /branch-prices and the branch-copy preview total, as intended. Jombang can edit its own product (visibility kept) but gets 404 on a master product (GET and publish). Sidoarjo gets 404 when deleting a master product. Cross-branch deletes return 404. The admin-only endpoints (fonnte, branch-copy, accurate settings, customer-locations, customers, admin flash-sale) return 403 for all 3 branch admins. Flash: admin GET returns branches[{store_id,name,price,auto_price,flash_price}], auto = 12000 (Jombang) / 11000 (Jember). Public /flash-sale per X-Store-Id matches, and my_price equals the flash price. A Jember override equal to the branch price returns 400. An override of 9000 applies to Jember only, and Jombang stays on auto. The config was restored to the original. Cart as demo with pgs-jombang: line price is 12000 (the branch flash price), and detail my_price/flash_price are also 12000. One failure: a Sidoarjo admin can still create master-catalogue products through the legacy POST /api/seller/products, which bypasses only_branch. Frontend at 390x844: the admin Flash Sale screen shows 16 flash-branch-price inputs with the placeholder 'Otomatis Rp12.000 / Rp11.000 (ikut selisih harga)', and the placeholder updates live when the Sidoarjo flash price changes. The Jombang Daftar Produk shows pl-add (which opens /product-editor/new) and pl-own-{pid} 'Produk cabang ini · hanya tampil di cabang ini'. No deprecated expo packages were found.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/seller/products (legacy, used by src/api.ts saveSellerProduct)", "issue": "A Sidoarjo admin (store pgs-official) can create a product without only_branch. It becomes a MASTER catalogue product and is visible in Jombang and Jember too. The same admin then cannot delete it: seller_delete requires only_branch=pgs-official and returns 404. Reproduced: TEST_legacy_sidoarjo was visible with X-Store-Id pgs-jember (I removed it from the DB by id). Fix: in seller_create, set doc['only_branch']=store_id when the store is in OFFICIAL_IDS and the user is not admin, or block this route for store_admin.", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "POST /api/product-editor/import (commit)", "issue": "Code review, not executed (it would create data): new rows are inserted with to_product(form, store) and no only_branch. For a Sidoarjo admin, the Excel import therefore creates master-catalogue products visible in every branch. This is the same gap as above (product_bulk.py around line 565)."},
+      {"endpoint": "PUT /api/seller/products/{id} and product-editor editable()", "issue": "A Sidoarjo admin can still edit master-catalogue products, because the query only matches store_id=pgs-official. This behaved the same in earlier iterations, so it may be intended because Sidoarjo owns the master catalogue. Please confirm this against requirement (A)."},
+      {"endpoint": "promo.branch_flash / admin flash view", "issue": "If an only_branch=pgs-official product is added to the flash sale, it still gets Jombang/Jember branch rows, although those branches cannot see it. Cosmetic only."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iter54_only_branch_flash.py", "/app/test_reports/pytest/pytest_iter54.xml"],
+  "action_items": [
+    "Set only_branch on products created by a Sidoarjo/official-branch admin in the legacy POST /api/seller/products (seller.py seller_create), or disable that route for store_admin",
+    "Set only_branch in the product-editor Excel import create path (product_bulk.py) for non-admin official-branch stores",
+    "Confirm whether the Sidoarjo admin should still be allowed to edit master-catalogue products (editable() / PUT /seller/products)"
+  ],
+  "critical_code_review_comments": [
+    "server.py is 1466 lines; consider splitting it (pre-existing)",
+    "DELETE /api/cart/items/{key} pulls the product from every branch line in the cart, not only the active branch (pre-existing, noticed while cleaning up)"
+  ],
+  "updated_files": ["/app/backend/tests/test_iter54_only_branch_flash.py"],
+  "success_rate": {"backend": "98% (50/51)", "frontend": "100%"},
+  "seed_data_creation": "Created TEST_jombang_only_*, TEST_sidoarjo_only_*, TEST_UI_jombang_only and TEST_legacy_sidoarjo, then deleted them all by id (0 left). Flash sale config was restored: same items/prices/ends_at, branch_prices now empty {}. The jember override test was temporary.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run pytest with -n0, because pytest.ini adds xdist and the module fixture shares state. URL is read from EXPO_PUBLIC_BACKEND_URL in frontend/.env. The flash sale has 8 items at flash 10000 (Sidoarjo price 10500), Jombang 12500 giving auto 12000, Jember 11500 giving auto 11000. /products/count takes no q param; it counts every product visible to the branch. UI login: /login with email-input/password-input/login-submit.",
+  "rca_of_issue": "Legacy seller_create (seller.py around line 268) was not updated alongside the product_editor.publish only_branch logic. Repro: log in as sidoarjo@pgs.id, POST /api/seller/products {name,price,category,image}, then GET /api/products?q=name with X-Store-Id pgs-jember: the product is visible there."
+}

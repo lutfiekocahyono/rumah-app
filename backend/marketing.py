@@ -2,9 +2,9 @@
 import logging
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import List, Optional
+from typing import Dict, List, Optional
 
-from fastapi import Depends, File, HTTPException, Response, UploadFile
+from fastapi import Depends, File, Header, HTTPException, Response, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 from pymongo import ReturnDocument
@@ -40,6 +40,7 @@ class BannerIn(BaseModel):
 class FlashItemIn(BaseModel):
     product_id: str
     flash_price: int = Field(ge=1)
+    branch_prices: Dict[str, int] = {}  # own flash price per branch (Jombang / Jember); 0 / missing = automatic
 
 
 class FlashSaleIn(BaseModel):
@@ -99,7 +100,10 @@ def _check_voucher_in(body: VoucherIn) -> dict:
 
 
 def register(api, db, *, require_admin, get_owner, get_optional_owner, get_optional_user,
-             product_out, load_cart_detailed, broadcast_promo) -> None:
+             product_out, load_cart_detailed, broadcast_promo, apply_stock) -> None:
+    import seller
+    branches = [s for s in seller.OFFICIAL_IDS if s != seller.PGS_STORE_ID]
+
     # --- public ---
     @api.get("/banners", response_model=List[Banner])
     async def list_banners():
@@ -110,14 +114,16 @@ def register(api, db, *, require_admin, get_owner, get_optional_owner, get_optio
         return await promo.get_home(db)
 
     @api.get("/flash-sale")
-    async def flash_sale(user=Depends(get_optional_user)):
+    async def flash_sale(user=Depends(get_optional_user), x_store_id: Optional[str] = Header(default=None)):
         flash = await promo.active_flash(db)
         if not flash:
             return {"active": False, "items": []}
         ids = list(flash["prices"].keys())
+        branch = x_store_id if x_store_id in seller.OFFICIAL_IDS else seller.PGS_STORE_ID
         docs = {d["product_id"]: d for d in await db.products.find({"product_id": {"$in": ids}}, {"_id": 0}).to_list(100)}
+        await apply_stock(list(docs.values()), branch)  # the branch's own price & stock next to its flash price
         ctype = (user or {}).get("customer_type", "langsung")
-        items = [product_out(docs[i], ctype, flash) for i in ids if i in docs]
+        items = [product_out(docs[i], ctype, flash, branch) for i in ids if i in docs]
         return {"active": True, "title": flash["title"], "ends_at": flash["ends_at"], "items": items}
 
     @api.get("/vouchers")
@@ -210,8 +216,22 @@ def register(api, db, *, require_admin, get_owner, get_optional_owner, get_optio
         doc = await db.settings.find_one({"key": "flash_sale"}, {"_id": 0}) or {
             "title": "Flash Sale", "active": False, "ends_at": promo.now() + timedelta(days=1), "items": []}
         ids = [i["product_id"] for i in doc.get("items", [])]
-        prods = {p["product_id"]: p for p in await db.products.find({"product_id": {"$in": ids}}, {"_id": 0, "product_id": 1, "name": 1, "image": 1, "price": 1}).to_list(100)}
-        items = [{**i, **{k: prods[i["product_id"]][k] for k in ("name", "image", "price")}} for i in doc.get("items", []) if i["product_id"] in prods]
+        prods = {p["product_id"]: p for p in await db.products.find({"product_id": {"$in": ids}}, {"_id": 0, "product_id": 1, "name": 1, "image": 1, "price": 1, "store_id": 1, "variants": 1}).to_list(100)}
+        auto = await promo.branch_flash(db, [{**i, "branch_prices": {}} for i in doc.get("items", [])])
+        bprices = {sid: await seller.branch_prices(db, sid, ids) for sid in branches}
+        names = await seller.store_names(db)
+        items = []
+        for i in doc.get("items", []):
+            p = prods.get(i["product_id"])
+            if not p:
+                continue
+            shared = p.get("store_id") == seller.PGS_STORE_ID and not p.get("variants")
+            own = i.get("branch_prices") or {}
+            rows = [{"store_id": sid, "name": names.get(sid, sid), "price": bprices[sid].get(p["product_id"], {}).get("price", p["price"]),
+                     "auto_price": auto.get(sid, {}).get(p["product_id"], i["flash_price"]), "flash_price": int(own.get(sid) or 0)}
+                    for sid in branches] if shared else []
+            items.append({"product_id": i["product_id"], "flash_price": i["flash_price"], "name": p["name"], "image": p.get("image", ""),
+                          "price": p["price"], "branches": rows})
         return {"title": doc.get("title", "Flash Sale"), "active": bool(doc.get("active")), "ends_at": promo.aware(doc.get("ends_at")), "items": items}
 
     @api.get("/admin/flash-sale")
@@ -220,7 +240,18 @@ def register(api, db, *, require_admin, get_owner, get_optional_owner, get_optio
 
     @api.put("/admin/flash-sale")
     async def admin_set_flash(body: FlashSaleIn, _=Depends(require_admin)):
-        items = list({i.product_id: i.model_dump() for i in body.items}.values())
+        items = list({i.product_id: {**i.model_dump(), "branch_prices": {k: v for k, v in i.branch_prices.items() if k in branches and v > 0}}
+                      for i in body.items}.values())
+        ids = [i["product_id"] for i in items]
+        bprices = {sid: await seller.branch_prices(db, sid, ids) for sid in branches}
+        base = {p["product_id"]: p for p in await db.products.find({"product_id": {"$in": ids}}, {"_id": 0, "product_id": 1, "name": 1, "price": 1}).to_list(100)}
+        names = await seller.store_names(db)
+        for i in items:
+            p = base.get(i["product_id"])
+            for sid, v in i["branch_prices"].items():
+                normal = bprices[sid].get(i["product_id"], {}).get("price", (p or {}).get("price", 0))
+                if p and v >= normal:
+                    raise HTTPException(status_code=400, detail=f"Harga flash {names.get(sid, sid)} untuk \"{p['name']}\" harus di bawah harga cabangnya (Rp{normal:,})".replace(",", "."))
         await db.settings.update_one({"key": "flash_sale"}, {"$set": {
             "title": body.title, "active": body.active, "ends_at": promo.aware(body.ends_at), "items": items}}, upsert=True)
         return await _flash_admin_view()

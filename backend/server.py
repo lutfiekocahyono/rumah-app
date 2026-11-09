@@ -617,12 +617,15 @@ def _ctx(x_store_id: Optional[str]) -> str:
     return x_store_id if x_store_id in seller.OFFICIAL_IDS else seller.PGS_STORE_ID
 
 
-async def _visible(ctx: str) -> dict:
-    """Hide inactive stores and the *own* products of other official branches (catalog is shared)."""
-    if ctx == ALL_BRANCHES:
+async def _visible(ctx: str, buyer: Optional[str] = None) -> dict:
+    """Hide inactive stores and the *own* products of other official branches (catalog is shared).
+    ALL_BRANCHES without `buyer` = every branch (detail page, cart, scan); with `buyer` = lists for the buyer's branch:
+    products a branch admin added for his own branch only appear in that branch."""
+    if ctx == ALL_BRANCHES and buyer is None:
         return {"store_id": {"$nin": await _hidden_stores()}, "status": {"$ne": "inactive"}}
-    others = [s for s in seller.OFFICIAL_IDS if s not in (seller.PGS_STORE_ID, ctx)]
-    return {"store_id": {"$nin": await _hidden_stores() + others}, "status": {"$ne": "inactive"}}
+    b = ctx if ctx != ALL_BRANCHES else (buyer if buyer in seller.OFFICIAL_IDS else seller.PGS_STORE_ID)
+    others = [s for s in seller.OFFICIAL_IDS if s not in (seller.PGS_STORE_ID, b)]
+    return {"store_id": {"$nin": await _hidden_stores() + others}, "status": {"$ne": "inactive"}, "only_branch": {"$in": [None, b]}}
 
 
 async def _apply_stock(docs: List[dict], ctx: str, price_branch: Optional[str] = None) -> List[dict]:
@@ -662,15 +665,15 @@ async def _hidden_stores() -> List[str]:
     return [s["store_id"] for s in await db.stores.find({"status": {"$ne": "active"}}, {"store_id": 1}).to_list(5000)]
 
 
-def _product_out(d: dict, ctype: str, flash: Optional[dict] = None) -> Product:
+def _product_out(d: dict, ctype: str, flash: Optional[dict] = None, branch: Optional[str] = None) -> Product:
     tiers = price_tiers(d, ctype)
     matrix = price_matrix(d)
     all_prices = [t["price"] for t in tiers] or [d.get("price", 0)]  # range for this buyer's own category only
-    fp = (flash or {}).get("prices", {}).get(d["product_id"])
+    fp = promo.flash_for(flash, d["product_id"], branch)
     d = {**d, "variants": [{k: v.get(k) for k in ("variant_id", "values", "name", "price", "stock", "sku", "image")}
                            for v in d.get("variants") or [] if v.get("active", True)]}
     return Product(**{k: v for k, v in d.items() if k in Product.model_fields},
-                   my_price=min(tiers[0]["price"], fp) if fp else tiers[0]["price"],
+                   my_price=fp or tiers[0]["price"],  # flash price of the buyer's branch replaces the normal price
                    price_tiers=[PriceTier(**t) for t in tiers],
                    price_min=min(all_prices), price_max=max(all_prices), price_matrix=matrix,
                    flash_price=fp, flash_ends_at=flash["ends_at"] if fp else None)
@@ -703,7 +706,7 @@ def _branch_price_stages(branch: str) -> list:
 async def _catalog_query(ctx: str, category: Optional[str], q: Optional[str], brand: Optional[str], min_price: Optional[int],
                          max_price: Optional[int], in_stock: bool, wholesale: bool, stock_branch: Optional[str]) -> dict:
     """Shared by the product list and the search facets: category (incl. sub), name, brands, price range, stock, grosir."""
-    query: dict = await _visible(ctx)
+    query: dict = await _visible(ctx, stock_branch or "")
     if category:
         query["categories"] = {"$in": await _category_tree(category)}
         if category == "lainnya":  # imported products without any category are listed under "Lainnya"
@@ -780,7 +783,7 @@ async def list_products(
         docs.sort(key=lambda d: not d.get("in_stock", True))  # stable: in-stock (any branch) first within the page
     flash = await promo.active_flash(db)
     ctype = (user or {}).get("customer_type", "langsung")
-    return [_product_out(d, ctype, flash) for d in docs]
+    return [_product_out(d, ctype, flash, x_store_id) for d in docs]
 
 
 @api.get("/products/facets")
@@ -818,9 +821,9 @@ async def product_facets(category: Optional[str] = None, q: Optional[str] = None
 
 
 @api.get("/products/count")
-async def count_products():
-    """Number of products buyers can browse (shared catalog + every branch), for the search placeholder."""
-    return {"count": await db.products.count_documents(await _visible(ALL_BRANCHES))}
+async def count_products(x_store_id: Optional[str] = Header(default=None)):
+    """Number of products buyers of this branch can browse, for the search placeholder."""
+    return {"count": await db.products.count_documents(await _visible(ALL_BRANCHES, x_store_id or ""))}
 
 
 async def _unique_pickup_code() -> str:
@@ -869,7 +872,7 @@ async def get_product(product_id: str, user=Depends(get_optional_user), x_store_
     if not doc:
         raise HTTPException(status_code=404, detail="Produk tidak ditemukan")
     await _apply_stock([doc], ctx)
-    return _product_out(doc, (user or {}).get("customer_type", "langsung"), await promo.active_flash(db))
+    return _product_out(doc, (user or {}).get("customer_type", "langsung"), await promo.active_flash(db), ctx)
 
 
 # ---------------------------------------------------------------------------
@@ -895,7 +898,6 @@ async def _load_cart_detailed(owner: str, only_store: Optional[str] = None) -> C
     if not items:
         return CartOut(items=[], subtotal=0, item_count=0, customer_type=ctype)
     flash = await promo.active_flash(db)
-    flash_prices = (flash or {}).get("prices", {})
     ids = [i["product_id"] for i in items]
     prods = {p["product_id"]: p for p in await db.products.find({"product_id": {"$in": ids}}, {"_id": 0}).to_list(500)}
     names = await seller.store_names(db)
@@ -922,8 +924,9 @@ async def _load_cart_detailed(owner: str, only_store: Optional[str] = None) -> C
             stock = v["stock"]
         qty = it["quantity"]
         price = unit_price(p, ctype, qty)
-        if flash_prices.get(p["product_id"]) and not v:
-            price = min(price, flash_prices[p["product_id"]])
+        fp = None if v else promo.flash_for(flash, p["product_id"], sid)
+        if fp:  # the branch's flash price replaces its normal price; only a grosir tier (buy more) can go lower
+            price = min([fp] + [t["price"] for t in price_tiers(p, ctype) if 1 < t["min_qty"] <= qty])
         nxt = next((t for t in price_tiers(p, ctype) if t["min_qty"] > qty), None)
         detailed.append(CartItemDetailed(
             product_id=it["product_id"], quantity=qty, name=p["name"], price=price, base_price=p["price"],
@@ -1375,7 +1378,7 @@ async def recommendations(
     x_store_id: Optional[str] = Header(default=None),
 ):
     mode = (await promo.get_home(db))["recommend_mode"]
-    base = {**await _visible(ALL_BRANCHES)}  # stock is checked after summing all branches
+    base = {**await _visible(ALL_BRANCHES, x_store_id or "")}  # stock is checked after summing all branches
     docs: list = []
     if mode == "random":
         docs = await db.products.aggregate([{"$match": base}, {"$sample": {"size": limit}}, {"$project": {"_id": 0}}]).to_list(limit)
@@ -1394,7 +1397,7 @@ async def recommendations(
     docs = [d for d in docs if d.get("in_stock", True) and d.get("stock", 0) > 0]
     flash = await promo.active_flash(db)
     ctype = (user or {}).get("customer_type", "langsung")
-    return [_product_out(d, ctype, flash) for d in docs]
+    return [_product_out(d, ctype, flash, x_store_id) for d in docs]
 
 async def _product_out_for_user(d: dict, user: dict) -> Product:
     return _product_out(d, user.get("customer_type", "langsung"), await promo.active_flash(db))
@@ -1403,7 +1406,7 @@ async def _product_out_for_user(d: dict, user: dict) -> Product:
 ACCT = account.register(api, db, get_current_user, _user_out, _make_token)
 _release_voucher, expire_cod_orders, remind_expiring_cod, _expire_loop = order_tasks.register(db, ACCT["notify_user"])
 marketing.register(api, db, require_admin=require_admin, get_owner=get_owner, get_optional_owner=get_optional_owner,
-                   get_optional_user=get_optional_user, product_out=_product_out, load_cart_detailed=_load_cart_detailed,
+                   get_optional_user=get_optional_user, product_out=_product_out, load_cart_detailed=_load_cart_detailed, apply_stock=_apply_stock,
                    broadcast_promo=ACCT["broadcast_promo"])
 home_feed.register(api, db, get_current_user=get_current_user, require_admin=require_admin, get_optional_owner=get_optional_owner,
                    get_optional_user=get_optional_user, visible=_visible, apply_stock=_apply_stock, product_out=_product_out,

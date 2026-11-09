@@ -440,6 +440,8 @@ def register(api, db, *, get_current_user, log_activity, origin_label):
         else:
             pid = f"sp_{uuid.uuid4().hex[:10]}"
             doc = {**to_product(f, store), "product_id": pid, "rating": 0, "sold": 0, "views": 0, "created_at": _now(), "published_at": _now()}
+            if not ctx["admin"] and store["store_id"] in seller.OFFICIAL_IDS:  # branch admin: only buyers of this branch see it
+                doc["only_branch"] = store["store_id"]
             await db.products.insert_one(doc)
             await product_notify.on_new(db, doc)
             action = "Menambah"

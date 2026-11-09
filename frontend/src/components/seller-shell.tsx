@@ -1,16 +1,19 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { View, Text, StyleSheet, Pressable, Modal, ScrollView, useWindowDimensions } from "react-native";
 import { useRouter, usePathname } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Icon from "@react-native-vector-icons/ionicons";
 
 import { colors, fontSize, radius, spacing } from "@/src/theme";
+import { api } from "@/src/api";
 
 type Item = { label: string; icon: string; to: string; testID: string };
 type Group = { label: string; icon: string; children: Item[] };
 
 /** Seller Center menu. Only screens that exist for the role are listed (no dead buttons). */
-function menu(admin: boolean): (Item | Group)[] {
+function menu(admin: boolean, storeId: string): (Item | Group)[] {
+  const branch = storeId === "pgs-jombang" || storeId === "pgs-jember";
+  const official = branch || storeId === "pgs-official";
   const i = (label: string, icon: string, to: string): Item => ({ label, icon, to, testID: `nav-${label.toLowerCase().replace(/\s+/g, "-")}` });
   return [
     i("Dashboard", "grid-outline", admin ? "/admin" : "/seller"),
@@ -19,12 +22,15 @@ function menu(admin: boolean): (Item | Group)[] {
       i("Daftar Produk", "list-outline", "/product-editor/list"),
       i("Kategori Produk", "pricetags-outline", "/(tabs)/kategori"),
       ...(admin ? [] : [i("Manajemen Stok", "layers-outline", "/seller/stock")]),
-      ...(admin ? [i("Harga Cabang", "cash-outline", "/seller/branch-prices")] : []), // branch admins: tile on their Seller Center
+      ...(admin || branch ? [i("Harga Cabang", "cash-outline", "/seller/branch-prices")] : []),
       i("Riwayat Harga & Stok", "time-outline", "/product-editor/history"),
     ] },
     i("Pesanan", "receipt-outline", admin ? "/admin/orders" : "/seller/orders"),
     i("Pengiriman", "car-outline", admin ? "/admin/shipping" : "/seller/couriers"),
     ...(admin ? [i("Promosi", "megaphone-outline", "/admin/vouchers")] : []),
+    ...(admin ? [] : [i("Chat", "chatbubbles-outline", "/chat?side=store")]),
+    i("Komplain", "alert-circle-outline", admin ? "/complaint?scope=admin" : "/complaint?scope=store"),
+    ...(!admin && official ? [i("Beranda Toko", "flame-outline", "/seller/home-sections")] : []),
     i("Laporan Penjualan", "bar-chart-outline", admin ? "/admin/report" : "/seller"),
     i("Pengaturan Toko", "settings-outline", admin ? "/admin/stores" : "/seller"),
   ];
@@ -34,6 +40,8 @@ function Nav({ admin, onGo }: { admin: boolean; onGo: () => void }) {
   const router = useRouter();
   const path = usePathname();
   const [open, setOpen] = useState(true);
+  const [storeId, setStoreId] = useState("");
+  useEffect(() => { if (!admin) api.myStore().then((s) => setStoreId(s?.store_id ?? "")).catch(() => {}); }, [admin]);
   const row = (it: Item, sub = false) => {
     const on = path === it.to || (it.to === "/product-editor/new" && path.startsWith("/product-editor") && path !== "/product-editor/list" && path !== "/product-editor/history");
     return (
@@ -47,7 +55,7 @@ function Nav({ admin, onGo }: { admin: boolean; onGo: () => void }) {
   return (
     <ScrollView contentContainerStyle={{ padding: spacing.md, gap: 2 }}>
       <Text style={styles.brand}>PGS Seller Center</Text>
-      {menu(admin).map((m) => ("children" in m ? (
+      {menu(admin, storeId).map((m) => ("children" in m ? (
         <View key={m.label}>
           <Pressable testID="nav-produk" style={styles.item} onPress={() => setOpen((o) => !o)}>
             <Icon name={m.icon as any} size={18} color={colors.onSurfaceSecondary} />

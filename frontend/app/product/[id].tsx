@@ -95,7 +95,8 @@ export default function ProductDetail() {
   const maxQty = Math.max(1, Math.min(variant ? variant.stock : product?.stock ?? 1, product?.max_order || Infinity));
   const tierUnit = variant ? variant.price : tiers.reduce((p, t) => (qty >= t.min_qty ? t.price : p), product?.my_price ?? product?.price ?? 0);
   const flashPrice = hasVariants ? null : product?.flash_price ?? null;
-  const unit = flashPrice ? Math.min(tierUnit, flashPrice) : tierUnit;
+  // the branch's flash price replaces the normal price; only a grosir tier (buy more) can go lower
+  const unit = flashPrice ? Math.min(flashPrice, ...tiers.filter((t) => t.min_qty > 1 && qty >= t.min_qty).map((t) => t.price)) : tierUnit;
 
   if (loading) {
     return (

@@ -23,29 +23,31 @@ const FILTERS = [{ id: "", label: "Semua" }, { id: "active", label: "Aktif" }, {
 function Row({ p, on, toggle, onEdit, onDuplicate, dup }: { p: EditorListItem; on: boolean; toggle: () => void; onEdit: () => void; onDuplicate: () => void; dup: boolean }) {
   return (
     <View style={[styles.row, on && styles.rowOn]} testID={`pl-row-${p.product_id}`}>
-      <Pressable testID={`pl-check-${p.product_id}`} hitSlop={8} onPress={toggle} style={styles.check}>
-        <Icon name={on ? "checkbox" : "square-outline"} size={22} color={on ? colors.brandPrimary : colors.muted} />
+      <Pressable testID={`pl-check-${p.product_id}`} hitSlop={8} onPress={toggle} style={styles.check} disabled={p.shared}>
+        <Icon name={p.shared ? "lock-closed-outline" : on ? "checkbox" : "square-outline"} size={22} color={on ? colors.brandPrimary : colors.muted} />
       </Pressable>
       <Image source={imgUrl(p.image)} style={styles.img} contentFit="cover" />
       <Pressable style={{ flex: 1, gap: 2 }} onPress={onEdit}>
         <Text style={styles.name} numberOfLines={2}>{p.name}</Text>
+        {p.shared ? <Text style={[styles.muted, { color: colors.brandPrimary }]} testID={`pl-shared-${p.product_id}`}>Katalog PGS · ketuk untuk ubah harga cabang</Text> : null}
+        {!p.shared && p.only_branch ? <Text style={[styles.muted, { color: colors.success }]} testID={`pl-own-${p.product_id}`}>Produk cabang ini · hanya tampil di cabang ini</Text> : null}
         <Text style={styles.muted} numberOfLines={1}>{p.sku ? `SKU ${p.sku} · ` : ""}{p.variants ? `${p.variants} variasi` : "Tanpa variasi"}</Text>
         <View style={styles.meta}>
           <Text style={styles.price}>{p.variants ? "mulai " : ""}{formatIDR(p.price)}</Text>
           {p.original_price > p.price ? <Text style={styles.strike}>{formatIDR(p.original_price)}</Text> : null}
           <Text style={[styles.muted, !p.stock && { color: colors.error }]}>· {p.stock ? `Stok ${p.stock}` : "Stok habis"}</Text>
           {p.status === "inactive" ? <Text style={styles.badge} testID={`pl-inactive-${p.product_id}`}>Nonaktif</Text> : null}
-          {!p.weight_grams ? <Text style={styles.badge} testID={`pl-noweight-${p.product_id}`}>Belum ada berat</Text>
+          {p.shared ? null : !p.weight_grams ? <Text style={styles.badge} testID={`pl-noweight-${p.product_id}`}>Belum ada berat</Text>
             : p.weight_estimated ? <Text style={[styles.badge, { color: colors.onSurface, borderColor: colors.warning }]} testID={`pl-estweight-${p.product_id}`}>⚠ Berat perkiraan {p.weight_grams} g</Text>
             : <Text style={styles.muted}>· {p.weight_grams} g</Text>}
-          {!p.dims?.[0] ? <Text style={styles.badge} testID={`pl-nodims-${p.product_id}`}>Belum ada ukuran dus</Text>
+          {p.shared ? null : !p.dims?.[0] ? <Text style={styles.badge} testID={`pl-nodims-${p.product_id}`}>Belum ada ukuran dus</Text>
             : p.dims_estimated ? <Text style={[styles.badge, { color: colors.onSurface, borderColor: colors.warning }]} testID={`pl-estdims-${p.product_id}`}>⚠ Ukuran perkiraan {p.dims.join("×")} cm</Text>
             : <Text style={styles.muted}>· {p.dims.join("×")} cm</Text>}
         </View>
       </Pressable>
-      <Pressable testID={`pl-duplicate-${p.product_id}`} style={styles.iconBtn} onPress={onDuplicate} disabled={dup} accessibilityLabel="Duplikat produk">
+      {p.shared ? null : <Pressable testID={`pl-duplicate-${p.product_id}`} style={styles.iconBtn} onPress={onDuplicate} disabled={dup} accessibilityLabel="Duplikat produk">
         {dup ? <ActivityIndicator size="small" color={colors.brandPrimary} /> : <Icon name="copy-outline" size={20} color={colors.brandPrimary} />}
-      </Pressable>
+      </Pressable>}
       <Pressable testID={`pl-edit-${p.product_id}`} style={styles.iconBtn} onPress={onEdit} accessibilityLabel="Ubah produk">
         <Icon name="create-outline" size={20} color={colors.onSurfaceSecondary} />
       </Pressable>
@@ -105,8 +107,10 @@ export default function ProductList() {
   useFocusEffect(useCallback(() => { if (first.current) { first.current = false; return; } void load(true); }, [load]));
 
   const toggle = (id: string) => setSel((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
-  const allOn = !!items?.length && items.every((p) => sel.has(p.product_id));
-  const toggleAll = () => setSel(allOn ? new Set() : new Set(items?.map((p) => p.product_id)));
+  const selectable = items?.filter((p) => !p.shared) ?? []; // shared catalog rows are edited in Harga Cabang, not in bulk
+  const allOn = !!selectable.length && selectable.every((p) => sel.has(p.product_id));
+  const toggleAll = () => setSel(allOn ? new Set() : new Set(selectable.map((p) => p.product_id)));
+  const branchView = !!items?.some((p) => p.shared);
   const storeName = ctx?.stores.find((s) => s.store_id === storeId)?.name ?? "";
 
   const duplicate = async (id: string) => {
@@ -134,13 +138,21 @@ export default function ProductList() {
             <Pressable testID="pl-add" style={styles.primary} onPress={() => router.push("/product-editor/new" as any)}>
               <Icon name="add" size={18} color={colors.onBrandPrimary} /><Text style={styles.primaryText}>Tambah Produk</Text>
             </Pressable>
-            <Pressable testID="pl-export" style={styles.outline} onPress={exportXlsx} disabled={exporting}>
-              {exporting ? <ActivityIndicator size="small" color={colors.brandPrimary} /> : <Icon name="download-outline" size={18} color={colors.brandPrimary} />}
-              <Text style={styles.outlineText}>Ekspor Excel</Text>
-            </Pressable>
-            <Pressable testID="pl-import" style={styles.outline} onPress={() => setImporting(true)}>
-              <Icon name="cloud-upload-outline" size={18} color={colors.brandPrimary} /><Text style={styles.outlineText}>Impor Excel</Text>
-            </Pressable>
+            {branchView ? (
+              <Pressable testID="pl-branch-prices" style={styles.outline} onPress={() => router.push(`/seller/branch-prices${admin && storeId ? `?store=${storeId}` : ""}` as any)}>
+                <Icon name="cash-outline" size={18} color={colors.brandPrimary} /><Text style={styles.outlineText}>Harga Cabang · Excel</Text>
+              </Pressable>
+            ) : (
+              <>
+                <Pressable testID="pl-export" style={styles.outline} onPress={exportXlsx} disabled={exporting}>
+                  {exporting ? <ActivityIndicator size="small" color={colors.brandPrimary} /> : <Icon name="download-outline" size={18} color={colors.brandPrimary} />}
+                  <Text style={styles.outlineText}>Ekspor Excel</Text>
+                </Pressable>
+                <Pressable testID="pl-import" style={styles.outline} onPress={() => setImporting(true)}>
+                  <Icon name="cloud-upload-outline" size={18} color={colors.brandPrimary} /><Text style={styles.outlineText}>Impor Excel</Text>
+                </Pressable>
+              </>
+            )}
           </View>
           {uncat ? (
             <View style={styles.weightBox} testID="pl-uncat-banner">
@@ -190,10 +202,12 @@ export default function ProductList() {
             {FILTERS.map((f) => <Pill key={f.id} testID={`pl-filter-${f.id || "all"}`} label={f.label} on={filter === f.id} onPress={() => setFilter(f.id)} />)}
           </ScrollView>
           {msg ? <Text style={[styles.muted, { color: msg.ok ? colors.success : colors.error }]} testID={msg.ok ? "pl-msg-ok" : "pl-msg-error"}>{msg.text}</Text> : null}
-          <Pressable testID="pl-select-all" style={styles.selAll} onPress={toggleAll} disabled={!items?.length}>
-            <Icon name={allOn ? "checkbox" : "square-outline"} size={20} color={allOn ? colors.brandPrimary : colors.muted} />
-            <Text style={styles.muted}>Pilih semua yang tampil · {total.toLocaleString("id-ID")} produk</Text>
-          </Pressable>
+          {selectable.length ? (
+            <Pressable testID="pl-select-all" style={styles.selAll} onPress={toggleAll}>
+              <Icon name={allOn ? "checkbox" : "square-outline"} size={20} color={allOn ? colors.brandPrimary : colors.muted} />
+              <Text style={styles.muted}>Pilih semua yang tampil · {total.toLocaleString("id-ID")} produk</Text>
+            </Pressable>
+          ) : <Text style={[styles.muted, styles.selAll]} testID="pl-total">{total.toLocaleString("id-ID")} produk</Text>}
         </View>
   );
 
@@ -212,7 +226,7 @@ export default function ProductList() {
             ListEmptyComponent={<Text style={[styles.muted, { textAlign: "center", marginTop: spacing.xl }]} testID="pl-empty">Belum ada produk. Tambah produk atau impor dari Excel.</Text>}
             renderItem={({ item }) => (
               <Row p={item} on={sel.has(item.product_id)} toggle={() => toggle(item.product_id)} dup={dup === item.product_id}
-                onEdit={() => router.push(`/product-editor/${item.product_id}` as any)} onDuplicate={() => duplicate(item.product_id)} />
+                onEdit={() => router.push((item.shared ? `/seller/branch-prices?q=${item.product_id}${admin && storeId ? `&store=${storeId}` : ""}` : `/product-editor/${item.product_id}`) as any)} onDuplicate={() => duplicate(item.product_id)} />
             )}
           />
         )}

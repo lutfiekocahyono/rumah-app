@@ -269,6 +269,8 @@ def register(api, db, get_current_user, require_admin, product_out_for_user, not
         if not await db.categories.find_one({"category_id": body.category}):
             raise HTTPException(status_code=400, detail="Kategori tidak ditemukan")
         doc = {**_doc(body, ctx["store"]), "product_id": f"sp_{uuid.uuid4().hex[:10]}", "rating": 0, "sold": 0, "created_at": _now()}
+        if ctx["store"]["store_id"] in OFFICIAL_IDS:  # branch admin: only this branch's buyers see it
+            doc["only_branch"] = ctx["store"]["store_id"]
         await db.products.insert_one({**doc})
         await log_activity(ctx["user"]["user_id"], "store", f"Menambah produk '{body.name}'")
         doc.pop("_id", None)
@@ -285,7 +287,10 @@ def register(api, db, get_current_user, require_admin, product_out_for_user, not
 
     @api.delete("/seller/products/{product_id}")
     async def seller_delete(product_id: str, ctx=Depends(require_seller)):
-        res = await db.products.delete_one({"product_id": product_id, "store_id": ctx["store"]["store_id"]})
+        q = {"product_id": product_id, "store_id": ctx["store"]["store_id"]}
+        if q["store_id"] == PGS_STORE_ID:  # the shared master catalogue can only be removed by the Super Admin
+            q["only_branch"] = PGS_STORE_ID
+        res = await db.products.delete_one(q)
         if res.deleted_count == 0:
             raise HTTPException(status_code=404, detail="Produk tidak ditemukan")
         return {"ok": True}
@@ -295,7 +300,7 @@ def register(api, db, get_current_user, require_admin, product_out_for_user, not
     async def seller_inventory(q: str = "", skip: int = 0, limit: int = 40, ctx=Depends(require_seller)):
         sid = ctx["store"]["store_id"]
         ids = [sid, PGS_STORE_ID] if sid in OFFICIAL_IDS else [sid]
-        query: dict = {"store_id": {"$in": ids}}
+        query: dict = {"store_id": {"$in": ids}, "only_branch": {"$in": [None, sid]}}
         if q.strip():
             query["name"] = {"$regex": re.escape(q.strip()), "$options": "i"}
         docs = await db.products.find(query, {"_id": 0, "product_id": 1, "name": 1, "image": 1, "price": 1, "stock": 1, "store_id": 1}) \

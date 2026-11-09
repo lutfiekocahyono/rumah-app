@@ -124,9 +124,9 @@ def register(api, db, get_current_user, seller):
     @api.get("/branch-prices")
     async def list_branch_prices(store_id: Optional[str] = None, q: str = "", skip: int = 0, limit: int = 40, user=Depends(get_current_user)):
         sid = await branch_for(user, store_id)
-        query: dict = {"store_id": seller.PGS_STORE_ID, "variants.0": {"$exists": False}}
+        query: dict = {"store_id": seller.PGS_STORE_ID, "variants.0": {"$exists": False}, "only_branch": None}
         if q.strip():
-            query["name"] = {"$regex": re.escape(q.strip()), "$options": "i"}
+            query["$or"] = [{"name": {"$regex": re.escape(q.strip()), "$options": "i"}}, {"product_id": q.strip()}]
         docs = await db.products.find(query, {"_id": 0, "product_id": 1, "name": 1, "image": 1, "price": 1, "original_price": 1, "tier_prices": 1}) \
             .sort("name", 1).skip(max(0, skip)).limit(min(max(1, limit), 100)).to_list(100)
         rows = {r["product_id"]: r for r in await db.store_stock.find({"store_id": sid, "product_id": {"$in": [d["product_id"] for d in docs]}}, {"_id": 0}).to_list(100)}
@@ -136,7 +136,7 @@ def register(api, db, get_current_user, seller):
     @api.put("/branch-prices/{product_id}")
     async def set_branch_price(product_id: str, body: BranchPriceIn, user=Depends(get_current_user)):
         sid = await branch_for(user, body.store_id)
-        p = await db.products.find_one({"product_id": product_id, "store_id": seller.PGS_STORE_ID}, {"_id": 0})
+        p = await db.products.find_one({"product_id": product_id, "store_id": seller.PGS_STORE_ID, "only_branch": None}, {"_id": 0})
         if not p:
             raise HTTPException(status_code=404, detail="Produk tidak ditemukan di katalog PGS")
         if p.get("variants"):
@@ -178,7 +178,7 @@ def register(api, db, get_current_user, seller):
                 "errors": errors[:50], "error_count": len(errors), "sample": [{k: i[k] for k in ("product_id", "name", "before", "after")} for i in items[:30]]}
 
     async def scope_products(q: str, ids: List[str]) -> list:
-        query: dict = {"store_id": seller.PGS_STORE_ID, "variants.0": {"$exists": False}}
+        query: dict = {"store_id": seller.PGS_STORE_ID, "variants.0": {"$exists": False}, "only_branch": None}
         if ids:
             query["product_id"] = {"$in": ids}
         if q.strip():
