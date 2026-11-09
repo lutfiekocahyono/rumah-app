@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, StyleSheet, Pressable, ScrollView, ActivityIndicator, Dimensions } from "react-native";
+import { View, Text, StyleSheet, Pressable, ScrollView, ActivityIndicator, Dimensions, Platform, Share } from "react-native";
+import * as Clipboard from "expo-clipboard";
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -18,7 +19,7 @@ import { useStore } from "@/src/store-context";
 
 const { width: screenW } = Dimensions.get("window");
 
-const OK_TOASTS = ["Ditambahkan ke keranjang", "Toko diganti"]; // anything else is an error message
+const OK_TOASTS = ["Ditambahkan ke keranjang", "Toko diganti", "Tautan produk disalin"]; // anything else is an error message
 
 export default function ProductDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -49,6 +50,32 @@ export default function ProductDetail() {
   const [toast, setToast] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
   const [picked, setPicked] = useState<Record<number, string>>({}); // option index -> chosen value
+  const { toko } = useLocalSearchParams<{ toko?: string }>();
+  const { choose, stores } = useStore();
+  const showToast = (t: string) => { setToast(t); setTimeout(() => setToast(""), 2500); };
+
+  // shared link ?toko=<branch>: open the product with the sender's branch (prices & stock follow it)
+  useEffect(() => {
+    if (ready && toko && toko !== storeId && stores.some((s) => s.store_id === toko)) void choose(toko).then(() => showToast("Toko diganti"));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, toko, stores.length]);
+
+  const share = async () => {
+    if (!product) return;
+    const base = Platform.OS === "web" ? window.location.origin : process.env.EXPO_PUBLIC_BACKEND_URL;
+    const url = `${base}/product/${encodeURIComponent(product.product_id)}?toko=${encodeURIComponent(storeId)}`;
+    const text = `${product.name} - ${formatIDR(product.my_price ?? product.price)}`;
+    try {
+      if (Platform.OS !== "web") { await Share.share({ message: `${text}\n${url}`, url, title: product.name }); return; }
+      const nav: any = typeof navigator !== "undefined" ? navigator : null;
+      const touch = typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches;
+      if (touch && nav?.share) { await nav.share({ title: product.name, text, url }); return; }
+      await Clipboard.setStringAsync(url);
+      showToast("Tautan produk disalin");
+    } catch (e: any) {
+      if (e?.name !== "AbortError") showToast("Gagal membagikan, coba lagi");
+    }
+  };
 
   useEffect(() => {
     if (!id || !ready) return; // wait for the saved branch: prices follow it
@@ -137,6 +164,9 @@ export default function ProductDetail() {
               <Icon name="chevron-back" size={22} color={colors.onSurface} />
             </Pressable>
             <View style={{ flex: 1 }} />
+            <Pressable testID="pd-share-btn" hitSlop={8} onPress={share} style={styles.topBtn} accessibilityLabel="Bagikan produk">
+              <Icon name="share-social-outline" size={20} color={colors.onSurface} />
+            </Pressable>
             <Pressable testID="pd-wishlist-btn" hitSlop={8} onPress={() => toggleWishlist(product.product_id)} style={styles.topBtn}>
               <Icon name={wished ? "heart" : "heart-outline"} size={20} color={wished ? colors.brandPrimary : colors.onSurface} />
             </Pressable>
