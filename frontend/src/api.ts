@@ -88,14 +88,6 @@ async function req<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 export const api = {
-  /** Cari dengan foto: products that look most like the buyer's photo, priced for the chosen branch. */
-  imageSearch: async (file: LocalFile) => {
-    const { "Content-Type": _ct, ...h } = await headers();
-    const res = await uploadForm(`${BASE}/api/products/image-search`, { files: { file }, headers: h });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(typeof data.detail === "string" ? data.detail : `HTTP ${res.status}`);
-    return data as { items: (Product & { similarity: number })[]; indexed: number };
-  },
   // auth
   register: (email: string, password: string, name: string) =>
     req<{ token: string; user: User }>("/auth/register", { method: "POST", body: JSON.stringify({ email, password, name }) }),

@@ -4,7 +4,6 @@ import { Image } from "expo-image";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useAuth } from "@/src/auth-context";
 import { useStore } from "@/src/store-context";
-import { PhotoSearchButton } from "@/src/components/photo-search-button";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Icon from "@react-native-vector-icons/ionicons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -121,10 +120,9 @@ export default function Home() {
         </View>
         <Pressable testID="search-input-open" style={styles.search} onPress={() => router.push("/search?focus=1" as any)}>
           <Icon name="search" size={18} color={colors.muted} />
-          <Text style={[styles.searchPlaceholder, { flex: 1 }]} testID="home-search-placeholder">
+          <Text style={styles.searchPlaceholder} testID="home-search-placeholder">
             {productCount ? `Cari dari ${productCount.toLocaleString("id-ID")} produk…` : "Cari produk…"}
           </Text>
-          <PhotoSearchButton testID="home-photo-search" />
         </Pressable>
       </View>
 

@@ -30,7 +30,6 @@ import branch_copy
 import branch_price
 import customer_location
 import store_page
-import image_search
 import order_tasks
 from order_tasks import COD_PICKUP_HOURS, RELEASE_STATUSES
 import promo
@@ -101,7 +100,6 @@ INDEXES: dict[str, list[IndexModel]] = {
     "one_time_codes": [IndexModel([("expires_at", ASCENDING)], name="ttl", expireAfterSeconds=0),
                        IndexModel([("user_id", ASCENDING), ("purpose", ASCENDING)], name="user_purpose")],
     "store_stock": [IndexModel([("store_id", ASCENDING), ("product_id", ASCENDING)], name="store_product", unique=True)],
-    "image_vectors": [IndexModel([("product_id", ASCENDING)], name="product", unique=True)],
     "home_sections": [IndexModel([("store_id", ASCENDING)], name="store_id", unique=True)],
     "product_drafts": [IndexModel([("owner", ASCENDING), ("updated_at", ASCENDING)], name="owner_updated")],
     "rate_limits": [IndexModel([("expires_at", ASCENDING)], name="ttl", expireAfterSeconds=0)],
@@ -1439,8 +1437,6 @@ branch_price.register(api, db, get_current_user, seller)
 customer_location.register(api, db, get_owner=get_owner, require_admin=require_admin)
 store_page.register(api, db, require_admin=require_admin, get_current_user=get_current_user, get_optional_user=get_optional_user,
                     visible=_visible, apply_stock=_apply_stock, product_out=_product_out, active_flash=promo.active_flash)
-_image_index_loop = image_search.register(api, db, require_admin=require_admin, get_optional_user=get_optional_user,
-                                          visible=_visible, apply_stock=_apply_stock, product_out=_product_out, active_flash=promo.active_flash)
 app.include_router(api)
 
 app.add_middleware(
@@ -1462,7 +1458,6 @@ async def _startup():
     await payments.load_config(db)
     app.state.expire_task = asyncio.create_task(_expire_loop())
     app.state.digest_task = asyncio.create_task(_product_digest_loop())
-    app.state.image_task = asyncio.create_task(_image_index_loop())
     try:
         await run_in_threadpool(storage.init_storage)
     except Exception:

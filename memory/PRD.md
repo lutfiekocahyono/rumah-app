@@ -210,3 +210,6 @@ Iteration 2: import all data from pusatgrosirsidoarjo.com; tiered pricing (pembe
 - image_search.py: local CLIP ViT-B/32 (fastembed ONNX, model cached /tmp/fastembed_models, no AI cost). Background loop fingerprints up to 3 photos/product (WordPress -300x300 thumbs), collection image_vectors; reruns every 5 min for new/changed photos; failed retried 3 runs.
 - POST /api/products/image-search (multipart file) -> top 20 by similarity, buyer branch visibility/price/stock (X-Store-Id), in-stock first. GET /api/admin/image-index progress (admin).
 - Frontend: camera icon (PhotoSearchButton) in global top bar, Beranda and Katalog search boxes -> /cari-foto (Ambil Foto / Pilih dari Galeri with crop, permission handling, "Mirip xx%" badge).
+
+## Iteration 60 — Cari dengan Foto DIBATALKAN (owner: tidak akurat)
+- Removed image_search.py, /cari-foto, PhotoSearchButton, api.imageSearch, background index loop, image_vectors collection, products.img_sig/img_tries, fastembed/onnxruntime packages. app.json permission texts restored. Do not rebuild unless owner asks.
