@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, Pressable, TextInput, FlatList, Dimensions, Act
 import { useLocalSearchParams, usePathname, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Icon from "@react-native-vector-icons/ionicons";
+import { PhotoSearchButton } from "@/src/components/photo-search-button";
 
 import { colors, fontSize, radius, spacing } from "@/src/theme";
 import { api, type Product } from "@/src/api";
@@ -80,6 +81,7 @@ export default function Search() {
             style={{ flex: 1, color: colors.onSurface, paddingVertical: 10 }}
           />
           {q ? <Pressable testID="search-clear" hitSlop={12} onPress={() => setQ("")}><Icon name="close-circle" size={20} color={colors.muted} /></Pressable> : null}
+          <PhotoSearchButton testID="search-photo-search" />
         </View>
       </View>
 

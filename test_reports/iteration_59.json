@@ -1,0 +1,39 @@
+{
+  "summary": "Tested Cari dengan Foto (photo search) end to end. Backend: 13/13 pytest passed. Searching with the 300x300 image of indexed product pgs-48799 puts it first at 95% (pgs-51962 is in the top 3). The response returns at most 20 items plus `indexed`, with in-stock items before out-of-stock. Jombang (X-Store-Id) price and stock come from store_stock (334000, stock 2), while Sidoarjo shows 332000. An unknown store id falls back to pgs-official. A TEST_ product limited to the Jember branch shows up only for pgs-jember, not for Jombang or Sidoarjo. A non-image file and a file over 10MB both return 400 with the expected messages; a missing file returns 422. /admin/image-index works for admin, returns 403 for a customer and 401/403 without login. Search takes about 1.2s. Frontend at 390x844: the camera buttons home-photo-search, global-photo-search (/product/pgs-9955) and search-photo-search all open /cari-foto, and back returns to the product page with no double navigation. ps-camera and ps-gallery are 175x48. Uploading through ps-gallery shows the preview, '20 produk paling mirip' and 20 ps-hit-* cards, with pgs-48799 first at 'Kemiripan 95%'. Product images load. With Jombang selected, cards show Mitra PGS Jombang, Jombang stock 2 and Rp320.720-Rp334.000, and the request carries X-Store-Id: pgs-jombang. On web, ps-camera also opens the file chooser. No deprecated Expo packages were found (expo-image-picker is used).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "image index (_thumb)", "issue": "2087 products have a first image named '*-scaled.jpg'. _thumb() turns it into '*-scaled-300x300.jpg', which returns 404 (the real thumbnail is '*-300x300.jpg' without '-scaled'). The indexer then downloads the full scaled image instead (~250KB vs ~16KB, measured for pgs-48799), which slows the first index run a lot. Fix: strip '-scaled' in the regex, or use p['image'], which already holds the 300x300 thumbnail."},
+      {"endpoint": "image index (failed)", "issue": "A product whose photo downloads all fail, even from a temporary network or 5xx error, is marked 'failed:<sig>' and is never retried until its photos change. Consider retrying failed items on later runs, e.g. once a day."},
+      {"endpoint": "POST /api/products/image-search (matrix)", "issue": "While indexing runs, every batch marks the matrix dirty, so the next search reloads every vector from Mongo while holding the lock. That is fine now (~1.2s with 816 indexed) but will slow down as the index grows toward ~15-20k vectors. Concurrent searches wait on the lock. Possible fix: rebuild at most every N seconds, or add new rows incrementally."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "cari-foto gallery/camera", "issue": "On web, picking a file that is not an image (forced through the chooser) makes expo-image-picker throw an uncaught 'Unsupported file type: text/plain' and the dev red overlay appears. In real browsers the accept=image/* filter usually prevents this. gallery() and camera() have no try/catch, so any rejection from the picker is unhandled. Wrap them in try/catch and setErr.", "testID": "ps-gallery", "priority": "low"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "cari-foto", "issues": ["The 'Kemiripan xx%' label is 11px muted text outside the card border, which is easy to miss. Consider a badge inside the card or at least 12-13px text."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iter59_image_search.py", "/app/test_reports/pytest/pytest_iter59.xml"],
+  "action_items": [
+    "Fix _thumb for '-scaled' images, or use p['image'], to avoid 404s and full-size downloads for about 2087 products",
+    "Retry 'failed:' fingerprints on later runs",
+    "Add try/catch around ImagePicker launch calls in cari-foto.tsx",
+    "Optional: throttle matrix rebuilds while indexing is in progress"
+  ],
+  "critical_code_review_comments": [
+    "image_search.py: the top 600 vectors are deduplicated per product, then filtered by _visible('all', branch). This is correct for branch isolation, but if many of the top 600 are hidden by the filter, fewer than 20 results can come back. That is acceptable.",
+    "The nested Pressable inside global-search works on web: only /cari-foto is pushed.",
+    "app.json has cameraPermission/photosPermission set for expo-image-picker and NSCameraUsageDescription."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter59_image_search.py"],
+  "success_rate": {"backend": "100%", "frontend": "100% of the requested flows"},
+  "seed_data_creation": "TEST_ps_jember_only (a copy of pgs-48799 with only_branch=pgs-jember, plus a copy of its image_vectors) is created and deleted by a fixture. Cleanup was verified (0 left).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Downloaded test images: /tmp/p48799.jpg (from products.image of pgs-48799) and /tmp/p51962.jpg. The UI needs page.context.grant_permissions(['geolocation']) and set_geolocation, otherwise the location gate modal blocks the screen. Set the branch with localStorage pgs_store_id=pgs-jombang and pgs_store_manual=1. Indexing was about 1392/6618 done at test time."
+}

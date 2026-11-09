@@ -11,11 +11,12 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.emergent.rumahapp.mqe765",
       "infoPlist": {
-        "NSCameraUsageDescription": "Scan barcode produk dan kode ambil pesanan",
+        "NSCameraUsageDescription": "Scan barcode dan cari produk dengan foto",
         "LSApplicationQueriesSchemes": [
           "whatsapp"
         ],
-        "NSLocationWhenInUseUsageDescription": "Tampilkan cabang & ongkir terdekat untuk Anda"
+        "NSLocationWhenInUseUsageDescription": "Tampilkan cabang & ongkir terdekat untuk Anda",
+        "NSPhotoLibraryUsageDescription": "Pilih foto barang untuk dicari"
       }
     },
     "android": {
@@ -53,7 +54,8 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Pilih gambar banner promo dari galeri"
+          "photosPermission": "Pilih foto barang atau banner dari galeri",
+          "cameraPermission": "Foto barang untuk mencari produk serupa"
         }
       ],
       "expo-image",
@@ -65,7 +67,7 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Scan barcode produk dan kode ambil pesanan",
+          "cameraPermission": "Scan barcode dan cari produk dengan foto",
           "recordAudioAndroid": false
         }
       ],

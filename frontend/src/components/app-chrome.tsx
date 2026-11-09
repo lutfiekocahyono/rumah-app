@@ -6,11 +6,12 @@ import Icon from "@react-native-vector-icons/ionicons";
 
 import { colors, fontSize, radius, spacing } from "@/src/theme";
 import { useCart } from "@/src/cart-context";
+import { PhotoSearchButton } from "@/src/components/photo-search-button";
 
 // login / daftar / pembayaran stay plain so buyers can focus on finishing
 const PLAIN = [/^\/login/, /^\/register/, /^\/forgot-password/, /^\/checkout/];
 // these already have their own search box at the top
-const OWN_SEARCH = [/^\/$/, /^\/search/, /^\/katalog/, /^\/scan/];
+const OWN_SEARCH = [/^\/$/, /^\/search/, /^\/katalog/, /^\/scan/, /^\/cari-foto/];
 
 const ITEMS = [
   { key: "home", label: "Beranda", icon: "home", to: "/", match: (p: string) => p === "/" },
@@ -27,7 +28,8 @@ function TopSearch({ top }: { top: number }) {
     <View style={[styles.top, { paddingTop: top + spacing.sm }]} testID="global-search-bar">
       <Pressable testID="global-search" style={styles.search} onPress={() => router.push("/search?focus=1" as any)}>
         <Icon name="search" size={18} color={colors.muted} />
-        <Text style={styles.searchText}>Cari di Katalog Produk…</Text>
+        <Text style={[styles.searchText, { flex: 1 }]}>Cari di Katalog Produk…</Text>
+        <PhotoSearchButton testID="global-photo-search" />
       </Pressable>
     </View>
   );

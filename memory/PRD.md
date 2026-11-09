@@ -205,3 +205,8 @@ Iteration 2: import all data from pusatgrosirsidoarjo.com; tiered pricing (pembe
 - Frontend: /shop/[id] banner + overlapping logo, call/WhatsApp, Produk Andalan, Produk Toko + empty message. Beranda store-switch -> /pilih-toko?from=home -> after choosing, replace to /shop/{id} (back returns to Beranda). /seller/store-appearance editor (menu Tampilan Toko / Tampilan Toko Cabang for admin).
 - Wishlist uses buyer branch (X-Store-Id); SellerShell shows back button on phones.
 - ?branch= product search uses that branch's stock (featured picker).
+
+## Iteration 59 — Cari dengan Foto
+- image_search.py: local CLIP ViT-B/32 (fastembed ONNX, model cached /tmp/fastembed_models, no AI cost). Background loop fingerprints up to 3 photos/product (WordPress -300x300 thumbs), collection image_vectors; reruns every 5 min for new/changed photos; failed retried 3 runs.
+- POST /api/products/image-search (multipart file) -> top 20 by similarity, buyer branch visibility/price/stock (X-Store-Id), in-stock first. GET /api/admin/image-index progress (admin).
+- Frontend: camera icon (PhotoSearchButton) in global top bar, Beranda and Katalog search boxes -> /cari-foto (Ambil Foto / Pilih dari Galeri with crop, permission handling, "Mirip xx%" badge).
