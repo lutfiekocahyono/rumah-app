@@ -776,14 +776,33 @@ async def list_products(
     }
     stock_ctx = x_store_id if (in_stock or branch) and not store and x_store_id in seller.OFFICIAL_IDS else ctx  # "Tersedia di <cabang>" / ?branch=: show that branch's stock
     pb = await _priced_branch(x_store_id) if sort in ("price_asc", "price_desc") else None
-    if pb:  # sort by the price the buyer sees in his branch
+    if branch in seller.OFFICIAL_IDS and not store:  # branch store page: that branch's stock, sold-out items at the bottom of ALL pages
+        b, pgs = branch, seller.PGS_STORE_ID
+        shared = {"$and": [{"$eq": ["$store_id", pgs]}, {"$eq": [{"$size": {"$ifNull": ["$variants", []]}}, 0]}]}
+        own_stock = {"$cond": [{"$eq": ["$in_stock", False]}, 0, {"$ifNull": ["$stock", 0]}]}
+        st = own_stock if b == pgs else {"$cond": [shared, {"$ifNull": [{"$first": "$_bs.stock"}, 0]}, own_stock]}
+        key = {"popular": {"sold": -1}, "newest": {"created_at": -1}, "rating": {"rating": -1},
+               "price_asc": {"_bp": 1}, "price_desc": {"_bp": -1}}[sort]
+        rows = await db.products.aggregate([
+            {"$match": query},
+            {"$lookup": {"from": "store_stock", "localField": "product_id", "foreignField": "product_id",
+                         "pipeline": [{"$match": {"store_id": b}}, {"$project": {"_id": 0, "price": 1, "stock": 1}}], "as": "_bs"}},
+            {"$addFields": {"_has": {"$cond": [{"$gt": [st, 0]}, 1, 0]},
+                            "_bp": {"$cond": [{"$gt": [{"$ifNull": [{"$first": "$_bs.price"}, 0]}, 0]}, {"$first": "$_bs.price"}, "$price"]}}},
+            {"$sort": {"_has": -1, **key, "product_id": 1}}, {"$skip": skip}, {"$limit": limit},
+            {"$project": {"_id": 0, "_bs": 0, "_bp": 0, "_has": 0}}]).to_list(limit)
+    elif pb:  # sort by the price the buyer sees in his branch
         rows = await db.products.aggregate([{"$match": query}, *_branch_price_stages(pb),
                                             {"$sort": {"_bp": 1 if sort == "price_asc" else -1, "product_id": 1 if sort == "price_asc" else -1}},
                                             {"$skip": skip}, {"$limit": limit}, {"$project": {"_id": 0, "_bs": 0, "_bp": 0}}]).to_list(limit)
     else:
         rows = await db.products.find(query, {"_id": 0}).sort(sort_map[sort]).skip(skip).limit(limit).to_list(limit)
     docs = await _apply_stock(rows, stock_ctx, x_store_id)
-    if ctx == ALL_BRANCHES and sort in ("popular", "newest"):
+    if branch in seller.OFFICIAL_IDS and not store:  # same rule as the sort above: stock 0 = sold out
+        for d in docs:
+            if not d.get("variants"):
+                d["in_stock"] = d.get("stock", 0) > 0 and d.get("in_stock", True)
+    if ctx == ALL_BRANCHES and sort in ("popular", "newest") and not branch:
         docs.sort(key=lambda d: not d.get("in_stock", True))  # stable: in-stock (any branch) first within the page
     flash = await promo.active_flash(db)
     ctype = (user or {}).get("customer_type", "langsung")
@@ -793,8 +812,10 @@ async def list_products(
 @api.get("/products/facets")
 async def product_facets(category: Optional[str] = None, q: Optional[str] = None, brand: Optional[str] = None,
                          min_price: Optional[int] = Query(None, ge=0), max_price: Optional[int] = Query(None, ge=0),
-                         in_stock: bool = False, wholesale: bool = False, x_store_id: Optional[str] = Header(default=None)):
+                         in_stock: bool = False, wholesale: bool = False, branch: Optional[str] = None, x_store_id: Optional[str] = Header(default=None)):
     """Filter options for the search page: brands & categories (with counts) and the price range of the current results."""
+    if branch in seller.OFFICIAL_IDS:  # branch store page
+        x_store_id = branch
     base = await _catalog_query(ALL_BRANCHES, category, q, brand, min_price, max_price, in_stock, wholesale, x_store_id)
     no_brand = await _catalog_query(ALL_BRANCHES, category, q, None, min_price, max_price, in_stock, wholesale, x_store_id)
     no_cat = await _catalog_query(ALL_BRANCHES, None, q, brand, min_price, max_price, in_stock, wholesale, x_store_id)

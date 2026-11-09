@@ -215,7 +215,6 @@ export const api = {
   editStore: (s: StoreInput) => req<Store>("/me/store", { method: "PUT", body: JSON.stringify(s) }),
   storePage: (id: string) => req<Store>(`/stores/${id}`),
   shopPage: (id: string) => req<ShopPage>(`/stores/${id}/page`),
-  shopProducts: (id: string, skip = 0, q = "", category = "") => req<Product[]>(`/stores/${id}/own-products?${qs({ skip, q, category })}`),
   suggest: (q: string) => req<{ products: { product_id: string; name: string; image: string }[]; brands: string[]; categories: { category_id: string; name: string }[] }>(`/products/suggest?${qs({ q })}`),
   storeAppearance: () => req<StoreAppearance[]>("/store-appearance"),
   saveStoreAppearance: (id: string, b: Omit<StoreAppearance, "store_id" | "name" | "city" | "featured"> & { featured_ids: string[] }) =>
@@ -452,7 +451,7 @@ export type HomeSectionsInput = Record<HomeSectionKey, HomeSectionCfg>;
 export type HomeSectionsSettings = { store_id: string; store_name: string; sections: Record<HomeSectionKey, HomeSectionCfg & { pinned_products: { product_id: string; name: string; image: string; price: number }[] }> };
 export type HomeFeed = Record<HomeSectionKey, { enabled: boolean; title: string; limit: number; items: Product[]; more?: boolean }>;
 export type Store = { official?: boolean; store_id: string; owner_id: string; name: string; description: string; city: string; phone?: string; logo: string; status: "pending" | "active" | "rejected" | "suspended"; note: string; created_at: string; product_count?: number; owner_name?: string; owner_email?: string; address?: string; pickup_hours?: string };
-export type ShopPage = Store & { banner: string; featured: Product[]; featured_manual: boolean; categories: { category_id: string; name: string; count: number }[] };
+export type ShopPage = Store & { banner: string; featured: Product[]; featured_manual: boolean };
 export type StoreAppearance = { store_id: string; name: string; city: string; banner: string; logo: string; description: string; phone: string; address: string; pickup_hours: string; featured: { product_id: string; name: string; image: string }[] };
 export type StoreInput = { name: string; description: string; city: string; phone: string; logo: string; address?: string; pickup_hours?: string };
 export type SellerProductInput = { name: string; description: string; category: string; price: number; original_price: number; stock: number; images: string[] };

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { View, Text, StyleSheet, FlatList, ActivityIndicator, Dimensions, Pressable, Image, Linking, RefreshControl, TextInput, ScrollView } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Icon from "@react-native-vector-icons/ionicons";
 
@@ -9,6 +9,12 @@ import { api, imgUrl, type Product, type ShopPage as Shop } from "@/src/api";
 import { ScreenHeader } from "@/src/components/screen-header";
 import { ProductCard } from "@/src/components/product-card";
 import { adminStyles } from "@/src/components/admin-form";
+import { FilterSheet, NO_FILTERS, activeCount, toQuery, type SearchFilters } from "@/src/components/search-filters";
+
+const SORTS = [
+  { key: "popular", label: "Terlaris" }, { key: "newest", label: "Terbaru" },
+  { key: "price_asc", label: "Harga termurah" }, { key: "price_desc", label: "Harga termahal" },
+] as const;
 
 const { width: screenW } = Dimensions.get("window");
 const GAP = spacing.md;
@@ -24,7 +30,9 @@ function InfoRow({ icon, text, testID }: { icon: string; text: string; testID: s
   );
 }
 
-function Header({ s, q, setQ, cat, setCat }: { s: Shop; q: string; setQ: (v: string) => void; cat: string; setCat: (v: string) => void }) {
+function Header({ s, q, setQ, sort, setSort, nFilters, openFilter }: {
+  s: Shop; q: string; setQ: (v: string) => void; sort: string; setSort: (v: string) => void; nFilters: number; openFilter: () => void;
+}) {
   return (
     <View style={{ marginBottom: spacing.sm }}>
       <View style={styles.bannerWrap} testID="shop-banner">
@@ -68,28 +76,25 @@ function Header({ s, q, setQ, cat, setCat }: { s: Shop; q: string; setQ: (v: str
         </View>
       ) : null}
       <Text style={[styles.h, { paddingHorizontal: spacing.lg, marginTop: spacing.md }]}>Produk Toko</Text>
-      {s.product_count ? (
-        <View style={{ gap: spacing.sm, marginTop: spacing.sm }}>
-          <View style={styles.searchBox}>
-            <Icon name="search" size={18} color={colors.muted} />
-            <TextInput testID="shop-search" value={q} onChangeText={setQ} placeholder={`Cari di ${s.name}…`} placeholderTextColor={colors.muted}
-              style={styles.searchInput} returnKeyType="search" />
-            {q ? <Pressable testID="shop-search-clear" hitSlop={10} onPress={() => setQ("")}><Icon name="close-circle" size={18} color={colors.muted} /></Pressable> : null}
-          </View>
-          {s.categories.length > 1 ? (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.xs, paddingHorizontal: spacing.lg }}>
-              {[{ category_id: "", name: "Semua", count: s.product_count ?? 0 }, ...s.categories].map((c) => {
-                const on = cat === c.category_id;
-                return (
-                  <Pressable key={c.category_id || "all"} testID={`shop-cat-${c.category_id || "all"}`} onPress={() => setCat(c.category_id)} style={[styles.chip, on && styles.chipOn]}>
-                    <Text style={[styles.chipText, on && { color: colors.onBrandPrimary }]}>{c.name} ({c.count})</Text>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-          ) : null}
+      <View style={{ gap: spacing.sm, marginTop: spacing.sm }}>
+        <View style={styles.searchBox}>
+          <Icon name="search" size={18} color={colors.muted} />
+          <TextInput testID="shop-search" value={q} onChangeText={setQ} placeholder={`Cari di ${s.name}…`} placeholderTextColor={colors.muted}
+            style={styles.searchInput} returnKeyType="search" />
+          {q ? <Pressable testID="shop-search-clear" hitSlop={10} onPress={() => setQ("")}><Icon name="close-circle" size={18} color={colors.muted} /></Pressable> : null}
         </View>
-      ) : null}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.xs, paddingHorizontal: spacing.lg }}>
+          <Pressable testID="shop-filter-btn" onPress={openFilter} style={[styles.chip, styles.filterChip, nFilters > 0 && styles.chipOn]}>
+            <Icon name="options-outline" size={16} color={nFilters ? colors.onBrandPrimary : colors.onSurface} />
+            <Text style={[styles.chipText, nFilters > 0 && { color: colors.onBrandPrimary }]}>Filter{nFilters ? ` (${nFilters})` : ""}</Text>
+          </Pressable>
+          {SORTS.map((o) => (
+            <Pressable key={o.key} testID={`shop-sort-${o.key}`} onPress={() => setSort(o.key)} style={[styles.chip, sort === o.key && styles.chipOn]}>
+              <Text style={[styles.chipText, sort === o.key && { color: colors.onBrandPrimary }]}>{o.label}</Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+      </View>
     </View>
   );
 }
@@ -97,7 +102,6 @@ function Header({ s, q, setQ, cat, setCat }: { s: Shop; q: string; setQ: (v: str
 export default function ShopPage() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const insets = useSafeAreaInsets();
-  const router = useRouter();
   const [store, setStore] = useState<Shop | null>(null);
   const [items, setItems] = useState<Product[]>([]);
   const [err, setErr] = useState("");
@@ -105,34 +109,36 @@ export default function ShopPage() {
   const [done, setDone] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [q, setQ] = useState("");
-  const [cat, setCat] = useState("");
-  const filtered = !!(q.trim() || cat);
+  const [sort, setSort] = useState("popular");
+  const [filters, setFilters] = useState<SearchFilters>(NO_FILTERS);
+  const [sheet, setSheet] = useState(false);
+  const nFilters = activeCount(filters);
+  const filtered = !!(q.trim() || nFilters);
+  // official branch: the whole catalog of that branch (shared + its own) with its prices & stock; other stores: their own products
+  const fetchPage = useCallback((skip: number) => {
+    if (!id || !store) return Promise.resolve([] as Product[]);
+    return api.products({ ...toQuery(q.trim(), filters), sort, skip, limit: 40, ...(store.official ? { branch: id } : { store: id }) });
+  }, [id, store, q, filters, sort]);
 
   const load = useCallback(async () => {
     if (!id) return;
     setErr("");
-    try {
-      const [s, p] = await Promise.all([api.shopPage(id), api.shopProducts(id)]);
-      setStore(s); setItems(p); setDone(p.length < 40);
-    } catch (e: any) { setErr(e.message); }
+    try { setStore(await api.shopPage(id)); } catch (e: any) { setErr(e.message); }
   }, [id]);
   useEffect(() => { void load(); }, [load]);
 
-  // search / category inside this store
-  const first = React.useRef(true);
   useEffect(() => {
-    if (first.current) { first.current = false; return; }
-    if (!id) return;
+    if (!store) return;
     let live = true;
-    const t = setTimeout(() => api.shopProducts(id, 0, q.trim(), cat).then((p) => { if (live) { setItems(p); setDone(p.length < 40); } }).catch(() => {}), 300);
+    const t = setTimeout(() => fetchPage(0).then((p) => { if (live) { setItems(p); setDone(p.length < 40); } }).catch(() => {}), 300);
     return () => { live = false; clearTimeout(t); };
-  }, [id, q, cat]);
+  }, [store, fetchPage]);
 
   const loadMore = async () => {
     if (more || done || !id || !items.length) return;
     setMore(true);
     try {
-      const p = await api.shopProducts(id, items.length, q.trim(), cat);
+      const p = await fetchPage(items.length);
       setItems((c) => { const seen = new Set(c.map((x) => x.product_id)); return [...c, ...p.filter((x) => !seen.has(x.product_id))]; });
       if (p.length < 40) setDone(true);
     } finally { setMore(false); }
@@ -150,25 +156,19 @@ export default function ShopPage() {
           contentContainerStyle={{ gap: GAP, paddingBottom: insets.bottom + spacing.xl }}
           onEndReached={loadMore}
           onEndReachedThreshold={0.5}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); setQ(""); setCat(""); await load(); setRefreshing(false); }} />}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); setQ(""); setFilters(NO_FILTERS); setSort("popular"); await load(); setRefreshing(false); }} />}
           keyboardShouldPersistTaps="handled"
-          ListHeaderComponent={<Header s={store} q={q} setQ={setQ} cat={cat} setCat={setCat} />}
+          ListHeaderComponent={<Header s={store} q={q} setQ={setQ} sort={sort} setSort={setSort} nFilters={nFilters} openFilter={() => setSheet(true)} />}
           ListEmptyComponent={filtered ? (
             <View style={styles.empty} testID="shop-no-match">
               <Icon name="search-outline" size={32} color={colors.muted} />
               <Text style={styles.emptyH}>Produk tidak ditemukan di toko ini</Text>
-              <Pressable testID="shop-reset" style={styles.btn} onPress={() => { setQ(""); setCat(""); }}><Text style={styles.btnText}>Tampilkan semua produk toko</Text></Pressable>
+              <Pressable testID="shop-reset" style={styles.btn} onPress={() => { setQ(""); setFilters(NO_FILTERS); }}><Text style={styles.btnText}>Tampilkan semua produk toko</Text></Pressable>
             </View>
           ) :
             <View style={styles.empty} testID="shop-empty">
               <Icon name="cube-outline" size={36} color={colors.muted} />
-              <Text style={styles.emptyH}>{store.official ? "Cabang ini belum punya produk khusus" : "Toko ini belum punya produk"}</Text>
-              {store.official ? <Text style={[adminStyles.muted, { textAlign: "center" }]}>Produk katalog PGS tetap bisa dibeli dari cabang ini dengan harga & stok cabang.</Text> : null}
-              {store.official ? (
-                <Pressable testID="shop-empty-catalog" style={styles.btn} onPress={() => router.push("/(tabs)/katalog" as any)}>
-                  <Text style={styles.btnText}>Lihat Katalog</Text>
-                </Pressable>
-              ) : null}
+              <Text style={styles.emptyH}>Toko ini belum punya produk</Text>
             </View>
           }
           ListFooterComponent={more ? <ActivityIndicator color={colors.brandPrimary} /> : !done && items.length ? (
@@ -177,6 +177,8 @@ export default function ShopPage() {
           renderItem={({ item }) => <ProductCard product={item} style={{ width: CARD_W }} />}
         />
       )}
+      <FilterSheet visible={sheet} q={q.trim()} value={filters} storeName={store?.name ?? "toko ini"} branch={store?.official ? id : undefined}
+        onApply={setFilters} onClose={() => setSheet(false)} />
     </View>
   );
 }
@@ -202,6 +204,7 @@ const styles = StyleSheet.create({
   searchBox: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginHorizontal: spacing.lg, paddingHorizontal: spacing.md, minHeight: 44, borderRadius: radius.pill, backgroundColor: colors.surfaceTertiary, borderWidth: 1, borderColor: colors.border },
   searchInput: { flex: 1, color: colors.onSurface, paddingVertical: 10, fontSize: fontSize.sm },
   chip: { minHeight: 36, paddingHorizontal: spacing.md, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border, justifyContent: "center", backgroundColor: colors.surface },
+  filterChip: { flexDirection: "row", alignItems: "center", gap: 4 },
   chipOn: { backgroundColor: colors.brandPrimary, borderColor: colors.brandPrimary },
   chipText: { fontSize: 13, color: colors.onSurface, fontWeight: "600" },
   emptyH: { fontSize: fontSize.base, fontWeight: "600", color: colors.onSurface, textAlign: "center" },

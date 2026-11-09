@@ -24,8 +24,8 @@ const fmt = (n: number | null) => (n == null ? "" : n.toLocaleString("id-ID"));
 const BRANDS_SHOWN = 40;
 
 /** Lembar filter pencarian: kategori, merek, rentang harga, ketersediaan stok cabang & harga grosir. */
-export function FilterSheet({ visible, q, value, storeName, onApply, onClose }: {
-  visible: boolean; q: string; value: SearchFilters; storeName: string; onApply: (f: SearchFilters) => void; onClose: () => void;
+export function FilterSheet({ visible, q, value, storeName, onApply, onClose, branch }: {
+  visible: boolean; q: string; value: SearchFilters; storeName: string; onApply: (f: SearchFilters) => void; onClose: () => void; branch?: string;
 }) {
   const insets = useSafeAreaInsets();
   const [f, setF] = useState(value);
@@ -38,9 +38,9 @@ export function FilterSheet({ visible, q, value, storeName, onApply, onClose }: 
   useEffect(() => {
     if (!visible) return;
     setLoading(true);
-    const t = setTimeout(() => api.productFacets(toQuery(q, f)).then(setFacets).catch(() => {}).finally(() => setLoading(false)), 300);
+    const t = setTimeout(() => api.productFacets({ ...toQuery(q, f), branch }).then(setFacets).catch(() => {}).finally(() => setLoading(false)), 300);
     return () => clearTimeout(t);
-  }, [visible, q, f, storeId]);
+  }, [visible, q, f, storeId, branch]);
 
   const set = (p: Partial<SearchFilters>) => setF((x) => ({ ...x, ...p }));
   const brands = useMemo(() => {

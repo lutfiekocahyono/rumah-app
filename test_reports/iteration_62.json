@@ -1,0 +1,30 @@
+{
+  "summary": "Tested the branch store page catalog. Backend (test_iter62_branch_shop_catalog.py): 23 of 26 tests passed. Jombang and Jember pass every check. Each branch lists 6618 products (shared catalog plus its own products). Jombang has 1135 products with branch stock 0 and Jember has 1561; all of them come after every in-stock product, across all pages and for all 4 sorts (popular, newest, price_asc, price_desc). The in-stock group is sorted by branch price. There are no duplicates between pages, and pages of 40 match one page of 200. Jombang prices differ from Sidoarjo (for example Suggo Panci Rp360.000 vs Rp362.000) and match the detail page with X-Store-Id. The q, category, brand, in_stock and price-range filters use branch price and stock. Facets: total equals product_count equals the list length. A TEST own product for Jombang appeared only in branch=pgs-jombang. It did not appear for pgs-jember or pgs-official, and the Jember facets total was 0. It was deleted afterwards. /own-products returns 404. The 3 failures are all for pgs-official (Sidoarjo) and share one data root cause, described below. Frontend at 390x844: /shop/pgs-jombang and /shop/pgs-jember show 40 cards. The following work: shop search, clearing the search, the 4 sort chips (order changes), and infinite scroll (more than 100 cards loaded). A search with no match shows shop-no-match, and shop-reset clears it. FilterSheet shows category, brand and price facets plus 'Tersedia di Mitra PGS Jember'. Applying filters updates the list and shows 'Filter (2)' and then 'Filter (4)'; the price filter results fall in the 10k-100k range. Flow tested: Beranda store-switch, then pick-store-pgs-jember, lands on /shop/pgs-jember with products. Regression: test_search_filters.py and test_iter61 tests pass (20/20). The Katalog UI suggestion sugg-brand-Maspion gives Filter (1), and the in-stock toggle gives Filter (2). Response times are about 0.5s per page even at skip=6000.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/products?branch=pgs-official", "issue": "31 Sidoarjo products have stock=0 but in_stock=true, for example 'Piring Melamin Segi Lengkung Hitam PU-901S' and 'Mangkok Melamin Bulat Putih Motif Bunga'. The branch aggregate computes _has from stock, so these go to the sold-out group at the bottom. The response still returns in_stock=true, because _apply_stock skips the PGS context. Result: products marked available appear after sold-out products, and in price_asc a Rp6.000 product appears after a Rp29.150.000 one. The same products also count as in stock in the main Katalog (sort uses the in_stock field). Fix one of two ways: (a) make the branch path use in_stock && stock>0 consistently and set in_stock in the output from the same rule, or (b) fix the data (set in_stock=false where stock=0, or treat in_stock as the source of truth)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iter62_branch_shop_catalog.py", "/app/test_reports/pytest/iter62.xml"],
+  "action_items": [
+    "Make 'available' mean the same thing everywhere for Sidoarjo products that have stock=0 and in_stock=true. In server.py list_products, the branch path's own_stock/_has should match the in_stock value returned in the response (and the main catalog sort), or fix those 31 records."
+  ],
+  "critical_code_review_comments": [
+    "shop/[id].tsx: pull-to-refresh resets q and filters but keeps sort. This is minor and may be intended.",
+    "store_page.py: product_count is computed twice for official stores (own_query count, then overwritten by the visible('all') count). One count_documents call on 6.6k documents is wasted.",
+    "_catalog_query in_stock for a non-Sidoarjo branch: own={'store_id': {'$in': others}}. This excludes shared Sidoarjo products with variants, which _has treats as available through their own stock. With the in-stock toggle on, those variant products disappear even though they are shown as in stock without the filter. Minor edge case."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter62_branch_shop_catalog.py"],
+  "success_rate": {"backend": "88% (23/26; the 3 failures are the Sidoarjo stock/in_stock data inconsistency)", "frontend": "100%"},
+  "seed_data_creation": "Created one TEST own product for Jombang (TEST_Iter62 Jombang Only) through a pytest module fixture and deleted it by product_id (DELETE returned 200). Jombang product_count is back to 6618.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "The full branch tests page through all 6618 products × 3 branches × 4 sorts and take more than 3 minutes. Run them in the background with nohup, using -n0. test_search_filters.py needs the EXPO_BACKEND_URL env var exported. Grant geolocation and call set_geolocation in Playwright, otherwise the 'Izinkan akses lokasi' modal blocks clicks. Scope product-card selectors to [data-testid=shop-screen], because the Beranda cards stay in the DOM."
+}

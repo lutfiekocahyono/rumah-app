@@ -1,6 +1,5 @@
 """Halaman toko tiap cabang: banner, logo, info toko, produk andalan, dan produk khusus cabang.
 Admin cabang mengatur tampilan tokonya sendiri; Super Admin semua cabang."""
-import re
 import uuid
 from datetime import datetime, timezone
 from typing import List, Optional
@@ -68,32 +67,10 @@ def register(api, db, *, require_admin, get_current_user, get_optional_user, vis
         if not out["official"]:
             out.pop("phone", None)  # marketplace sellers are reached via chat
         out["banner"] = s.get("banner", "")
-        out["product_count"] = await db.products.count_documents(own_query(store_id))
+        # official branch: the store page lists the whole catalog of that branch; other stores: their own products
+        out["product_count"] = await db.products.count_documents(await visible("all", store_id) if out["official"] else own_query(store_id))
         out["featured"], out["featured_manual"] = await featured(s, user)
-        # categories of this store's own products, for the filter chips
-        counts = await db.products.aggregate([{"$match": own_query(store_id)}, {"$unwind": "$categories"},
-                                              {"$group": {"_id": "$categories", "n": {"$sum": 1}}}, {"$sort": {"n": -1}}, {"$limit": 30}]).to_list(30)
-        names = {c["category_id"]: c["name"] for c in await db.categories.find({"category_id": {"$in": [c["_id"] for c in counts]}}, {"_id": 0, "category_id": 1, "name": 1}).to_list(30)}
-        out["categories"] = [{"category_id": c["_id"], "name": names[c["_id"]], "count": c["n"]} for c in counts if c["_id"] in names]
         return out
-
-    @api.get("/stores/{store_id}/own-products")
-    async def store_products(store_id: str, skip: int = 0, limit: int = 40, q: str = "", category: str = "", user=Depends(get_optional_user)):
-        await page_store(store_id)
-        limit = max(1, min(limit, 60))
-        match = own_query(store_id)
-        if q.strip():  # Cari di toko ini
-            rx = {"$regex": re.escape(q.strip()[:60]), "$options": "i"}
-            match["$or"] = [{"name": rx}, {"brand": rx}]
-        if category:
-            match["categories"] = category
-        docs = await db.products.aggregate([
-            {"$match": match},
-            {"$addFields": {"_has": {"$cond": [{"$gt": [{"$ifNull": ["$stock", 0]}, 0]}, 1, 0]}}},
-            {"$sort": {"_has": -1, "sold": -1, "product_id": 1}},  # stok habis di bawah
-            {"$skip": max(0, skip)}, {"$limit": limit}, {"$project": {"_id": 0, "_has": 0}},
-        ]).to_list(limit)
-        return await outs(docs, store_id, user)
 
     # ---------------- appearance editor ----------------
     async def editable(user: dict) -> list:

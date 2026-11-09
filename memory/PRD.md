@@ -217,3 +217,7 @@ Iteration 2: import all data from pusatgrosirsidoarjo.com; tiered pricing (pembe
 ## Iteration 61 — Saran pencarian & Cari dalam toko
 - GET /api/products/suggest?q= (branch-visible products <=6 deduped, brands <=4 prefix-first, categories <=3). Frontend SearchSuggestions under search box (product -> detail, brand/category -> removable filter tag, "Cari semua").
 - Store page: GET /stores/{id}/page returns categories of own products; /own-products?q=&category=. Shop page search box + category chips + no-match reset.
+
+## Iteration 62 — Halaman toko cabang = seluruh katalog cabang
+- /shop/{official} lists api.products({branch}) = shared + that branch's own products, branch price/stock, sold-out last across all pages (aggregate path in list_products when ?branch=), in_stock = stock>0. Facets accept ?branch=. product_count = whole branch catalog. /stores/{id}/own-products removed.
+- Shop page: search box + Filter sheet (kategori, merek, harga, stok) + sort chips, like Katalog.
