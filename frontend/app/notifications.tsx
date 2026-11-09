@@ -15,6 +15,7 @@ const KIND = {
   order: { icon: "receipt-outline", label: "Pesanan" },
   promo: { icon: "pricetag-outline", label: "Promo" },
   security: { icon: "shield-checkmark-outline", label: "Akun" },
+  product: { icon: "cube-outline", label: "Produk" },
 } as const;
 
 export default function Notifications() {
@@ -45,7 +46,7 @@ export default function Notifications() {
     <View style={[adminStyles.root, { paddingTop: insets.top }]} testID="notifications-screen">
       <ScreenHeader title="Notifikasi" />
       <View style={styles.tabs}>
-        {(["all", "order", "promo", "security"] as const).map((k) => (
+        {(["all", "order", "product", "promo", "security"] as const).map((k) => (
           <Pressable key={k} testID={`notif-tab-${k}`} onPress={() => setFilter(k)} style={[styles.tab, filter === k && styles.tabOn]}>
             <Text style={[styles.tabText, filter === k && styles.tabTextOn]}>{k === "all" ? "Semua" : KIND[k].label}</Text>
           </Pressable>

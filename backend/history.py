@@ -72,6 +72,8 @@ async def record(db, user: dict, store_id: str, product: dict, before: dict, aft
         "store_id": store_id, "user_id": user.get("user_id"), "user_name": user.get("name") or user.get("email", ""),
         "user_role": user.get("role", ""), "source": source, "changes": changes, "kinds": sorted({c["kind"] for c in changes}),
         "at": datetime.now(timezone.utc)})
+    import product_notify  # local: product_notify has no dependency on history
+    await product_notify.on_history(db, product, changes, store_id)
 
 
 def register(api, db, get_current_user):

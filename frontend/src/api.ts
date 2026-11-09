@@ -205,6 +205,7 @@ export const api = {
   settings: () => req<AccountSettings>("/me/settings"),
   saveSettings: (s: AccountSettings) => req<AccountSettings>("/me/settings", { method: "PUT", body: JSON.stringify(s) }),
   notifications: () => req<AppNotification[]>("/notifications"),
+  productUpdates: (id: string) => req<ProductUpdates>(`/product-updates/${id}`),
   unreadCount: () => req<{ count: number }>("/notifications/unread-count"),
   readAll: () => req<{ ok: boolean }>("/notifications/read-all", { method: "POST" }),
   readOne: (id: string) => req<{ ok: boolean }>(`/notifications/${id}/read`, { method: "POST" }),
@@ -397,9 +398,11 @@ export type User = {
 };
 export type Address = { address_id: string; label: string; recipient: string; phone: string; address: string; city: string; postal_code: string; destination_id?: number | null; destination_label?: string; is_default: boolean };
 export type AddressInput = Omit<Address, "address_id">;
-export type AppNotification = { notif_id: string; kind: "order" | "promo" | "security"; title: string; body: string; link: string; read: boolean; created_at: string };
+export type AppNotification = { notif_id: string; kind: "order" | "promo" | "security" | "product"; title: string; body: string; link: string; read: boolean; created_at: string };
 export type ActivityLog = { log_id: string; action: string; detail: string; created_at: string };
-export type AccountSettings = { notif_order: boolean; notif_promo: boolean; notif_security: boolean };
+export type AccountSettings = { notif_order: boolean; notif_promo: boolean; notif_security: boolean; notif_product: boolean; email_product: boolean };
+export type ProductUpdates = { digest_id: string; title: string; created_at: string;
+  items: { product_id: string; name: string; image: string; kinds: string[]; change: string }[] };
 export type HomeSectionKey = "popular" | "newest" | "recommended";
 export type HomeSort = "best_selling" | "rating" | "most_viewed" | "newest" | "random" | "personal";
 export type HomeSectionCfg = { enabled: boolean; title: string; limit: number; sort: HomeSort; pinned: string[]; categories: string[]; days: number };

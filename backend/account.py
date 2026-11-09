@@ -22,7 +22,7 @@ log = logging.getLogger("account")
 CODE_TTL_MIN = 10
 MAX_ATTEMPTS = 5
 GENERIC = {"message": "Jika email terdaftar, kode sudah dikirim."}
-DEFAULT_SETTINGS = {"notif_order": True, "notif_promo": True, "notif_security": True}
+DEFAULT_SETTINGS = {"notif_order": True, "notif_promo": True, "notif_security": True, "notif_product": True, "email_product": True}
 
 
 def _now() -> datetime:
@@ -102,6 +102,8 @@ class SettingsIn(BaseModel):
     notif_order: bool = True
     notif_promo: bool = True
     notif_security: bool = True
+    notif_product: bool = True  # produk baru / harga / stok / info (ringkasan per jam)
+    email_product: bool = True
 
 
 def register(api, db, get_current_user, user_out, make_token):
@@ -343,9 +345,10 @@ def register(api, db, get_current_user, user_out, make_token):
 
     @api.put("/me/settings")
     async def put_settings(body: SettingsIn, user=Depends(get_current_user)):
-        await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"settings": body.model_dump()}})
+        merged = {**DEFAULT_SETTINGS, **(user.get("settings") or {}), **body.model_dump(exclude_unset=True)}  # older apps send fewer fields
+        await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"settings": merged}})
         await log_activity(user["user_id"], "settings", "Pengaturan notifikasi diubah")
-        return body.model_dump()
+        return merged
 
     @api.get("/notifications")
     async def list_notifications(user=Depends(get_current_user)):

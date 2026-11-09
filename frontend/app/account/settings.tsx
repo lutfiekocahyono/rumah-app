@@ -54,8 +54,15 @@ export default function Settings() {
             <ToggleRow testID="set-notif-order" label="Status pesanan" sub="Pesanan dibuat, diproses, dikirim, selesai" value={s.notif_order} onChange={(v) => toggle({ notif_order: v })} />
             <ToggleRow testID="set-notif-promo" label="Promo & voucher" sub="Voucher baru dan penawaran" value={s.notif_promo} onChange={(v) => toggle({ notif_promo: v })} />
             <ToggleRow testID="set-notif-security" label="Keamanan akun" sub="Perubahan password, verifikasi" value={s.notif_security} onChange={(v) => toggle({ notif_security: v })} />
+            <ToggleRow testID="set-notif-product" label="Info produk" sub="Produk baru, harga, stok & keterangan (ringkasan maks. 1x per jam)" value={s.notif_product} onChange={(v) => toggle({ notif_product: v })} />
           </Card>
         )}
+        <Text style={adminStyles.section}>Email</Text>
+        {s ? (
+          <Card>
+            <ToggleRow testID="set-email-product" label="Email info produk" sub="Ringkasan perubahan produk ke email terverifikasi Anda" value={s.email_product} onChange={(v) => toggle({ email_product: v })} />
+          </Card>
+        ) : null}
         {err ? <Text style={adminStyles.err}>{err}</Text> : null}
         <Pressable testID="settings-logout" style={styles.logout} onPress={() => setAskLogout(true)}>
           <Icon name="log-out-outline" size={20} color={colors.error} />

@@ -139,3 +139,7 @@ Iteration 2: import all data from pusatgrosirsidoarjo.com; tiered pricing (pembe
 ## Iteration 37 (Jun 2026)
 - Balasan Cepat Toko: template per cabang (5 bawaan: stok tersedia/habis, harga grosir, jam ambil, ongkir), bisa ditambah/ubah/hapus admin cabang; kata otomatis {produk} {harga} {pembeli} {toko}. Chip tampil di chat sisi toko, ketuk = isi kolom pesan.
 - Pesan sukses kirim faktur Accurate kini tetap tampil sampai ditutup.
+
+## Iteration 38 (Jun 2026)
+- Notifikasi info produk ke SEMUA pembeli (lonceng + email terverifikasi): produk baru, harga, stok/tersedia lagi, keterangan/foto/info lain. Digabung jadi 1 ringkasan per pembeli maks 1x per jam (product_notify.py). Halaman /product-updates/[id]. Pembeli bisa mematikan di Akun → Pengaturan (Info produk / Email info produk). Admin: POST /api/admin/product-digest/run untuk kirim sekarang.
+- Penjualan (stok berkurang karena pesanan) tidak memicu notifikasi; produk yang disembunyikan tidak diumumkan.

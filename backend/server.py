@@ -23,6 +23,7 @@ import product_editor
 import history
 import accurate
 import accurate_sync
+import product_notify
 import order_tasks
 from order_tasks import COD_PICKUP_HOURS, RELEASE_STATUSES
 import promo
@@ -1300,6 +1301,7 @@ product_editor.register(api, db, get_current_user=get_current_user, log_activity
 history.register(api, db, get_current_user)
 accurate.register(api, db, require_admin)
 accurate_sync.register(api, db, require_admin)
+_product_digest_loop = product_notify.register(api, db, require_admin, get_current_user)
 
 app.include_router(api)
 
@@ -1321,6 +1323,7 @@ async def _startup():
     await seed_data()
     await payments.load_config(db)
     app.state.expire_task = asyncio.create_task(_expire_loop())
+    app.state.digest_task = asyncio.create_task(_product_digest_loop())
     try:
         await run_in_threadpool(storage.init_storage)
     except Exception:

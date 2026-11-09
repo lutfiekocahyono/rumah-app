@@ -1,0 +1,40 @@
+{
+  "summary": "Product-update notification feature (iter38). Backend: 17/18 pytest pass (tests/test_pgs_iter38_product_notify.py, run with -n 0, 3 /run calls used). Verified: inventory restock pgs-9957 0->5 -> 1 pending 'restock' event -> /run creates 1 bell notification per customer (261) titled '<name> tersedia lagi', link /product/pgs-9957, demo sees it; opt-out user (notif_product=false) gets none; new product + price-only editor edit + variant price edit -> ONE digest 'Update produk: 2 harga berubah, 1 produk baru' with link /product-updates/{id}; detail returns change texts ('Produk baru', 'Harga turun Rp10.000 → Rp8.000', 'Harga variasi diperbarui'); unknown id 404, no auth 401; /run with nothing pending -> sent:false; inactive product create/edit emits no events; price-only editor save emits only 'price' (no spurious 'info'); admin endpoints 403 for buyer; settings defaults true and PUT/GET persist. One failure: deactivating a product while changing its price in the same save still emits a 'price' event. Frontend: /notifications Produk tab (notif-tab-product) lists both product notifications; tapping digest opens /product-updates/{id} with pu-item-* rows, tapping a row opens /product/{id}; tapping single notification opens /product/pgs-9957; /account/settings toggles set-notif-product and set-email-product switch, persist to API and survive reload.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/product-editor/publish (and /product-editor/bulk with status=inactive)", "issue": "If a product is switched to inactive and its price/stock changes in the same save, history.record() is called with the OLD (active) product, so product_notify.on_history emits a 'price'/'stock' event and buyers get notified about a hidden product (tapping it shows 'Produk tidak ditemukan'). Fix: in on_history (or callers) pass the merged/new doc, or skip when the new status is inactive. Ref: product_editor.py:416, product_bulk.py:219, product_notify.py:62"},
+      {"endpoint": "POST /api/admin/product-digest/run", "issue": "email result counts demo@pgs.id (fake domain, blocked as undeliverable_recipient 400) as 'failed' every run -> {'sent':1,'failed':1}. Expected in preview, but you could count undeliverable separately so admin isn't misled."},
+      {"endpoint": "PUT /api/me/settings", "issue": "SettingsIn fields all default True and the whole settings doc is replaced; an older client sending only the 3 original fields would silently re-enable notif_product/email_product. Consider $set of only provided fields (exclude_unset)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "product-updates/[id].tsx", "issue": "Digest list keeps items whose product was later deactivated/deleted; tapping leads to 'Produk tidak ditemukan'. Consider marking/hiding unavailable items.", "testID": "pu-item-*", "priority": "low"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "account/settings", "issues": ["Switch elements set-notif-product / set-email-product are 40x20 px (below 44pt) - make the whole row pressable if it isn't"]},
+      {"screen": "notifications", "issues": ["Filter tab pills (notif-tab-*) are 34 px tall (<44pt)"]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_pgs_iter38_product_notify.py", "/app/test_reports/pytest/pytest_iter38.xml"],
+  "action_items": [
+    "Do not emit price/stock events when the same save makes the product inactive (pass the new doc / new status to history.record -> product_notify.on_history).",
+    "Optional: filter inactive/deleted products from GET /api/product-updates/{id} items or mark them unavailable in the UI.",
+    "Optional: PUT /me/settings should merge only provided fields."
+  ],
+  "critical_code_review_comments": [
+    "run_digest loads all customers (to_list(100000)) and inserts one notification per customer each digest (261 docs now) - OK at this scale; ensure index on notifications(user_id, created_at).",
+    "send_emails is sequential per user inside the admin request; with many verified users /run will become slow (HTTP timeout risk). Consider running it in a background task.",
+    "Events claimed via update_many + modified_count protects against double send; good."
+  ],
+  "updated_files": ["/app/backend/tests/test_pgs_iter38_product_notify.py (new)"],
+  "success_rate": {"backend": "94% (17/18)", "frontend": "100%"},
+  "seed_data_creation": "Created TEST_Notif products, a test_pn_* customer, pgs-9957 stock 0->5. All cleaned: test products/price_history/users deleted, pgs-9957 stock back to 0, all product_events, product notifications, product_digests and settings key 'product_digest' deleted (as requested), demo settings restored to all true. Residual: pgs-9957 now has restocked_at=2026-11-09T00:24 set by the restock (prior value unknown, product stock is 0).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run pytest with -n 0 (pytest.ini enables xdist; module is order-dependent). Each /run sends real emails to verified customers (demo@pgs.id fails as undeliverable, the gmail user receives). Set PN_KEEP=1 to keep data for UI testing, then call cleanup() from the module. Login in web preview by setting localStorage 'pgs_auth_token'.",
+  "rca_of_issue": "Hidden-product notification: product_editor.publish calls history.record(db, user, store, old, snap(old), snap({**old, **doc})) -> on_history(db, product=old, ...) -> _visible(old) is True, so price change emits an event even though doc.status == 'inactive'. Repro: edit active product, set status inactive + new price, publish -> db.product_events gets kind 'price'."
+}

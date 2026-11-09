@@ -13,6 +13,7 @@ from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field, field_validator
 
 import history
+import product_notify
 import seller
 import storage
 from pricing import CUSTOMER_TYPE_LABELS, CUSTOMER_TYPES, MAX_TIERS, clean_tiers
@@ -413,11 +414,13 @@ def register(api, db, *, get_current_user, log_activity, origin_label):
             doc = to_product(f, store)
             await db.products.update_one({"product_id": body.product_id}, {"$set": doc})
             await history.record(db, ctx["user"], old["store_id"], old, history.snap(old), history.snap({**old, **doc}), "editor")
+            await product_notify.on_info(db, old, doc)
             pid, action = body.product_id, "Mengubah"
         else:
             pid = f"sp_{uuid.uuid4().hex[:10]}"
             doc = {**to_product(f, store), "product_id": pid, "rating": 0, "sold": 0, "views": 0, "created_at": _now(), "published_at": _now()}
             await db.products.insert_one(doc)
+            await product_notify.on_new(db, doc)
             action = "Menambah"
         if body.draft_id:
             await db.product_drafts.delete_one({"draft_id": body.draft_id, "owner": owner_key(ctx)})

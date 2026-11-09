@@ -15,6 +15,7 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from pydantic import BaseModel, Field, ValidationError
 
 import history
+import product_notify
 from pricing import scale_tiers
 from product_editor import ProductForm, TierRow, to_form, to_product, validate
 
@@ -216,6 +217,7 @@ def register(api, db, *, actor: Callable, target_store: Callable, editable: Call
                 upd["restocked_at"] = _now()
             await db.products.update_one({"product_id": pid}, {"$set": upd})
             await history.record(db, ctx["user"], store["store_id"], p, history.snap(p), history.snap({**p, **upd}), "bulk")
+            await product_notify.on_info(db, p, upd)  # inactive -> active counts as a new product for buyers
             updated += 1
         if updated:
             await log_activity(ctx["user"]["user_id"], "store", f"Edit massal {updated} produk")
@@ -495,6 +497,7 @@ def register(api, db, *, actor: Callable, target_store: Callable, editable: Call
                         doc["restocked_at"] = _now()
                     await db.products.update_one({"product_id": pid}, {"$set": doc})
                     await history.record(db, ctx["user"], store["store_id"], p, history.snap(p), history.snap({**p, **doc}), "import")
+                    await product_notify.on_info(db, p, doc)
                 add(n, form.name, "update")
             elif not name:
                 add(n, "(tanpa nama)", "skip", "Nama produk kosong, baris dilewati")
@@ -509,8 +512,10 @@ def register(api, db, *, actor: Callable, target_store: Callable, editable: Call
                 if not problems:
                     if commit:
                         pid = f"sp_{uuid.uuid4().hex[:10]}"
-                        await db.products.insert_one({**to_product(form, store), "product_id": pid, "rating": 0, "sold": 0, "views": 0,
-                                                      "created_at": _now(), "published_at": _now()})
+                        new_doc = {**to_product(form, store), "product_id": pid, "rating": 0, "sold": 0, "views": 0,
+                                   "created_at": _now(), "published_at": _now()}
+                        await db.products.insert_one(new_doc)
+                        await product_notify.on_new(db, new_doc)
                     add(n, form.name, "create")
                 else:
                     if commit:
