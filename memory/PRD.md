@@ -286,3 +286,6 @@ Iteration 2: import all data from pusatgrosirsidoarjo.com; tiered pricing (pembe
 - location-gate.tsx: no lock. Popup (location-popup) with Izinkan lokasi / Pilih cabang manual / Nanti saja; 'later' persisted (AsyncStorage pgs_location_later); small reminder pill (location-reminder) on /, /katalog, /keranjang reopens popup. Permission requested only on tap. Admin/store_admin/login exempt.
 ## Web project prompt
 - /app/memory/web_project_prompt.md (for separate Full Stack web project using live API).
+
+## Location MANDATORY again (owner decision, overrides optional)
+- location-gate.tsx: lock popup (location-lock) cannot be dismissed; no Nanti saja / Pilih cabang manual; permission requested on start; admin/store_admin/login exempt. Owner aware of Google Play risk.

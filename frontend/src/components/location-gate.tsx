@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { View, Text, StyleSheet, Pressable, AppState, Linking, Platform, ActivityIndicator, Modal, ScrollView } from "react-native";
 import * as Location from "expo-location";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { usePathname, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Icon from "@react-native-vector-icons/ionicons";
@@ -23,11 +22,8 @@ const meters = (a: Location.LocationObjectCoords, b: Location.LocationObjectCoor
   return 12742000 * Math.asin(Math.sqrt(h));
 };
 
-const LATER_KEY = "pgs_location_later";
-const REMIND_ON = [/^\/$/, /^\/katalog\/?$/, /^\/keranjang\/?$/]; // small "Aktifkan lokasi" reminder only on these pages
-
-/** Pelanggan & tamu: popup ajakan izin lokasi (bisa ditutup "Nanti saja"); tanpa izin aplikasi tetap bisa dipakai
- *  dengan memilih cabang manual, plus pengingat kecil untuk membuka popup lagi. Super Admin, admin cabang & halaman masuk dikecualikan. */
+/** Pelanggan & tamu: lokasi WAJIB. Popup menutupi layar dan tidak bisa ditutup sampai izin lokasi diberikan.
+ *  Super Admin, admin cabang & halaman masuk dikecualikan supaya pemilik tidak terkunci. */
 export function LocationGate({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   const { autoPick } = useStore();
@@ -37,9 +33,6 @@ export function LocationGate({ children }: { children: React.ReactNode }) {
   const exempt = user?.role === "admin" || user?.role === "store_admin";
   const [perm, setPerm] = useState<Perm>("checking");
   const [asking, setAsking] = useState(false);
-  const [later, setLater] = useState<boolean | null>(null); // null = not read yet
-  useEffect(() => { AsyncStorage.getItem(LATER_KEY).then((v) => setLater(v === "1")).catch(() => setLater(false)); }, []);
-  const remindLater = (v: boolean) => { setLater(v); AsyncStorage.setItem(LATER_KEY, v ? "1" : "0").catch(() => {}); };
 
   const check = useCallback(async (request: boolean) => {
     try {
@@ -54,8 +47,7 @@ export function LocationGate({ children }: { children: React.ReactNode }) {
     } catch { setPerm("blocked"); } finally { setAsking(false); }
   }, []);
 
-  // only read the current state on start; the system permission dialog opens after the buyer taps "Izinkan lokasi"
-  useEffect(() => { if (!loading && !exempt) void check(false); }, [loading, exempt, check]);
+  useEffect(() => { if (!loading && !exempt) void check(true); }, [loading, exempt, check]);
   useEffect(() => { // back from Settings
     if (exempt) return;
     const sub = AppState.addEventListener("change", (st) => { if (st === "active") void check(false); });
@@ -82,27 +74,13 @@ export function LocationGate({ children }: { children: React.ReactNode }) {
     return () => { stop = true; sub?.remove(); };
   }, [exempt, perm, user?.user_id, autoPick]);
 
-  const missing = !loading && !exempt && (perm === "denied" || perm === "blocked" || perm === "off") && !OPEN.some((r) => r.test(path));
-  const popup = missing && later === false;
-  const remind = missing && later === true && REMIND_ON.some((r) => r.test(path));
+  const locked = !loading && !exempt && (perm === "denied" || perm === "blocked" || perm === "off") && !OPEN.some((r) => r.test(path));
   return (
     <View style={{ flex: 1 }}>
       {children}
-      {!popup ? <NearestToast /> : null}
-      {remind ? <Reminder onOpen={() => remindLater(false)} /> : null}
-      {popup ? <LocationPopup perm={perm} asking={asking} onAllow={() => check(true)} onLater={() => remindLater(true)} /> : null}
+      {!locked ? <NearestToast /> : null}
+      {locked ? <LockScreen perm={perm} asking={asking} onAllow={() => check(true)} /> : null}
     </View>
-  );
-}
-
-/** Small reminder while location is off; tapping it opens the popup again. */
-function Reminder({ onOpen }: { onOpen: () => void }) {
-  const insets = useSafeAreaInsets();
-  return (
-    <Pressable testID="location-reminder" onPress={onOpen} style={[styles.remind, { bottom: insets.bottom + 84 }]}>
-      <Icon name="location-outline" size={16} color={colors.brandPrimary} />
-      <Text style={styles.remindText}>Aktifkan lokasi untuk cabang terdekat</Text>
-    </Pressable>
   );
 }
 
@@ -134,19 +112,19 @@ function NearestToast() {
   );
 }
 
-function LocationPopup({ perm, asking, onAllow, onLater }: { perm: Perm; asking: boolean; onAllow: () => void; onLater: () => void }) {
+function LockScreen({ perm, asking, onAllow }: { perm: Perm; asking: boolean; onAllow: () => void }) {
   const router = useRouter();
   const web = Platform.OS === "web";
   const settings = perm === "blocked" && !web;
   return (
-    <Modal visible transparent animationType="fade" statusBarTranslucent onRequestClose={onLater}>
+    <Modal visible transparent animationType="fade" statusBarTranslucent onRequestClose={() => {}}>
     <View style={styles.backdrop} testID="location-lock">
     <ScrollView style={styles.card} contentContainerStyle={styles.cardInner} testID="location-popup">
       <View style={styles.icon}><Icon name="location" size={36} color={colors.brandPrimary} /></View>
       <Text style={styles.title}>Izinkan akses lokasi</Text>
       <Text style={styles.body}>
-        {perm === "off" ? "Layanan lokasi (GPS) di HP Anda mati. Nyalakan GPS agar cabang terdekat dipilih otomatis."
-          : "Izinkan lokasi agar cabang terdekat, stok, dan ongkir dipilih otomatis. Anda tetap bisa memakai aplikasi tanpa lokasi dengan memilih cabang sendiri."}
+        {perm === "off" ? "Layanan lokasi (GPS) di HP Anda mati. Nyalakan GPS untuk memakai aplikasi Pusat Grosir Sidoarjo."
+          : "Aplikasi Pusat Grosir Sidoarjo membutuhkan lokasi Anda untuk dipakai. Lokasi dipakai untuk memilih cabang terdekat, menampilkan stok dan harga cabang, menghitung ongkir, dan petunjuk arah ke toko."}
       </Text>
       {perm === "blocked" ? (
         <View style={styles.steps} testID="location-help">
@@ -160,7 +138,7 @@ function LocationPopup({ perm, asking, onAllow, onLater }: { perm: Perm; asking:
             <>
               <Text style={styles.step}>1. Ketuk “Buka Pengaturan”.</Text>
               <Text style={styles.step}>2. Pilih Lokasi / Izin → Lokasi → “Saat aplikasi digunakan”.</Text>
-              <Text style={styles.step}>3. Kembali ke aplikasi, cabang terdekat dipilih otomatis.</Text>
+              <Text style={styles.step}>3. Kembali ke aplikasi, kunci terbuka otomatis.</Text>
             </>
           )}
         </View>
@@ -174,13 +152,7 @@ function LocationPopup({ perm, asking, onAllow, onLater }: { perm: Perm; asking:
           <Text style={styles.outlineText}>Buka Pengaturan</Text>
         </Pressable>
       ) : null}
-      <Pressable testID="location-manual" style={styles.outline} onPress={() => { onLater(); router.push("/pilih-toko" as any); }}>
-        <Text style={styles.outlineText}>Pilih cabang manual</Text>
-      </Pressable>
-      <Pressable testID="location-later" style={styles.link} onPress={onLater}>
-        <Text style={[styles.linkText, { textDecorationLine: "none", fontWeight: "600" }]}>Nanti saja</Text>
-      </Pressable>
-      <Pressable testID="location-login" style={styles.link} onPress={() => { onLater(); router.push("/login" as any); }}>
+      <Pressable testID="location-login" style={styles.link} onPress={() => router.push("/login" as any)}>
         <Text style={styles.linkText}>Admin / pemilik toko? Masuk di sini</Text>
       </Pressable>
     </ScrollView>
@@ -204,9 +176,6 @@ const styles = StyleSheet.create({
   outlineText: { color: colors.brandPrimary, fontWeight: "600" },
   link: { minHeight: 44, justifyContent: "center" },
   linkText: { color: colors.muted, fontSize: fontSize.sm, textDecorationLine: "underline" },
-  remind: { position: "absolute", alignSelf: "center", zIndex: 800, flexDirection: "row", alignItems: "center", gap: 6, minHeight: 40,
-    paddingHorizontal: spacing.md, borderRadius: radius.pill, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.brandPrimary },
-  remindText: { color: colors.brandPrimary, fontSize: 13, fontWeight: "600" },
   toast: { position: "absolute", left: spacing.md, right: spacing.md, zIndex: 900, flexDirection: "row", alignItems: "center", gap: spacing.sm,
     backgroundColor: colors.surfaceInverse, borderRadius: radius.md, paddingLeft: spacing.md, paddingVertical: spacing.sm, maxWidth: 560, alignSelf: "center" },
   toastText: { flex: 1, color: colors.onSurfaceInverse, fontSize: fontSize.sm },
