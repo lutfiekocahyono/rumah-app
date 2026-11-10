@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, Pressable, TextInput, ScrollView, StyleSheet, ActivityIndicator } from "react-native";
+import { View, Text, Pressable, TextInput, StyleSheet, ActivityIndicator } from "react-native";
 import { Image } from "expo-image";
 import Icon from "@react-native-vector-icons/ionicons";
 
@@ -12,16 +12,23 @@ function Logo({ b }: { b: Brand }) {
     : <View style={[styles.logo, styles.noLogo]}><Text style={styles.initial}>{b.name.slice(0, 1).toUpperCase()}</Text></View>;
 }
 
-/** Super Admin: merek yang tampil di "Merek Unggulan" Beranda dan urutannya. Kosongkan = otomatis 10 merek terbanyak. */
-export function FeaturedBrandsAdmin({ brands }: { brands: Brand[] }) {
+/** Merek Unggulan dan urutannya. Tanpa storeId: Beranda (Super Admin); dengan storeId: halaman toko cabang itu.
+ * Belum diatur = otomatis 10 merek terbanyak. */
+export function FeaturedBrandsAdmin({ brands: given, storeId }: { brands?: Brand[]; storeId?: string }) {
+  const [all, setAll] = useState<Brand[]>(given ?? []);
+  const brands = given ?? all;
   const [items, setItems] = useState<Brand[]>([]);
   const [custom, setCustom] = useState(false);
   const [saved, setSaved] = useState("");
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const where = storeId ? "halaman toko ini" : "Beranda";
   const apply = (r: { custom: boolean; items: Brand[] }) => { setItems(r.items); setCustom(r.custom); setSaved(JSON.stringify(r.items.map((b) => b.brand_id))); };
-  useEffect(() => { api.adminFeaturedBrands().then(apply).catch((e) => setMsg({ ok: false, text: e.message })); }, []);
+  useEffect(() => {
+    (storeId ? api.storeFeaturedBrands(storeId) : api.adminFeaturedBrands()).then(apply).catch((e) => setMsg({ ok: false, text: e.message }));
+    if (!given) api.brands().then(setAll).catch(() => {});
+  }, [storeId, given]);
 
   const dirty = JSON.stringify(items.map((b) => b.brand_id)) !== saved || !custom;
   const t = q.trim().toLowerCase();
@@ -29,14 +36,19 @@ export function FeaturedBrandsAdmin({ brands }: { brands: Brand[] }) {
   const move = (i: number, d: number) => setItems((x) => { const n = [...x]; [n[i], n[i + d]] = [n[i + d], n[i]]; return n; });
   const save = async (ids: string[] | null) => {
     setBusy(true); setMsg(null);
-    try { apply(await api.adminSaveFeaturedBrands(ids)); setMsg({ ok: true, text: ids ? "Merek Unggulan disimpan" : "Kembali otomatis: 10 merek dengan produk terbanyak" }); }
+    try {
+      apply(await (storeId ? api.saveStoreFeaturedBrands(storeId, ids) : api.adminSaveFeaturedBrands(ids)));
+      setMsg({ ok: true, text: ids ? "Merek Unggulan disimpan" : `Kembali otomatis: 10 merek dengan produk terbanyak${storeId ? " di cabang ini" : ""}` });
+    }
     catch (e: any) { setMsg({ ok: false, text: e.message }); } finally { setBusy(false); }
   };
 
   return (
-    <ScrollView contentContainerStyle={styles.wrap} keyboardShouldPersistTaps="handled" testID="cm-featured">
+    <View style={[styles.wrap, storeId && { padding: 0, paddingBottom: 0 }]} testID="cm-featured">
+      {storeId ? <Text style={styles.title}>Merek Unggulan di halaman toko</Text> : null}
+      {storeId ? <Text style={adminStyles.muted}>Disimpan terpisah dengan tombol di bawah kartu ini (tidak ikut "Simpan tampilan").</Text> : null}
       <Text style={adminStyles.muted}>
-        {custom ? "Urutan di bawah tampil di Beranda." : "Belum diatur: Beranda otomatis menampilkan 10 merek dengan produk terbanyak (di bawah). Ubah lalu simpan untuk mengatur sendiri."}
+        {custom ? `Urutan di bawah tampil di ${where}.` : `Belum diatur: ${where} otomatis menampilkan 10 merek dengan produk terbanyak${storeId ? " di cabang ini" : ""} (di bawah). Ubah lalu simpan untuk mengatur sendiri.`}
       </Text>
       {items.map((b, i) => (
         <View key={b.brand_id} style={styles.row} testID={`cm-feat-${b.name}`}>
@@ -54,7 +66,7 @@ export function FeaturedBrandsAdmin({ brands }: { brands: Brand[] }) {
           </Pressable>
         </View>
       ))}
-      {!items.length ? <Text style={adminStyles.muted}>Belum ada merek dipilih. Bila disimpan kosong, deretan Merek Unggulan tidak tampil.</Text> : null}
+      {!items.length ? <Text style={adminStyles.muted}>Belum ada merek dipilih. Bila disimpan kosong, deretan Merek Unggulan tidak tampil di {where}.</Text> : null}
       <View style={styles.search}>
         <Icon name="search" size={16} color={colors.muted} />
         <TextInput testID="cm-feat-search" value={q} onChangeText={setQ} placeholder="Cari merek untuk ditambahkan…" placeholderTextColor={colors.muted} style={styles.input} />
@@ -76,12 +88,13 @@ export function FeaturedBrandsAdmin({ brands }: { brands: Brand[] }) {
           <Text style={{ color: colors.brandPrimary, fontWeight: "500" }}>Kembali ke otomatis (merek terbanyak)</Text>
         </Pressable>
       ) : null}
-    </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   wrap: { padding: spacing.lg, paddingTop: spacing.sm, gap: spacing.sm, paddingBottom: 120 },
+  title: { fontSize: fontSize.base, fontWeight: "600", color: colors.onSurface },
   row: { flexDirection: "row", alignItems: "center", gap: spacing.sm, minHeight: 56, padding: spacing.sm, backgroundColor: colors.surface, borderRadius: radius.md },
   num: { width: 20, textAlign: "center", color: colors.muted, fontSize: fontSize.sm },
   logo: { width: 40, height: 40, borderRadius: 20 },

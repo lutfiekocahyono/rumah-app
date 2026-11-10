@@ -263,3 +263,10 @@ Iteration 2: import all data from pusatgrosirsidoarjo.com; tiered pricing (pembe
 - [Done] Merek Unggulan di Beranda (featured-brands, setelah Flash Sale; tidak di halaman toko): GET /api/brands/featured (atur Super Admin, belum diatur = 10 merek produk aktif terbanyak tanpa 'No Brand'); admin tab 'Unggulan' di Merek & Kategori (GET/PUT /api/admin/featured-brands, items null = otomatis). Iter 74.
 
 - [Done] Logo resmi dipasang: Kimplast, Advance, Apollystar (dirapikan jadi kanvas persegi 512px transparan, logo 84% lebar; diunggah lewat /api/admin/upload lalu PUT /api/admin/brands). Merek lain tetap huruf depan.
+
+- [Done] Merek Unggulan per halaman toko cabang: GET /api/stores/{id}/featured-brands (pilihan admin cabang, belum diatur = 10 merek terbanyak di cabang; merek tanpa produk cabang disembunyikan), GET/PUT /api/store-appearance/{id}/featured-brands (admin cabang tokonya sendiri, Super Admin semua). UI: kartu di Tampilan Toko (FeaturedBrandsAdmin storeId). Beranda tetap pilihan Super Admin. Iter 75.
+
+## Build readiness (Jun 2026)
+- Android: google-services.json (Firebase project pusat-grosir-sidoarjo, package com.emergent.rumahapp.mqe765) installed at frontend/google-services.json, wired via app.json android.googleServicesFile. Push code verified against Emergent push playbook.
+- iOS: postponed (no Apple Developer account yet).
+- Not deployed/published (user request).

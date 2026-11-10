@@ -111,7 +111,7 @@ export default function CatalogMaster() {
       )}
       {msg ? <Text testID="cm-msg" style={[msg.ok ? adminStyles.ok : adminStyles.err, { paddingHorizontal: spacing.lg }]}>{msg.text}</Text> : null}
 
-      {loading ? <ActivityIndicator style={{ marginTop: spacing.xl }} color={colors.brandPrimary} /> : tab === "featured" ? <FeaturedBrandsAdmin brands={brands} /> : tab === "brand" ? (
+      {loading ? <ActivityIndicator style={{ marginTop: spacing.xl }} color={colors.brandPrimary} /> : tab === "featured" ? <ScrollView keyboardShouldPersistTaps="handled"><FeaturedBrandsAdmin brands={brands} /></ScrollView> : tab === "brand" ? (
         <FlatList data={shownBrands} keyExtractor={(b) => b.brand_id} contentContainerStyle={styles.list}
           ListEmptyComponent={<Text style={styles.empty}>Merek tidak ditemukan</Text>}
           renderItem={({ item }) => (

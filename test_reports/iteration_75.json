@@ -1,0 +1,38 @@
+{
+  "summary": "Tested 'Merek Unggulan' on each branch store page (backend + UI at 390x844). Backend: 14/14 pass in the new pytest file, and the 10 iter74 regression tests still pass. GET /api/stores/pgs-jombang/featured-brands gives the automatic top 10 by product count, sorted, 'No Brand' left out, no _id. It returns [] for Toko Satu (marketplace seller) and for an unknown id. Auth: 401 without a token. Jombang admin gets 403 on pgs-jember and customer gets 403. Super Admin gets 403 on a non-official id. Jombang admin GET shows custom=false while automatic. PUT keeps the order, drops unknown ids and removes duplicates, and does not change Jember or the Beranda list. [] hides the row and returns []. null goes back to automatic. Super Admin can edit pgs-jember. A wrong type or more than 30 ids returns 422. GET /store-appearance for jombang lists only pgs-jombang. UI: Jombang admin card cm-featured shows the 'Belum diatur' auto list with no store chips. up/down/remove/search/add (Suggo) and save work ('Merek Unggulan disimpan'), the API matches the new order, and cm-feat-auto appears. /shop/pgs-jombang shows the custom row; Suggo shows the initial 'S'; Kimplast, Apollystar and Advance show logos. Tapping featured-brand-Kimplast opens /brand/Kimplast with Jombang prices. /shop/pgs-jember and Beranda still show the automatic list. Toko Satu has no row. Super Admin sees chips sa-store-pgs-official/jombang/jember. Saving Jember changes only Jember. Switching to the Jombang chip loads Jombang's own list. Saving an empty list hides the row on /shop/pgs-jombang. The catalog-master Unggulan tab still works and changes only Beranda, not the pgs-official store page. cm-feat-auto works in both places. After saving, the sa-preview in-app navigation shows the new order. Final state: every store and Beranda are back to automatic, and no featured_brands docs are left in app_settings.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "PUT/GET /api/store-appearance/{id}/featured-brands", "issue": "Super Admin with a non-official or unknown store id gets 403 'Anda hanya bisa mengatur tampilan toko Anda sendiri'. A 404 'Toko tidak ditemukan' would be clearer."},
+      {"endpoint": "GET /api/stores/{id}/featured-brands", "issue": "In custom mode, brands with 0 priced products in that branch are still returned (count 0). Tapping one opens an empty brand page. Consider filtering out count==0 or warning in the editor. Auto mode also runs a full aggregation over about 6.6k products on every call, with no cache; the component fetches twice on mount (useEffect + useFocusEffect)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Seller Center → Tampilan Toko", "issues": [
+        "The Merek Unggulan card has its own 'Simpan Merek Unggulan' button, separate from 'Simpan tampilan' just below it. The intro text only mentions 'banner, logo, info, dan produk andalan'. Add a note that brands are saved separately, or mention it in the intro, so admins don't press the wrong button.",
+        "The add-search results show the global product count (from /api/brands), not the branch count, while the auto list is ranked by branch count."
+      ]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_pgs_iter75_store_featured_brands.py", "/app/test_reports/pytest/pytest_iter75.xml"],
+  "action_items": [
+    "(LOW) Return 404 instead of 403 when Super Admin targets a non-official or unknown store in /store-appearance/{id}/featured-brands.",
+    "(LOW) Hide or flag custom brands that have 0 products in the branch.",
+    "(LOW) Make it clear on Tampilan Toko that Merek Unggulan is saved with its own button."
+  ],
+  "critical_code_review_comments": [
+    "Settings are keyed by store (app_settings 'featured_brands:<sid>'), separate from the Beranda key. Checked: the Beranda and pgs-official store page lists are independent.",
+    "In auto mode cm-feat-save is enabled with no changes (dirty includes !custom), so saving freezes the auto list as a custom one. Same as iter74; this is intended per the help text."
+  ],
+  "updated_files": ["/app/backend/tests/test_pgs_iter75_store_featured_brands.py"],
+  "success_rate": {"backend": "100% (14/14 + 10/10 iter74 regression)", "frontend": "100% of the requested flows"},
+  "seed_data_creation": "None. Featured-brand settings were changed temporarily for jombang and jember (and Beranda), then all set back to automatic with PUT items null. Checked: no featured_brands docs left.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Init script: grant geolocation, hide the location-lock ancestor that is a direct child of body, and set localStorage pgs_auth_token (from page.request login), pgs_store_id and pgs_store_manual=1. Use page.request for API checks inside the browser (urllib gets 403 from the edge). Run pytest with -n0 and EXPO_PUBLIC_BACKEND_URL exported. Marketplace store id: Toko Satu st_c789b1a7c3. Always finish with PUT /api/store-appearance/{pgs-official,pgs-jombang,pgs-jember}/featured-brands {items:null} and PUT /api/admin/featured-brands {items:null}.",
+  "rca_of_issue": ""
+}

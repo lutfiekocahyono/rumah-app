@@ -7,11 +7,14 @@ import { colors, fontSize, radius, spacing } from "@/src/theme";
 import { api, imgUrl, type Brand } from "@/src/api";
 import { SectionHeader } from "@/src/components/home-sections";
 
-/** Merek Unggulan di Beranda: logo (atau huruf depan) yang membuka halaman merek. Diatur Super Admin. */
-export function FeaturedBrands({ refreshKey }: { refreshKey: number }) {
+/** Merek Unggulan: logo (atau huruf depan) yang membuka halaman merek. Beranda = pilihan Super Admin,
+ * halaman toko cabang (storeId) = pilihan admin cabang itu. */
+export function FeaturedBrands({ refreshKey, storeId }: { refreshKey: number; storeId?: string }) {
   const router = useRouter();
   const [brands, setBrands] = useState<Brand[]>([]);
-  const load = useCallback(() => { api.featuredBrands().then(setBrands).catch(() => setBrands([])); }, []);
+  const load = useCallback(() => {
+    (storeId ? api.shopFeaturedBrands(storeId) : api.featuredBrands()).then(setBrands).catch(() => setBrands([]));
+  }, [storeId]);
   useEffect(load, [refreshKey, load]);
   useFocusEffect(load); // back from Admin → Unggulan: show the new order
   if (!brands.length) return null;

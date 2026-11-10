@@ -24,6 +24,7 @@
         "backgroundColor": "#FFFFFF"
       },
       "package": "com.emergent.rumahapp.mqe765",
+      "googleServicesFile": "./google-services.json",
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.ACCESS_COARSE_LOCATION",

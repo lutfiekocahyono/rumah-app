@@ -8,6 +8,7 @@ import Icon from "@react-native-vector-icons/ionicons";
 import { colors, fontSize, radius, spacing } from "@/src/theme";
 import { api, imgUrl, type Product, type StoreAppearance } from "@/src/api";
 import { SellerShell } from "@/src/components/seller-shell";
+import { FeaturedBrandsAdmin } from "@/src/components/featured-brands-admin";
 import { adminStyles, Card, Chips, Field, PrimaryButton } from "@/src/components/admin-form";
 import { uploadWithProgress } from "@/src/utils/upload-progress";
 
@@ -111,6 +112,7 @@ function Editor({ a, onSaved }: { a: StoreAppearance; onSaved: (a: StoreAppearan
         <Field testID="sa-phone" label="Telepon / WhatsApp" keyboardType="phone-pad" value={f.phone} onChangeText={(t) => set({ phone: t })} maxLength={20} />
       </Card>
       <Card><FeaturedPicker storeId={f.store_id} list={f.featured} onChange={(l) => set({ featured: l })} /></Card>
+      <Card><FeaturedBrandsAdmin storeId={f.store_id} /></Card>
       {msg ? <Text style={msg.ok ? adminStyles.ok : adminStyles.err} testID="sa-msg">{msg.text}</Text> : null}
       <PrimaryButton testID="sa-save" label="Simpan tampilan" loading={busy} onPress={save} />
       <PrimaryButton testID="sa-preview" label="Lihat halaman toko" variant="outline" onPress={() => router.push(`/shop/${f.store_id}` as any)} />

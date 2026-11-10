@@ -87,7 +87,7 @@ export function HomeFeedSections({ refreshKey = 0, onLoaded, shop = false }: { r
 
       <FlashSaleSection flash={data.flash} onEnd={onFlashEnd} />
 
-      {shop ? null : <FeaturedBrands refreshKey={refreshKey} />}
+      <FeaturedBrands refreshKey={refreshKey} storeId={shop ? storeId : undefined} />
 
       <VoucherStrip
         vouchers={data.vouchers}

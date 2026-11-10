@@ -156,6 +156,44 @@ def register(api, db, *, require_admin, get_current_user, get_optional_user, vis
     async def list_appearance(user=Depends(get_current_user)):
         return [await appearance_out(sid) for sid in await editable(user)]
 
+    # ---------------- Merek Unggulan halaman toko cabang ----------------
+    def fb_key(sid: str) -> str:
+        return f"featured_brands:{sid}"
+
+    @api.get("/stores/{store_id}/featured-brands")
+    async def store_featured_brands(store_id: str):
+        """Deretan merek di halaman toko cabang: pilihan admin cabang (urut); belum diatur = 10 merek terbanyak di cabang itu."""
+        if store_id not in seller.OFFICIAL_IDS:
+            return []
+        shop_scope.ON.set(True)
+        counts = {r["_id"]: r["n"] for r in await db.products.aggregate([
+            {"$match": {**await visible(store_id), "brand": {"$nin": [None, ""]}}}, {"$group": {"_id": "$brand", "n": {"$sum": 1}}}]).to_list(100000)}
+        d = await db.app_settings.find_one({"_id": fb_key(store_id)})
+        if d is None:
+            docs = await db.brands.find({"name": {"$in": list(counts)}}, {"_id": 0, "created_at": 0}).to_list(100000)
+            return sorted(({**b, "count": counts[b["name"]]} for b in docs if b["name"].strip().lower() not in ("no brand", "tanpa merek", "-")),
+                          key=lambda b: (-b["count"], b["name"].lower()))[:10]
+        got = {b["brand_id"]: b for b in await db.brands.find({"brand_id": {"$in": d["items"]}}, {"_id": 0, "created_at": 0}).to_list(100)}
+        return [{**got[i], "count": counts.get(got[i]["name"], 0)} for i in d["items"] if i in got and counts.get(got[i]["name"])]  # hide brands this branch doesn't sell
+
+    @api.get("/store-appearance/{store_id}/featured-brands")
+    async def get_store_featured(store_id: str, user=Depends(get_current_user)):
+        await check(user, store_id)
+        return {"custom": bool(await db.app_settings.find_one({"_id": fb_key(store_id)})), "items": await store_featured_brands(store_id)}
+
+    class FeaturedBrandsIn(BaseModel):
+        items: Optional[List[str]] = Field(default=None, max_length=30)  # None = back to automatic
+
+    @api.put("/store-appearance/{store_id}/featured-brands")
+    async def save_store_featured(store_id: str, body: FeaturedBrandsIn, user=Depends(get_current_user)):
+        await check(user, store_id)
+        if body.items is None:
+            await db.app_settings.delete_one({"_id": fb_key(store_id)})
+        else:
+            ok = {b["brand_id"] for b in await db.brands.find({"brand_id": {"$in": body.items}}, {"_id": 0, "brand_id": 1}).to_list(100)}
+            await db.app_settings.update_one({"_id": fb_key(store_id)}, {"$set": {"items": [i for i in dict.fromkeys(body.items) if i in ok]}}, upsert=True)
+        return await get_store_featured(store_id, user)
+
     @api.put("/store-appearance/{store_id}")
     async def save_appearance(store_id: str, body: AppearanceIn, user=Depends(get_current_user)):
         await check(user, store_id)

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "173455229684",
+    "project_id": "pusat-grosir-sidoarjo",
+    "storage_bucket": "pusat-grosir-sidoarjo.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:173455229684:android:25901f940da997f4e914a1",
+        "android_client_info": {
+          "package_name": "com.emergent.rumahapp.mqe765"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDg4-sz25WXarD53-651iDHX0gdS7XiADU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
