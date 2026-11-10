@@ -1,0 +1,39 @@
+{
+  "summary": "Tested map-pin feature end to end (backend pytest 20/20, frontend web 390x844 Playwright). Addresses: POST without a pin returns 400 'Pasang pin lokasi alamat di peta dulu', a half pin returns 400, an out-of-range pin returns 422. POST with a pin saves lat/lng. PUT without lat/lng keeps the existing pin, and PUT with lat/lng updates it. Geo proxy: search 'Gedangan Sidoarjo' returns a list of {label,lat,lng}, reverse returns a Sidoarjo label, an invalid coordinate returns 400. Store appearance: jombang editing jember returns 403, jombang can set its own pin, super admin can set any branch pin, and GET store-appearance and /stores/{id}/page both return lat/lng. Branch pins are used by /branches/nearest, /stores/suggest and /products/{id}/availability (Jombang distance went from the city-centre value to about 35 km after the pin was set). A buyer pin overrides the area (area=JEMBER with a Sidoarjo pin puts pgs-official first). UI: Tambah Alamat shows the Leaflet map (addr-pin-map iframe); search shows results; tapping a result places a marker and shows addr-pin-set with a reverse label. 'Gunakan lokasi saat ini' works with granted geolocation, and tapping inside the iframe map also places a pin. Saving without a pin is blocked; saving with a pin works and the list shows 'Pin lokasi terpasang'. An old address without a pin shows a warning and can be edited without a pin, and a pin can be added later. Store appearance: sa-pin search, then Simpan, saves the pin without changing other fields. /shop/pgs-jombang shows the 'Petunjuk arah ke toko' button (44px tall), which opens https://www.google.com/maps/dir/?api=1&destination=lat,lng on web. Regression: checkout loads with saved addresses (address chips plus prefilled form, branch distances shown), and product detail pd-branch-stock renders. No console errors. Deprecated packages detected: none (no expo-av, expo-barcode-scanner or expo-background-fetch).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/geo/search", "issue": "Nominatim usage policy forbids autocomplete / search-as-you-type. The client calls this on every keystroke (500ms debounce), and there is no server-side throttle to Nominatim's 1 req/s limit. With real traffic the server IP can be rate-limited or banned (shows up as 502 'Layanan peta sedang sibuk')."},
+      {"endpoint": "GET /api/geo/search, /api/geo/reverse", "issue": "No auth and no rate limit, so this is an open proxy to Nominatim. Reverse is also called on every pin move."},
+      {"endpoint": "PUT /api/store-appearance/{id}", "issue": "A half pin (lat without lng) is accepted and stored. It is harmless because point() needs both values, but it is inconsistent with the address validation."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "LocationPicker 'Hapus pin' (store-appearance)", "issue": "sa-pin-clear sets lat/lng to null, but the Leaflet marker stays visible in the iframe/WebView because there is no 'clear' map command. The map still shows a pin while the status says unset.", "testID": "sa-pin-clear", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/account/addresses form", "issues": ["Validation error 'Pasang pin lokasi alamat di peta dulu' (address-error) is rendered at the top of the form. After tapping Simpan Alamat it was at y=-378, off-screen, so the user does not see why saving failed (only the small hint under the map is red, and it is red from the start). Show the error near the Save button or scroll to it."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iter76_map_pins.py", "/app/test_reports/pytest/pytest_iter76.xml"],
+  "action_items": [
+    "Switch place search to submit-on-enter/button, or use an autocomplete-friendly geocoder (e.g. Photon), and add a server-side throttle (asyncio lock, >=1s between calls) to comply with the Nominatim policy",
+    "Add a 'clear' command to the map HTML (remove the marker) and send it when 'Hapus pin' is tapped",
+    "Show the address form error near the Save button or scroll to it when validation fails",
+    "Optional: rate-limit /api/geo/* and reject half pins in AppearanceIn"
+  ],
+  "critical_code_review_comments": [
+    "LocationPicker memoizes the map HTML with [] deps. This is fine because Editor is keyed by store_id and the address form remounts, but any future reuse with a changing value must use cmd instead.",
+    "Native MapFrame uses react-native-webview with baseUrl = EXPO_PUBLIC_BACKEND_URL (good for the OSM tile Referer). Not verified on device: map pan inside ScrollView on iOS/Android.",
+    "Leaflet loads from the unpkg CDN at runtime. Consider pinning with SRI or bundling it."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter76_map_pins.py"],
+  "success_rate": {"backend": "100% (20/20)", "frontend": "100% of requested flows (1 low-priority UI bug, 1 design issue)"},
+  "seed_data_creation": "Temporary TEST_ addresses for demo@pgs.id (ad_1bde86d606 via UI, ad_TESTlegacy1 inserted directly in Mongo as a pin-less legacy address) and one cart item, all deleted afterwards. pgs-jember pin restored to the original (null). pgs-jombang pin LEFT SET at -7.5571786,112.2334209 (Alun-alun Jombang) as allowed by the request.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run pytest with -n0 for test_iter76_map_pins.py (the TestBranchPins tests are ordered; they passed under xdist but ordering matters). Web login: page.request login, then an init script sets localStorage pgs_auth_token/pgs_store_id/pgs_store_manual and hides the location-lock overlay. Set a pin via addr-pin-search/sa-pin-search then addr-pin-result-0. Tapping inside the iframe also works: page.frame_locator('[data-testid=addr-pin-map] iframe').locator('#m').click(). Demo user had 0 addresses before testing."
+}

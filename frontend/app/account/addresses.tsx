@@ -9,8 +9,9 @@ import { ScreenHeader } from "@/src/components/screen-header";
 import { ConfirmDialog } from "@/src/components/confirm-dialog";
 import { adminStyles, Card, Field, PrimaryButton, ToggleRow } from "@/src/components/admin-form";
 import { DestinationSearch } from "@/src/components/destination-search";
+import { LocationPicker } from "@/src/components/location-picker";
 
-const EMPTY: AddressInput = { label: "Rumah", recipient: "", phone: "", address: "", city: "Sidoarjo", postal_code: "", is_default: false };
+const EMPTY: AddressInput = { label: "Rumah", recipient: "", phone: "", address: "", city: "Sidoarjo", postal_code: "", lat: null, lng: null, is_default: false };
 
 export default function Addresses() {
   const insets = useSafeAreaInsets();
@@ -36,6 +37,7 @@ export default function Addresses() {
     if (!form) return;
     if (!form.recipient.trim() || form.phone.trim().length < 6 || form.address.trim().length < 5 || form.city.trim().length < 2)
       return setErr("Lengkapi nama penerima, nomor HP, alamat, dan kota");
+    if (!editId && (form.lat == null || form.lng == null)) return setErr("Pasang pin lokasi alamat di peta dulu");
     setBusy(true);
     setErr("");
     try {
@@ -58,7 +60,7 @@ export default function Addresses() {
     <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={[adminStyles.root, { paddingTop: insets.top }]} testID="addresses-screen">
       <ScreenHeader title="Alamat Pengiriman" />
       <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.md, paddingBottom: insets.bottom + spacing["2xl"] }} keyboardShouldPersistTaps="handled">
-        {err ? <Text style={adminStyles.err} testID="address-error">{err}</Text> : null}
+        {err && !form ? <Text style={adminStyles.err} testID="address-error">{err}</Text> : null}
         {form ? (
           <Card>
             <Text style={styles.h}>{editId ? "Ubah Alamat" : "Alamat Baru"}</Text>
@@ -83,8 +85,11 @@ export default function Addresses() {
                 <Text style={adminStyles.muted}>Disimpan supaya ongkir langsung muncul saat checkout.</Text>
               </View>
             ) : null}
+            <LocationPicker testID="addr-pin" label="Pin lokasi pengiriman" required={!editId}
+              value={form.lat != null && form.lng != null ? { lat: form.lat, lng: form.lng } : null} onChange={(p) => set(p)} />
             <Field testID="addr-postal" label="Kode pos (opsional)" value={form.postal_code} onChangeText={(t) => set({ postal_code: t })} keyboardType="number-pad" />
             <ToggleRow testID="addr-default" label="Jadikan alamat utama" value={form.is_default} onChange={(v) => set({ is_default: v })} />
+            {err ? <Text style={adminStyles.err} testID="address-form-error">{err}</Text> : null}
             <PrimaryButton testID="addr-save" label="Simpan Alamat" onPress={save} loading={busy} />
             <PrimaryButton label="Batal" variant="outline" onPress={() => setForm(null)} />
           </Card>
@@ -101,6 +106,12 @@ export default function Addresses() {
             </View>
             <Text style={styles.name}>{a.recipient} · {a.phone}</Text>
             <Text style={adminStyles.muted}>{a.address}, {a.city} {a.postal_code}</Text>
+            {a.lat != null ? (
+              <View style={styles.areaRow} testID={`addr-pin-${a.address_id}`}>
+                <Icon name="pin" size={14} color={colors.success} />
+                <Text style={styles.areaText}>Pin lokasi terpasang</Text>
+              </View>
+            ) : <Text style={adminStyles.muted} testID={`addr-nopin-${a.address_id}`}>⚠ Pin lokasi belum dipasang — ketuk Ubah untuk menambahkan</Text>}
             {a.destination_id ? (
               <View style={styles.areaRow} testID={`addr-area-${a.address_id}`}>
                 <Icon name="navigate-outline" size={14} color={colors.success} />

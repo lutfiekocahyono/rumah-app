@@ -33,6 +33,13 @@ def _km(a: tuple, b: tuple) -> float:
     return 6371 * 2 * math.asin(math.sqrt(h))
 
 
+def point(s: dict) -> Optional[tuple]:
+    """Branch position: pin set in Tampilan Toko, else the approximate city centre."""
+    if s.get("lat") is not None and s.get("lng") is not None:
+        return (s["lat"], s["lng"])
+    return BRANCH_COORDS.get(s["store_id"])
+
+
 def locate(area: str) -> Optional[tuple]:
     """Find coordinates from a RajaOngkir label ('GUBENG, GUBENG, SURABAYA, JAWA TIMUR, 60281') or a city name."""
     up = re.sub(r"\b(KABUPATEN|KAB\.?|KOTA)\b", "", (area or "").upper())
@@ -50,6 +57,8 @@ class SuggestIn(BaseModel):
     area: str = Field(default="", max_length=200)
     product_ids: List[str] = Field(default=[], max_length=100)
     quantities: List[int] = Field(default=[], max_length=100)
+    lat: Optional[float] = Field(default=None, ge=-90, le=90)  # pin of the buyer's address (more precise than the area)
+    lng: Optional[float] = Field(default=None, ge=-180, le=180)
 
 
 class MoveCartIn(BaseModel):
@@ -72,18 +81,18 @@ def register(api, db, get_owner, seller):
                 out[p["product_id"]] = branch.get(p["product_id"], 0)
         return out
 
-    async def suggest(area: str, product_ids: List[str], quantities: List[int]) -> dict:
+    async def suggest(area: str, product_ids: List[str], quantities: List[int], pin: Optional[tuple] = None) -> dict:
         stores = await db.stores.find({"store_id": {"$in": seller.OFFICIAL_IDS}, "status": "active"},
-                                      {"_id": 0, "store_id": 1, "name": 1, "city": 1, "address": 1, "pickup_hours": 1, "phone": 1}).to_list(10)
+                                      {"_id": 0, "store_id": 1, "name": 1, "city": 1, "address": 1, "pickup_hours": 1, "phone": 1, "lat": 1, "lng": 1}).to_list(10)
         prods = await db.products.find({"product_id": {"$in": product_ids}}, {"_id": 0, "product_id": 1, "store_id": 1, "stock": 1, "in_stock": 1}).to_list(100)
         need = {pid: (quantities[i] if i < len(quantities) else 1) for i, pid in enumerate(product_ids)}
-        here = locate(area)
+        here = pin or locate(area)
         rows = []
         for s in stores:
             st = await stock_at(s["store_id"], prods)
             rows.append({**s, "address": s.get("address") or "", "pickup_hours": s.get("pickup_hours") or "", "phone": s.get("phone") or "",
                          "stock": st, "available": all(st.get(pid, 0) >= q for pid, q in need.items()) if need else True,
-                         "distance_km": round(_km(here, BRANCH_COORDS[s["store_id"]])) if here and s["store_id"] in BRANCH_COORDS else None})
+                         "distance_km": round(_km(here, point(s))) if here and point(s) else None})
         rows.sort(key=lambda r: (r["distance_km"] is None, r["distance_km"] or 0))
         best = next((r["store_id"] for r in rows if r["available"]), None) if here else None
         return {"located": bool(here), "suggested": best, "stores": rows}
@@ -93,20 +102,21 @@ def register(api, db, get_owner, seller):
         """Official branches sorted by distance from the buyer's GPS position."""
         if not (-90 <= lat <= 90 and -180 <= lng <= 180):
             raise HTTPException(status_code=400, detail="Koordinat tidak valid")
-        stores = await db.stores.find({"store_id": {"$in": seller.OFFICIAL_IDS}, "status": "active"}, {"_id": 0, "store_id": 1, "name": 1}).to_list(10)
-        rows = sorted(({**s, "distance_km": round(_km((lat, lng), BRANCH_COORDS[s["store_id"]]), 1)} for s in stores if s["store_id"] in BRANCH_COORDS),
+        stores = await db.stores.find({"store_id": {"$in": seller.OFFICIAL_IDS}, "status": "active"}, {"_id": 0, "store_id": 1, "name": 1, "lat": 1, "lng": 1}).to_list(10)
+        rows = sorted(({"store_id": s["store_id"], "name": s["name"], "distance_km": round(_km((lat, lng), point(s)), 1)} for s in stores if point(s)),
                       key=lambda r: r["distance_km"])
         return {"nearest": rows[0] if rows else None, "stores": rows}
 
     @api.post("/stores/suggest")
     async def stores_suggest(body: SuggestIn):
-        return await suggest(body.area, body.product_ids, body.quantities)
+        return await suggest(body.area, body.product_ids, body.quantities, (body.lat, body.lng) if body.lat is not None and body.lng is not None else None)
 
     @api.get("/products/{product_id}/availability")
-    async def availability(product_id: str, area: str = ""):
+    async def availability(product_id: str, area: str = "", lat: Optional[float] = None, lng: Optional[float] = None):
         if not await db.products.find_one({"product_id": product_id}, {"_id": 1}):
             raise HTTPException(status_code=404, detail="Produk tidak ditemukan")
-        return await suggest(area, [product_id], [1])
+        pin = (lat, lng) if lat is not None and lng is not None and -90 <= lat <= 90 and -180 <= lng <= 180 else None
+        return await suggest(area, [product_id], [1], pin)
 
     @api.post("/cart/move")
     async def move_cart(body: MoveCartIn, owner: str = Depends(get_owner)):

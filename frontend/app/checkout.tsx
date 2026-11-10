@@ -23,6 +23,7 @@ const cityFromLabel = (label: string) => {
   const parts = label.split(",").map((s) => s.trim());
   return parts.length >= 3 ? parts[2].toLowerCase().replace(/\b\w/g, (ch) => ch.toUpperCase()) : null;
 };
+const pinOf = (a?: Address) => (a && a.lat != null && a.lng != null ? { lat: a.lat, lng: a.lng } : null);
 
 export default function Checkout() {
   const insets = useSafeAreaInsets();
@@ -218,7 +219,7 @@ export default function Checkout() {
         <Text style={[co.section, co.sectionGap]}>Toko & Kurir</Text>
         <View style={co.card} testID="checkout-couriers">
           <Text style={co.paySub}>Dikirim dari: {items[0]?.store_name ?? "-"}</Text>
-          <BranchSwitcher storeId={storeId} items={items} area={dest?.label || (cityIsBuyers ? city : "")} pickup={isPickup} onMove={moveBranch} />
+          <BranchSwitcher storeId={storeId} items={items} area={dest?.label || (cityIsBuyers ? city : "")} pin={pinOf(addresses.find((a) => a.address_id === addrId))} pickup={isPickup} onMove={moveBranch} />
           {autoShip && !isPickup ? (
             <View style={{ gap: 4 }}>
               <Text style={co.paySub}>Kecamatan tujuan (untuk ongkir otomatis JNE / J&T / SiCepat)</Text>

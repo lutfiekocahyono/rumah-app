@@ -9,6 +9,7 @@ import { colors, fontSize, radius, spacing } from "@/src/theme";
 import { api, imgUrl, type Product, type StoreAppearance } from "@/src/api";
 import { SellerShell } from "@/src/components/seller-shell";
 import { FeaturedBrandsAdmin } from "@/src/components/featured-brands-admin";
+import { LocationPicker } from "@/src/components/location-picker";
 import { adminStyles, Card, Chips, Field, PrimaryButton } from "@/src/components/admin-form";
 import { uploadWithProgress } from "@/src/utils/upload-progress";
 
@@ -108,6 +109,9 @@ function Editor({ a, onSaved }: { a: StoreAppearance; onSaved: (a: StoreAppearan
       <Card>
         <Field testID="sa-desc" label="Deskripsi toko" value={f.description} onChangeText={(t) => set({ description: t })} multiline maxLength={500} />
         <Field testID="sa-address" label="Alamat" value={f.address} onChangeText={(t) => set({ address: t })} multiline maxLength={300} />
+        <LocationPicker testID="sa-pin" label="Pin lokasi toko (untuk petunjuk arah & cabang terdekat)"
+          value={f.lat != null && f.lng != null ? { lat: f.lat, lng: f.lng } : null} onChange={(p) => set(p)} />
+        {f.lat != null ? <Pressable testID="sa-pin-clear" onPress={() => set({ lat: null, lng: null })} style={{ minHeight: 32 }}><Text style={{ color: colors.error }}>Hapus pin</Text></Pressable> : null}
         <Field testID="sa-hours" label="Jam ambil" placeholder="mis. Senin–Sabtu 08.00–16.00" value={f.pickup_hours} onChangeText={(t) => set({ pickup_hours: t })} maxLength={80} />
         <Field testID="sa-phone" label="Telepon / WhatsApp" keyboardType="phone-pad" value={f.phone} onChangeText={(t) => set({ phone: t })} maxLength={20} />
       </Card>

@@ -270,3 +270,10 @@ Iteration 2: import all data from pusatgrosirsidoarjo.com; tiered pricing (pembe
 - Android: google-services.json (Firebase project pusat-grosir-sidoarjo, package com.emergent.rumahapp.mqe765) installed at frontend/google-services.json, wired via app.json android.googleServicesFile. Push code verified against Emergent push playbook.
 - iOS: postponed (no Apple Developer account yet).
 - Not deployed/published (user request).
+
+## Map pins (Jun 2026)
+- OpenStreetMap/Leaflet LocationPicker (src/components/location-picker.tsx; map-frame WebView native / iframe web). Search via /api/geo/search & /api/geo/reverse (Nominatim proxy, login required, 1 req/s throttle, cache, search on submit).
+- Addresses: lat/lng; pin mandatory for NEW addresses (POST 400 without); PUT without lat/lng keeps pin.
+- Store appearance: branch lat/lng; shop page 'Petunjuk arah ke toko' (Apple Maps iOS, Google Maps elsewhere).
+- Nearest branch (branches.point): branch pin else city coords; buyer address pin overrides area.
+- Tests: backend/tests/test_iter76_map_pins.py (21 pass), iteration_76.json. NOT redeployed (owner decides).

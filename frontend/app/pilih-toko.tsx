@@ -16,9 +16,9 @@ export default function PickStore() {
   const router = useRouter();
   const { stores, storeId, choose, distances, manual, followNearest } = useStore();
   const { refresh } = useCart();
-  const area = useBuyerArea();
+  const { area, pin } = useBuyerArea();
   const [near, setNear] = useState<BranchSuggest | null>(null);
-  useEffect(() => { if (area && !distances) api.suggestStores(area).then(setNear).catch(() => {}); }, [area, distances]);
+  useEffect(() => { if ((area || pin) && !distances) api.suggestStores(area, [], [], pin).then(setNear).catch(() => {}); }, [area, pin, distances]);
   // GPS distance first, else distance from the saved address
   const info = (id: string) => {
     const g = distances?.find((r) => r.store_id === id);

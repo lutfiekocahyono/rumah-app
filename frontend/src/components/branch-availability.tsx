@@ -7,18 +7,19 @@ import { api, type BranchSuggest } from "@/src/api";
 import { useAuth } from "@/src/auth-context";
 import { useStore } from "@/src/store-context";
 
-/** The buyer's area for "nearest branch": default saved address area, else its city. */
-export function useBuyerArea(): string {
+export type BuyerArea = { area: string; pin: { lat: number; lng: number } | null };
+/** The buyer's place for "nearest branch": default saved address pin (most precise), its area, else its city. */
+export function useBuyerArea(): BuyerArea {
   const { user } = useAuth();
-  const [area, setArea] = useState("");
+  const [v, setV] = useState<BuyerArea>({ area: "", pin: null });
   useEffect(() => {
-    if (!user) { setArea(""); return; }
+    if (!user) { setV({ area: "", pin: null }); return; }
     api.addresses().then((l) => {
       const d = l.find((a) => a.is_default) ?? l[0];
-      setArea(d ? d.destination_label || d.city : "");
+      setV({ area: d ? d.destination_label || d.city : "", pin: d && d.lat != null && d.lng != null ? { lat: d.lat, lng: d.lng } : null });
     }).catch(() => {});
   }, [user]);
-  return area;
+  return v;
 }
 
 export function stockText(n: number) {
@@ -29,10 +30,10 @@ export function stockText(n: number) {
 
 /** Product page: stock at every branch, nearest first, with a one-tap switch. */
 export function BranchAvailability({ productId, onSwitched }: { productId: string; onSwitched: () => void }) {
-  const area = useBuyerArea();
+  const { area, pin } = useBuyerArea();
   const { storeId, choose } = useStore();
   const [data, setData] = useState<BranchSuggest | null>(null);
-  useEffect(() => { api.productAvailability(productId, area).then(setData).catch(() => {}); }, [productId, area]);
+  useEffect(() => { api.productAvailability(productId, area, pin).then(setData).catch(() => {}); }, [productId, area, pin]);
 
   return (
     <View style={styles.box} testID="pd-branch-stock">
@@ -60,7 +61,7 @@ export function BranchAvailability({ productId, onSwitched }: { productId: strin
           </View>
         );
       })}
-      {data && !data.located ? <Text style={styles.hint}>Simpan alamat dengan area ongkir untuk melihat toko terdekat.</Text> : null}
+      {data && !data.located ? <Text style={styles.hint}>Simpan alamat dengan pin lokasi untuk melihat toko terdekat.</Text> : null}
     </View>
   );
 }

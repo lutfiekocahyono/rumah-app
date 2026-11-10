@@ -356,9 +356,12 @@ export const api = {
   savePaymentSettings: (b: { enabled: boolean; production: boolean; server_key: string | null; client_key: string }) =>
     req<PaymentSettings>("/admin/payment-settings", { method: "PUT", body: JSON.stringify(b) }),
   verifyMidtrans: () => req<PaymentSettings>("/admin/payment/verify-midtrans", { method: "POST" }),
-  productAvailability: (id: string, area = "") => req<BranchSuggest>(`/products/${id}/availability?area=${encodeURIComponent(area)}`),
-  suggestStores: (area: string, product_ids: string[] = [], quantities: number[] = []) =>
-    req<BranchSuggest>("/stores/suggest", { method: "POST", body: JSON.stringify({ area, product_ids, quantities }) }),
+  productAvailability: (id: string, area = "", pin?: { lat: number; lng: number } | null) =>
+    req<BranchSuggest>(`/products/${id}/availability?${qs({ area, ...(pin ? { lat: pin.lat, lng: pin.lng } : {}) })}`),
+  suggestStores: (area: string, product_ids: string[] = [], quantities: number[] = [], pin?: { lat: number; lng: number } | null) =>
+    req<BranchSuggest>("/stores/suggest", { method: "POST", body: JSON.stringify({ area, product_ids, quantities, ...(pin ? { lat: pin.lat, lng: pin.lng } : {}) }) }),
+  geoSearch: (q: string) => req<{ label: string; lat: number; lng: number }[]>(`/geo/search?${qs({ q })}`),
+  geoReverse: (lat: number, lng: number) => req<{ label: string }>(`/geo/reverse?${qs({ lat, lng })}`),
   moveCart: (from_store_id: string, to_store_id: string) =>
     req<{ moved: number; skipped: string[] }>("/cart/move", { method: "POST", body: JSON.stringify({ from_store_id, to_store_id }) }),
   paymentMethods: () => req<{ midtrans: boolean; xendit: boolean; cod: boolean; midtrans_sandbox: boolean }>("/payments/methods"),
@@ -462,7 +465,7 @@ export type User = {
   user_id: string; email: string; name: string; role: "admin" | "customer" | "store_admin"; customer_type: CustomerType; picture?: string | null;
   email_verified: boolean; phone?: string | null; phone_verified: boolean; gender: string; birthdate: string; has_password: boolean;
 };
-export type Address = { address_id: string; label: string; recipient: string; phone: string; address: string; city: string; postal_code: string; destination_id?: number | null; destination_label?: string; is_default: boolean };
+export type Address = { address_id: string; label: string; recipient: string; phone: string; address: string; city: string; postal_code: string; destination_id?: number | null; destination_label?: string; lat?: number | null; lng?: number | null; is_default: boolean };
 export type AddressInput = Omit<Address, "address_id">;
 export type AppNotification = { notif_id: string; kind: "order" | "promo" | "security" | "product"; title: string; body: string; link: string; read: boolean; created_at: string };
 export type ActivityLog = { log_id: string; action: string; detail: string; created_at: string };
@@ -477,9 +480,9 @@ export type HomeSectionCfg = { enabled: boolean; title: string; limit: number; s
 export type HomeSectionsInput = Record<HomeSectionKey, HomeSectionCfg>;
 export type HomeSectionsSettings = { store_id: string; store_name: string; sections: Record<HomeSectionKey, HomeSectionCfg & { pinned_products: { product_id: string; name: string; image: string; price: number }[] }> };
 export type HomeFeed = Record<HomeSectionKey, { enabled: boolean; title: string; limit: number; items: Product[]; more?: boolean }>;
-export type Store = { official?: boolean; store_id: string; owner_id: string; name: string; description: string; city: string; phone?: string; logo: string; status: "pending" | "active" | "rejected" | "suspended"; note: string; created_at: string; product_count?: number; owner_name?: string; owner_email?: string; address?: string; pickup_hours?: string };
+export type Store = { official?: boolean; store_id: string; owner_id: string; name: string; description: string; city: string; phone?: string; logo: string; status: "pending" | "active" | "rejected" | "suspended"; note: string; created_at: string; product_count?: number; owner_name?: string; owner_email?: string; address?: string; pickup_hours?: string; lat?: number | null; lng?: number | null };
 export type ShopPage = Store & { banner: string; featured: Product[]; featured_manual: boolean };
-export type StoreAppearance = { store_id: string; name: string; city: string; banner: string; logo: string; description: string; phone: string; address: string; pickup_hours: string; featured: { product_id: string; name: string; image: string }[] };
+export type StoreAppearance = { store_id: string; name: string; city: string; banner: string; logo: string; description: string; phone: string; address: string; pickup_hours: string; lat: number | null; lng: number | null; featured: { product_id: string; name: string; image: string }[] };
 export type StoreInput = { name: string; description: string; city: string; phone: string; logo: string; address?: string; pickup_hours?: string };
 export type SellerProductInput = { name: string; description: string; category: string; price: number; original_price: number; stock: number; images: string[] };
 export type Courier = { code: string; name: string; cost: number; eta: string; active: boolean; source?: "auto" | "manual" };

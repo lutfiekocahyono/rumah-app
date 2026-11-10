@@ -93,6 +93,8 @@ class AddressIn(BaseModel):
     postal_code: str = Field(default="", max_length=10)
     destination_id: Optional[int] = None  # RajaOngkir area, so checkout can quote shipping right away
     destination_label: str = Field(default="", max_length=200)
+    lat: Optional[float] = Field(default=None, ge=-90, le=90)  # pin on the map
+    lng: Optional[float] = Field(default=None, ge=-180, le=180)
     is_default: bool = False
 
 
@@ -300,6 +302,8 @@ def register(api, db, get_current_user, user_out, make_token):
         uid = user["user_id"]
         if await db.addresses.count_documents({"user_id": uid}) >= 20:
             raise HTTPException(status_code=400, detail="Maksimal 20 alamat")
+        if body.lat is None or body.lng is None:
+            raise HTTPException(status_code=400, detail="Pasang pin lokasi alamat di peta dulu")
         first = await db.addresses.count_documents({"user_id": uid}) == 0
         if body.is_default or first:
             await db.addresses.update_many({"user_id": uid}, {"$set": {"is_default": False}})
@@ -313,7 +317,7 @@ def register(api, db, get_current_user, user_out, make_token):
         uid = user["user_id"]
         if body.is_default:
             await db.addresses.update_many({"user_id": uid}, {"$set": {"is_default": False}})
-        res = await db.addresses.update_one({"user_id": uid, "address_id": address_id}, {"$set": body.model_dump(exclude={"is_default"} if not body.is_default else None)})
+        res = await db.addresses.update_one({"user_id": uid, "address_id": address_id}, {"$set": body.model_dump(exclude=({"is_default"} if not body.is_default else set()) | ({"lat", "lng"} if body.lat is None or body.lng is None else set()))})
         if res.matched_count == 0:
             raise HTTPException(status_code=404, detail="Alamat tidak ditemukan")
         return await _addresses(uid)

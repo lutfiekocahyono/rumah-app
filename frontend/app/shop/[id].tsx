@@ -22,6 +22,12 @@ const SORTS = [
 const { width: screenW } = Dimensions.get("window");
 const GAP = spacing.md;
 const CARD_W = (Math.min(screenW, 600) - spacing.lg * 2 - GAP) / 2;
+/** Route to the store in the phone's maps app (Apple Maps on iPhone, Google Maps elsewhere). */
+const openDirections = (lat: number, lng: number, name: string) => {
+  const google = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
+  const url = Platform.OS === "ios" ? `http://maps.apple.com/?daddr=${lat},${lng}&q=${encodeURIComponent(name)}&dirflg=d` : google;
+  Linking.openURL(url).catch(() => Linking.openURL(google));
+};
 const wa = (p: string) => { const d = p.replace(/\D/g, ""); return d.startsWith("0") ? `62${d.slice(1)}` : d; };
 
 function InfoRow({ icon, text, testID }: { icon: string; text: string; testID: string }) {
@@ -55,6 +61,11 @@ function Header({ s, q, setQ, sort, setSort, nFilters, openFilter, homeReady, re
         </View>
         {s.description ? <Text style={styles.desc} testID="shop-desc">{s.description}</Text> : null}
         {s.address ? <InfoRow icon="location-outline" text={s.address} testID="shop-address" /> : null}
+        {s.lat != null && s.lng != null ? (
+          <Pressable testID="shop-directions" style={[styles.btn, { alignSelf: "flex-start" }]} onPress={() => openDirections(s.lat!, s.lng!, s.name)}>
+            <Icon name="navigate" size={16} color={colors.brandPrimary} /><Text style={styles.btnText}>Petunjuk arah ke toko</Text>
+          </Pressable>
+        ) : null}
         {s.pickup_hours ? <InfoRow icon="time-outline" text={`Jam ambil: ${s.pickup_hours}`} testID="shop-hours" /> : null}
         {s.phone ? (
           <>

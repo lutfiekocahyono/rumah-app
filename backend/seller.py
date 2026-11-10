@@ -84,6 +84,7 @@ def store_out(s: dict) -> dict:
     out = {k: s.get(k) for k in ("store_id", "owner_id", "name", "description", "city", "phone", "logo",
                                  "status", "note", "created_at", "address", "pickup_hours")}
     out["official"] = s.get("store_id") in OFFICIAL_IDS
+    out["lat"], out["lng"] = s.get("lat"), s.get("lng")
     return out
 
 

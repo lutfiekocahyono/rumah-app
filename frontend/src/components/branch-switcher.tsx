@@ -9,22 +9,23 @@ type Props = {
   storeId: string;
   items: CartItem[];
   area: string; // destination label or city
+  pin?: { lat: number; lng: number } | null; // map pin of the chosen address (more precise)
   pickup: boolean; // "Ambil di toko" selected
   onMove: (toStoreId: string) => Promise<void>;
 };
 
 /** Checkout: nearest-branch suggestion + pickup branch picker (cart moves to the chosen branch). */
-export function BranchSwitcher({ storeId, items, area, pickup, onMove }: Props) {
+export function BranchSwitcher({ storeId, items, area, pin, pickup, onMove }: Props) {
   const [data, setData] = useState<BranchSuggest | null>(null);
   const [busy, setBusy] = useState("");
   const key = items.map((i) => `${i.product_id}:${i.quantity}`).join(",");
   useEffect(() => {
     if (!items.length) return;
     const t = setTimeout(() => {
-      api.suggestStores(area, items.map((i) => i.product_id), items.map((i) => i.quantity)).then(setData).catch(() => {});
+      api.suggestStores(area, items.map((i) => i.product_id), items.map((i) => i.quantity), pin).then(setData).catch(() => {});
     }, 600); // area may come from a text field — wait until typing pauses
     return () => clearTimeout(t);
-  }, [area, key]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [area, key, pin?.lat, pin?.lng]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!data) return null;
   const move = async (to: string) => { setBusy(to); try { await onMove(to); } finally { setBusy(""); } };

@@ -40,6 +40,7 @@ import seller
 import shipping
 import support
 import branches
+import geo
 import storage
 from pricing import migrate_global, price_matrix, price_tiers, unit_price
 from pymongo import ReturnDocument
@@ -1482,6 +1483,7 @@ support.register(api, db, get_current_user, require_admin, ACCT["notify_user"], 
 
 payments.register_settings(api, db, require_admin)
 branches.register(api, db, get_owner, seller)
+geo.register(api, get_current_user)
 
 SHIP_QUOTE, SHIP_ORIGIN = shipping.register(api, db, require_admin, get_owner, seller.OFFICIAL_IDS, seller.couriers_of)
 product_editor.register(api, db, get_current_user=get_current_user, log_activity=ACCT["log_activity"], origin_label=SHIP_ORIGIN)

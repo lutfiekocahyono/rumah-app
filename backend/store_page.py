@@ -24,6 +24,8 @@ class AppearanceIn(BaseModel):
     phone: str = Field(default="", max_length=20)
     address: str = Field(default="", max_length=300)
     pickup_hours: str = Field(default="", max_length=80)
+    lat: Optional[float] = Field(default=None, ge=-90, le=90)  # pin of the branch on the map
+    lng: Optional[float] = Field(default=None, ge=-180, le=180)
     featured_ids: List[str] = Field(default=[], max_length=MAX_FEATURED)
 
 
@@ -150,6 +152,7 @@ def register(api, db, *, require_admin, get_current_user, get_optional_user, vis
         names = {p["product_id"]: p for p in await db.products.find({"product_id": {"$in": ids}}, {"_id": 0, "product_id": 1, "name": 1, "image": 1}).to_list(MAX_FEATURED)}
         return {"store_id": sid, "name": s.get("name", sid), "city": s.get("city", ""),
                 **{k: s.get(k, "") for k in ("banner", "logo", "description", "phone", "address", "pickup_hours")},
+                "lat": s.get("lat"), "lng": s.get("lng"),
                 "featured": [names[i] for i in ids if i in names]}
 
     @api.get("/store-appearance")
@@ -206,6 +209,8 @@ def register(api, db, *, require_admin, get_current_user, get_optional_user, vis
                 raise HTTPException(status_code=400, detail="Ada produk andalan yang tidak tersedia di cabang ini")
         upd = {**body.model_dump(exclude={"featured_ids"}), "featured_ids": ids, "appearance_updated_at": datetime.now(timezone.utc)}
         upd = {k: v.strip() if isinstance(v, str) else v for k, v in upd.items()}
+        if upd["lat"] is None or upd["lng"] is None:  # a pin needs both coordinates
+            upd["lat"] = upd["lng"] = None
         await db.stores.update_one({"store_id": store_id}, {"$set": upd})
         return await appearance_out(store_id)
 
