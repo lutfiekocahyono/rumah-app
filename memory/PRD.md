@@ -280,3 +280,4 @@ Iteration 2: import all data from pusatgrosirsidoarjo.com; tiered pricing (pembe
 
 ## Admin pages: no global catalog search bar (Jun 2026)
 - app-chrome.tsx ADMIN list hides TopSearch on /admin/*, /seller/*, /product-editor/*; in-page admin search boxes kept.
+- UPDATE: app-chrome.tsx now uses allowlist TOP_SEARCH (only /product/*, /product-updates/*, /kategori). All 61 routes checked in preview.

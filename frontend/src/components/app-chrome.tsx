@@ -9,10 +9,9 @@ import { useCart } from "@/src/cart-context";
 
 // login / daftar / pembayaran stay plain so buyers can focus on finishing
 const PLAIN = [/^\/login/, /^\/register/, /^\/forgot-password/, /^\/checkout/];
-// these already have their own search box at the top (branch store page: only "Cari di <toko>")
-const OWN_SEARCH = [/^\/$/, /^\/search/, /^\/katalog/, /^\/scan/, /^\/shop\//, /^\/akun\/?$/, /^\/keranjang\/?$/, /^\/category\//, /^\/brand\//];
-// admin panel (Super Admin, admin cabang, editor produk): no buyer catalog search on top; their own search boxes stay
-const ADMIN = [/^\/admin(\/|$)/, /^\/seller(\/|$)/, /^\/product-editor(\/|$)/];
+// the catalog search bar on top appears ONLY on these browsing pages; every other page (Akun & sub-pages,
+// pesanan, chat, komplain, saldo, admin, Seller Center, …) has no catalog search on top
+const TOP_SEARCH = [/^\/product\//, /^\/product-updates\//, /^\/kategori\/?$/];
 
 const ITEMS = [
   { key: "home", label: "Beranda", icon: "home", to: "/", match: (p: string) => p === "/" },
@@ -85,7 +84,7 @@ export function AppChrome({ children }: { children: React.ReactNode }) {
     return () => { a.remove(); b.remove(); };
   }, []);
   const plain = PLAIN.some((r) => r.test(path));
-  const showTop = !plain && !OWN_SEARCH.some((r) => r.test(path)) && !ADMIN.some((r) => r.test(path));
+  const showTop = !plain && TOP_SEARCH.some((r) => r.test(path));
   const showBottom = !plain && !kb;
   // screens add their own safe-area padding: give them 0 where our bars already cover the notch / home indicator
   const inner = { ...insets, top: showTop ? 0 : insets.top, bottom: showBottom ? 0 : insets.bottom };
