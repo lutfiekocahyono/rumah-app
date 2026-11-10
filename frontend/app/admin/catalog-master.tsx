@@ -10,6 +10,7 @@ import { api, imgUrl, type Brand, type Category } from "@/src/api";
 import { ScreenHeader } from "@/src/components/screen-header";
 import { ConfirmDialog } from "@/src/components/confirm-dialog";
 import { Field, PrimaryButton, adminStyles } from "@/src/components/admin-form";
+import { FeaturedBrandsAdmin } from "@/src/components/featured-brands-admin";
 
 const ICONS = ["pricetag-outline", "restaurant-outline", "home-outline", "tv-outline", "shirt-outline", "happy-outline", "construct-outline",
   "car-outline", "brush-outline", "bed-outline", "basket-outline", "gift-outline", "fitness-outline", "school-outline", "paw-outline", "leaf-outline"];
@@ -30,7 +31,7 @@ async function pickUpload(): Promise<string | null> {
 
 export default function CatalogMaster() {
   const insets = useSafeAreaInsets();
-  const [tab, setTab] = useState<"brand" | "cat">("brand");
+  const [tab, setTab] = useState<"brand" | "cat" | "featured">("brand");
   const [brands, setBrands] = useState<Brand[]>([]);
   const [cats, setCats] = useState<Category[]>([]);
   const [counts, setCounts] = useState<Record<string, number>>({});
@@ -90,12 +91,13 @@ export default function CatalogMaster() {
     <View style={[adminStyles.root, { paddingTop: insets.top }]} testID="catalog-master-screen">
       <ScreenHeader title="Merek & Kategori" />
       <View style={styles.tabs}>
-        {([["brand", `Merek (${brands.length})`], ["cat", `Kategori (${cats.filter((c) => !c.parent).length})`]] as const).map(([k, label]) => (
+        {([["brand", `Merek (${brands.length})`], ["cat", `Kategori (${cats.filter((c) => !c.parent).length})`], ["featured", "Unggulan"]] as const).map(([k, label]) => (
           <Pressable key={k} testID={`cm-tab-${k}`} onPress={() => { setTab(k); setQ(""); setMsg(null); }} style={[styles.tab, tab === k && styles.tabOn]}>
             <Text style={[styles.tabText, tab === k && styles.tabTextOn]}>{label}</Text>
           </Pressable>
         ))}
       </View>
+      {tab === "featured" ? null : (
       <View style={styles.bar}>
         <View style={styles.search}>
           <Icon name="search" size={16} color={colors.muted} />
@@ -106,9 +108,10 @@ export default function CatalogMaster() {
           <Text style={styles.addText}>{tab === "brand" ? "Merek" : "Kategori"}</Text>
         </Pressable>
       </View>
+      )}
       {msg ? <Text testID="cm-msg" style={[msg.ok ? adminStyles.ok : adminStyles.err, { paddingHorizontal: spacing.lg }]}>{msg.text}</Text> : null}
 
-      {loading ? <ActivityIndicator style={{ marginTop: spacing.xl }} color={colors.brandPrimary} /> : tab === "brand" ? (
+      {loading ? <ActivityIndicator style={{ marginTop: spacing.xl }} color={colors.brandPrimary} /> : tab === "featured" ? <FeaturedBrandsAdmin brands={brands} /> : tab === "brand" ? (
         <FlatList data={shownBrands} keyExtractor={(b) => b.brand_id} contentContainerStyle={styles.list}
           ListEmptyComponent={<Text style={styles.empty}>Merek tidak ditemukan</Text>}
           renderItem={({ item }) => (

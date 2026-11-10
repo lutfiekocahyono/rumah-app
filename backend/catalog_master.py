@@ -76,7 +76,7 @@ def register(api, db, *, require_admin):
 
     async def brand_counts() -> Dict[str, int]:
         return {r["_id"]: r["n"] for r in await db.products.aggregate([
-            {"$match": {"brand": {"$nin": [None, ""]}}}, {"$group": {"_id": "$brand", "n": {"$sum": 1}}}]).to_list(100000)}
+            {"$match": {"brand": {"$nin": [None, ""]}, "status": {"$ne": "inactive"}}}, {"$group": {"_id": "$brand", "n": {"$sum": 1}}}]).to_list(100000)}
 
     async def get_brand(brand_id: str) -> dict:
         b = await db.brands.find_one({"brand_id": brand_id}, {"_id": 0})
@@ -90,6 +90,41 @@ def register(api, db, *, require_admin):
         counts = await brand_counts()
         docs = await db.brands.find({}, {"_id": 0, "created_at": 0}).to_list(100000)
         return sorted(({**b, "count": counts.get(b["name"], 0)} for b in docs), key=lambda b: b["name"].lower())
+
+    # ---------------- Merek Unggulan di Beranda ----------------
+    async def featured_ids() -> Optional[List[str]]:
+        d = await db.app_settings.find_one({"_id": "featured_brands"})
+        return d["items"] if d else None
+
+    @api.get("/brands/featured")
+    async def featured_brands():
+        """Deretan logo merek di Beranda: pilihan Super Admin (urut), belum diatur = 10 merek dengan produk terbanyak."""
+        counts = await brand_counts()
+        ids = await featured_ids()
+        if ids is None:
+            docs = await db.brands.find({}, {"_id": 0, "created_at": 0}).to_list(100000)
+            return sorted(({**b, "count": counts.get(b["name"], 0)} for b in docs
+                           if counts.get(b["name"]) and b["name"].strip().lower() not in ("no brand", "tanpa merek", "-")), key=lambda b: (-b["count"], b["name"].lower()))[:10]
+        got = {b["brand_id"]: b for b in await db.brands.find({"brand_id": {"$in": ids}}, {"_id": 0, "created_at": 0}).to_list(100)}
+        return [{**got[i], "count": counts.get(got[i]["name"], 0)} for i in ids if i in got]
+
+    @api.get("/admin/featured-brands")
+    async def get_featured(admin=Depends(require_admin)):
+        ids = await featured_ids()
+        return {"custom": ids is not None, "items": await featured_brands()}
+
+    class FeaturedIn(BaseModel):
+        items: Optional[List[str]] = Field(default=None, max_length=30)  # None = back to automatic
+
+    @api.put("/admin/featured-brands")
+    async def save_featured(body: FeaturedIn, admin=Depends(require_admin)):
+        if body.items is None:
+            await db.app_settings.delete_one({"_id": "featured_brands"})
+        else:
+            ok = {b["brand_id"] for b in await db.brands.find({"brand_id": {"$in": body.items}}, {"_id": 0, "brand_id": 1}).to_list(100)}
+            items = [i for i in dict.fromkeys(body.items) if i in ok]
+            await db.app_settings.update_one({"_id": "featured_brands"}, {"$set": {"items": items}}, upsert=True)
+        return await get_featured(admin)
 
     @api.post("/admin/brands")
     async def create_brand(body: BrandIn, admin=Depends(require_admin)):

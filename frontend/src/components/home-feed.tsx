@@ -8,6 +8,7 @@ import { api, type Category, type FlashSale, type HomeFeed, type HomeSettings, t
 import { useStore } from "@/src/store-context";
 import { ProductCard } from "@/src/components/product-card";
 import { FlashSaleSection, FreeShippingBanner, ProductRail, SectionHeader, VoucherStrip } from "@/src/components/home-sections";
+import { FeaturedBrands } from "@/src/components/featured-brands";
 
 const { width: screenW } = Dimensions.get("window");
 const CARD_GAP = spacing.md;
@@ -85,6 +86,8 @@ export function HomeFeedSections({ refreshKey = 0, onLoaded, shop = false }: { r
       {data.settings ? <FreeShippingBanner s={data.settings.free_shipping} city={store?.city} /> : null}
 
       <FlashSaleSection flash={data.flash} onEnd={onFlashEnd} />
+
+      {shop ? null : <FeaturedBrands refreshKey={refreshKey} />}
 
       <VoucherStrip
         vouchers={data.vouchers}

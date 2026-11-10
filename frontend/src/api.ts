@@ -183,6 +183,9 @@ export const api = {
 
   // master merek & kategori (Super Admin)
   brands: () => req<Brand[]>("/brands"),
+  featuredBrands: () => req<Brand[]>("/brands/featured"),
+  adminFeaturedBrands: () => req<{ custom: boolean; items: Brand[] }>("/admin/featured-brands"),
+  adminSaveFeaturedBrands: (items: string[] | null) => req<{ custom: boolean; items: Brand[] }>("/admin/featured-brands", { method: "PUT", body: JSON.stringify({ items }) }),
   adminSaveBrand: (b: { name: string; logo: string }, id?: string) =>
     req<Brand & { products_updated?: number }>(id ? `/admin/brands/${id}` : "/admin/brands", { method: id ? "PUT" : "POST", body: JSON.stringify(b) }),
   adminBrandImpact: (id: string) => req<{ products: number }>(`/admin/brands/${id}/impact`),

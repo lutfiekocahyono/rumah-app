@@ -1,0 +1,36 @@
+{
+  "summary": "Tested 'Merek Unggulan' (featured brands) on the backend and the UI at 390x844. Backend pytest 10/10 pass: GET /api/brands/featured gives the top 10 brands by product count, sorted, 'No Brand' left out, no _id. GET/PUT /api/admin/featured-brands returns 401 without a token and 403 for store_admin (jombang) and customer (demo). PUT {items:[ids]} keeps the order, drops unknown ids and removes duplicates. PUT {items:[]} makes the public list empty. PUT {items:null} and PUT {} both go back to automatic and delete the app_settings doc. A wrong type or more than 30 ids returns 422. UI: Beranda shows the featured-brands row after the free-shipping banner and flash sale and before the vouchers, with the initial or the logo (checked with a temporary logo on Vanstar). Tapping featured-brand-Vanstar opens /brand/Vanstar. /shop/pgs-jombang has no featured-brands. In Admin → Merek & Kategori → cm-tab-featured: the auto list shows with the 'Belum diatur' note and no cm-feat-auto button. cm-feat-up/down/remove, cm-feat-search and cm-feat-add-Suggo work, and the search leaves out brands already in the list and clears after adding. cm-feat-save shows 'Merek Unggulan disimpan', and the API order matches. After a reload Beranda shows the new order, and reopening the tab keeps the custom list (save disabled when nothing changed). Removing all brands and saving hides the row on Beranda. cm-feat-auto brings back the automatic top 10 on both admin and Beranda. Final state: automatic (no featured_brands doc), Vanstar logo back to '' (0 brands with a logo).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/brands/featured", "issue": "brand_counts() counts every product, whatever its status (nonaktif/draft included), so the automatic ranking can include products buyers cannot see. Brands with the same count have no tie-break, so their order can change between calls."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Beranda featured-brands", "issue": "The row does not reload when you come back to Beranda. After saving in admin and pressing back (in-app navigation, no page reload), Beranda still showed the old order until a full reload or pull-to-refresh. FeaturedBrands only reloads when refreshKey changes.", "testID": "featured-brands", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Admin Merek & Kategori → Unggulan", "issues": ["The cm-feat-up/down/remove buttons are 36x44, below the 44x44 minimum touch target (featured-brands-admin.tsx:91, styles.btn width 36)."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_pgs_iter74_featured_brands.py", "/app/test_reports/pytest/pytest_iter74.xml"],
+  "action_items": [
+    "(LOW) Reload FeaturedBrands when Beranda comes back into focus (for example, bump refreshKey in useFocusEffect, or have FeaturedBrands reload itself on focus), so an admin change shows without a reload.",
+    "(LOW) In brand_counts(), count only products with status 'active' for the automatic ranking, and add a tie-break by name.",
+    "(LOW) Make the admin up/down/remove buttons at least 44 wide."
+  ],
+  "critical_code_review_comments": [
+    "Featured brands are stored by brand_id, so a brand rename keeps it in the list and a deleted brand is dropped quietly. Good.",
+    "In auto mode cm-feat-save is enabled even with no changes (dirty includes !custom). Saving then freezes the current auto list as a custom one. This matches the on-screen help text, but it may surprise admins."
+  ],
+  "updated_files": ["/app/backend/tests/test_pgs_iter74_featured_brands.py"],
+  "success_rate": {"backend": "100% (10/10)", "frontend": "100% of the requested flows"},
+  "seed_data_creation": "None. Temporary changes during the test: featured list (custom order, then empty) and a Vanstar logo. Both were restored: featured set back to automatic with PUT items null (doc gone), Vanstar logo set back to ''.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Use the iter73 init script: grant geolocation, hide the location-lock ancestor that is a direct child of body, and set localStorage pgs_store_id=pgs-official and pgs_store_manual=1. Admin can log in by putting the token in localStorage 'pgs_auth_token'. Run pytest with -n0 and export EXPO_PUBLIC_BACKEND_URL. The automatic featured order is Vanstar, Apollystar, Q2 & GSF, UMKM, BMW, Club, Tabitha, Advance, HA, Kimplast. Vanstar brand_id is 78b94e09113d. Always finish with PUT /api/admin/featured-brands {items:null}.",
+  "rca_of_issue": ""
+}
