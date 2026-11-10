@@ -29,6 +29,7 @@ import fonnte
 import branch_copy
 import catalog_master
 import shop_scope
+import similar
 import branch_price
 import customer_location
 import store_page
@@ -1496,6 +1497,8 @@ customer_location.register(api, db, get_owner=get_owner, require_admin=require_a
 store_page.register(api, db, require_admin=require_admin, get_current_user=get_current_user, get_optional_user=get_optional_user,
                     visible=_visible, apply_stock=_apply_stock, product_out=_product_out, active_flash=promo.active_flash)
 catalog_master.register(api, db, require_admin=require_admin)
+similar.register(api, db, get_current_user=get_current_user, get_optional_user=get_optional_user, visible=_visible,
+                 apply_stock=_apply_stock, product_out=_product_out, active_flash=promo.active_flash, all_branches=ALL_BRANCHES)
 app.include_router(api)
 app.add_middleware(shop_scope.Middleware)
 

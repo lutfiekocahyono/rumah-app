@@ -17,6 +17,7 @@ import { VariantsSection } from "@/src/components/product-editor/variants-sectio
 import { Completeness, PriceStock } from "@/src/components/product-editor/price-stock";
 import { ShippingSection, SpecsSection } from "@/src/components/product-editor/specs-shipping";
 import { SeoSection } from "@/src/components/product-editor/seo-section";
+import { SimilarSection } from "@/src/components/product-editor/similar-section";
 import { WholesaleSection } from "@/src/components/product-editor/wholesale-section";
 import { ProductPreview } from "@/src/components/product-editor/product-preview";
 
@@ -222,6 +223,7 @@ export default function ProductEditor() {
                 <SpecsSection form={form} set={set} cats={cats} />
                 <ShippingSection form={form} set={set} errors={errors} ctx={ctx} storeId={storeId} />
                 <SeoSection form={form} set={set} cats={cats} storeName={storeName} />
+                <SimilarSection productId={productId} admin={admin} />
               </View>
               {twoCol ? <View style={{ width: 300 }}>{side}</View> : null}
             </View>

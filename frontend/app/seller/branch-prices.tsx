@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { View, Text, StyleSheet, FlatList, ActivityIndicator, TextInput, Pressable, Modal, ScrollView, KeyboardAvoidingView, Platform } from "react-native";
 import { Image } from "expo-image";
-import { useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Icon from "@react-native-vector-icons/ionicons";
 
@@ -103,6 +103,8 @@ export default function BranchPrices() {
 }
 
 function EditDialog({ item, storeId, onClose, onSaved }: { item: BranchPriceItem | null; storeId: string | null; onClose: () => void; onSaved: (n: BranchPriceItem) => void }) {
+  const router = useRouter();
+  const admin = useAuth().user?.role === "admin";
   const [price, setPrice] = useState("");
   const [orig, setOrig] = useState("");
   const [tiers, setTiers] = useState<Record<string, Tier[]>>({});
@@ -176,6 +178,11 @@ function EditDialog({ item, storeId, onClose, onSaved }: { item: BranchPriceItem
                 ) : null}
               </View>
             ))}
+            {!admin ? (
+              <Pressable testID="bp-similar" style={styles.add} onPress={() => { onClose(); if (item) router.push(`/product-editor/similar?product=${item.product_id}` as any); }}>
+                <Text style={styles.addText}>Atur Produk Serupa untuk cabang ini →</Text>
+              </Pressable>
+            ) : null}
           </ScrollView>
           {err ? <Text style={adminStyles.err} testID="bp-dialog-error">{err}</Text> : null}
           <View style={styles.pair}>

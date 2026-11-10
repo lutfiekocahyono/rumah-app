@@ -15,9 +15,10 @@ const ICONS = ["pricetag-outline", "restaurant-outline", "home-outline", "tv-out
   "car-outline", "brush-outline", "bed-outline", "basket-outline", "gift-outline", "fitness-outline", "school-outline", "paw-outline", "leaf-outline"];
 
 type Edit =
-  | { kind: "brand"; item?: Brand }
-  | { kind: "cat"; item?: Category; parent?: Category };
-type Ask = { title: string; message: string; label: string; danger: boolean; run: () => Promise<void> };
+  | { kind: "brand"; item?: Brand; draft?: Draft }
+  | { kind: "cat"; item?: Category; parent?: Category; draft?: Draft };
+type Draft = { name: string; pic: string; icon: string }; // typed values kept when a confirmation is cancelled
+type Ask = { title: string; message: string; label: string; danger: boolean; run: () => Promise<void>; cancel?: () => void };
 
 /** Pick a picture from the gallery and upload it; returns the stored URL. */
 async function pickUpload(): Promise<string | null> {
@@ -161,25 +162,25 @@ export default function CatalogMaster() {
 
       {edit ? (
         <EditSheet edit={edit} count={edit.kind === "brand" ? edit.item?.count ?? 0 : edit.item ? counts[edit.item.category_id] ?? 0 : 0}
-          onClose={() => setEdit(null)} onAsk={confirmOver} onDone={done}
+          onClose={() => setEdit(null)} onAsk={confirmOver} onDone={done} onReopen={setEdit}
           onDelete={() => (edit.kind === "brand" ? edit.item && askDeleteBrand(edit.item) : edit.item && askDeleteCat(edit.item))} />
       ) : null}
       <ConfirmDialog visible={!!ask} title={ask?.title ?? ""} message={ask?.message} confirmLabel={ask?.label} danger={ask?.danger} loading={busy}
-        onConfirm={confirmRun} onCancel={() => setAsk(null)} />
+        onConfirm={confirmRun} onCancel={() => { const c = ask?.cancel; setAsk(null); if (c) setTimeout(c, 350); }} />
     </View>
   );
 }
 
-function EditSheet({ edit, count, onClose, onAsk, onDone, onDelete }: {
-  edit: Edit; count: number; onClose: () => void; onAsk: (a: Ask) => void; onDone: (text: string) => Promise<void>; onDelete: () => void;
+function EditSheet({ edit, count, onClose, onAsk, onDone, onDelete, onReopen }: {
+  edit: Edit; count: number; onClose: () => void; onAsk: (a: Ask) => void; onDone: (text: string) => Promise<void>; onDelete: () => void; onReopen: (e: Edit) => void;
 }) {
   const insets = useSafeAreaInsets();
   const isBrand = edit.kind === "brand";
   const item = edit.item;
   const parent = edit.kind === "cat" ? edit.parent : undefined;
-  const [name, setName] = useState(item?.name ?? "");
-  const [pic, setPic] = useState((isBrand ? (item as Brand | undefined)?.logo : (item as Category | undefined)?.image) ?? "");
-  const [icon, setIcon] = useState((!isBrand && (item as Category | undefined)?.icon) || "pricetag-outline");
+  const [name, setName] = useState(edit.draft?.name ?? item?.name ?? "");
+  const [pic, setPic] = useState(edit.draft?.pic ?? ((isBrand ? (item as Brand | undefined)?.logo : (item as Category | undefined)?.image) ?? ""));
+  const [icon, setIcon] = useState(edit.draft?.icon ?? ((!isBrand && (item as Category | undefined)?.icon) || "pricetag-outline"));
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [err, setErr] = useState("");
@@ -204,7 +205,8 @@ function EditSheet({ edit, count, onClose, onAsk, onDone, onDelete }: {
     };
     if (isBrand && item && n !== item.name && count > 0) { // renaming a used brand changes those products: confirm first
       onAsk({ title: "Ganti nama merek?", label: "Ya, ganti", danger: false,
-        message: `${count.toLocaleString("id-ID")} produk bermerek “${item.name}” akan ikut menjadi “${n}”. Data produk lainnya tidak berubah.`, run });
+        message: `${count.toLocaleString("id-ID")} produk bermerek “${item.name}” akan ikut menjadi “${n}”. Data produk lainnya tidak berubah.`, run,
+        cancel: () => onReopen({ ...edit, draft: { name, pic, icon } }) });
       return;
     }
     setSaving(true); setErr("");

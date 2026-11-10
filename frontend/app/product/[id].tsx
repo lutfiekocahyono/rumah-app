@@ -16,6 +16,7 @@ import { BranchAvailability } from "@/src/components/branch-availability";
 import { RichText } from "@/src/components/rich-text";
 import { ProductSpecs } from "@/src/components/product-specs";
 import { useStore } from "@/src/store-context";
+import { ProductRail } from "@/src/components/home-sections";
 
 const { width: screenW } = Dimensions.get("window");
 
@@ -332,6 +333,7 @@ export default function ProductDetail() {
             </View>
           </View>
         </View>
+        <SimilarRail productId={product.product_id} />
       </ScrollView>
 
       <View style={[styles.bottom, { paddingBottom: Math.max(spacing.md, insets.bottom + spacing.sm) }]}>
@@ -357,6 +359,18 @@ export default function ProductDetail() {
     </View>
   );
 }
+
+/** Produk Serupa: manual (admin) atau otomatis, dengan harga & stok cabang pembeli; kartu sama dengan Produk Populer. */
+function SimilarRail({ productId }: { productId: string }) {
+  const { storeId, ready } = useStore();
+  const [items, setItems] = useState<Product[]>([]);
+  useEffect(() => {
+    if (!ready) return;
+    api.similar(productId).then((r) => setItems(r.items)).catch(() => setItems([]));
+  }, [productId, storeId, ready]);
+  return <View style={{ paddingBottom: spacing.xl }}><ProductRail title="Produk Serupa" icon="git-compare-outline" items={items} testID="pd-similar" /></View>;
+}
+
 
 const styles = StyleSheet.create({
   flashBar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: colors.brandPrimary, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm },

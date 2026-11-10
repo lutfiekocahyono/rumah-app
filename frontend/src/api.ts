@@ -191,6 +191,10 @@ export const api = {
     req<Category>(id ? `/admin/categories/${id}` : "/admin/categories", { method: id ? "PUT" : "POST", body: JSON.stringify(c) }),
   adminCategoryImpact: (id: string) => req<{ products: number; subcategories: number }>(`/admin/categories/${id}/impact`),
   adminDeleteCategory: (id: string) => req<{ deleted: number; products_moved: number }>(`/admin/categories/${id}`, { method: "DELETE" }),
+  similar: (id: string) => req<{ mode: "manual" | "auto"; items: Product[] }>(`/products/${id}/similar`),
+  editorSimilar: (id: string) => req<{ scope: string; items: SimilarBrief[]; inherited: SimilarBrief[] | null }>(`/product-editor/similar/${id}`),
+  editorSaveSimilar: (id: string, items: string[]) =>
+    req<{ scope: string; items: SimilarBrief[] }>(`/product-editor/similar/${id}`, { method: "PUT", body: JSON.stringify({ items }) }),
 
   // account
   verifyEmailRequest: () => req<{ message: string }>("/auth/verify-email/request", { method: "POST" }),
@@ -485,6 +489,7 @@ export type Report = {
 };
 export type Category = { category_id: string; name: string; icon: string; image: string; parent?: string | null; count: number };
 export type Brand = { brand_id: string; name: string; logo: string; count: number };
+export type SimilarBrief = { product_id: string; name: string; image: string; price: number };
 export type CategoryInput = { name: string; parent?: string | null; icon?: string; image?: string };
 export type ProductQuery = {
   category?: string; q?: string; sort?: string; skip?: number; limit?: number; store?: string; branch?: string;

@@ -94,8 +94,8 @@ def test_category_delete_multi(tok):
     assert imp == {"products": 2, "subcategories": 0}, imp
     r = requests.delete(f"{API}/admin/categories/{A1}", headers=H(t))
     assert r.status_code == 200, r.text
-    assert r.json()["products_moved"] == 2
-    S["lainnya_inc"] += 2
+    assert r.json()["products_moved"] == 1  # iter72: only products that really land in Lainnya (p2)
+    S["lainnya_inc"] += 1
     assert prod(p1) == {"category": B, "subcategory": "", "categories": [B]}, prod(p1)
     assert prod(p2) == {"category": "lainnya", "subcategory": "", "categories": ["lainnya"]}, prod(p2)
     assert prod(p3)["categories"] == [B, A] and prod(p4)["categories"] == [A]  # untouched
@@ -131,19 +131,21 @@ def brand_names():
     return [b["name"].lower() for b in requests.get(f"{API}/brands").json()]
 
 
-def test_import_branch_admin_unknown_brand(tok):
+def test_import_branch_admin_unknown_brand(tok):  # iter72: saved as Tanpa merek (create), brand not added
     brand, name = f"TEST_JBrand{SUF}", f"TEST_P71J {SUF}"
     S["draft_names"].append(name)
     for commit in (False, True):
         r = imp(tok["jombang"], xlsx(name, brand), commit)
         assert r.status_code == 200, r.text
         rows = r.json()["rows"]
-        msg = " ".join(x["message"] for x in rows)
-        assert f"Merek “{brand}” belum ada di daftar merek" in msg, rows
-        assert all(x["action"] != "create" for x in rows), rows
+        assert f"Merek “{brand}” belum ada di daftar, disimpan sebagai Tanpa merek" in rows[0]["message"], rows
+        assert rows[0]["action"] == "create", rows
         assert brand.lower() not in brand_names()
     assert not DB.brands.find_one({"name": brand})
-    assert not DB.products.find_one({"name": name})
+    p = DB.products.find_one({"name": name}, {"_id": 0, "product_id": 1, "brand": 1})
+    if p:
+        S["pids"].append(p["product_id"])
+    assert p and p["brand"] == ""
 
 
 def test_import_super_admin_brand(tok):

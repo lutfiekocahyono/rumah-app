@@ -1,0 +1,43 @@
+{
+  "summary": "Tested Produk Serupa (backend and UI) and the 2 bug fixes. Backend: 11 of 11 new pytest pass. With the iter70/71 regression suites, 30 of 30 pass; 2 iter71 assertions were updated to match the intended new behaviour. Checked: GET /products/{id}/similar in auto mode (<=12 items, not itself, same category, Jombang items show the Jombang store_stock price), 404 for an unknown product. Editor GET/PUT: admin scope 'all'; invalid ids, self and duplicates are dropped; order is kept; max 30 (31 gives 422); 401 without auth; 404 for an unknown product. Jombang: scope pgs-jombang, inherited shows the admin list; the Jombang list overrides only for pgs-jombang buyers (Jember and Sidoarjo buyers keep the admin list); empty Jombang list falls back to the admin list; empty admin list falls back to auto. Jember editor shows the admin list as inherited. UI (390x844, real clicks; only location-lock hidden via JS): admin SimilarSection search, add 3, down/up, remove, save ('Produk serupa disimpan'), list kept after reload, API matches the UI order. /product/pgs-10062 shows the pd-similar rail at the bottom in the manual order. Jombang SimilarSection (on a Jombang-owned TEST product): inherited hint, add/up/remove/save, buyer gets the Jombang list; saving empty gives 'Kosong: memakai pilihan Super Admin / otomatis' and the inherited hint comes back. The new-product hint shows. Catalog-master: rename a brand with products, then Batal, reopens the sheet with the typed name (2 cycles); then 'Ya, ganti' gives 'Merek disimpan · 1 produk ikut diganti'; the Add sheet does not keep a stale draft. Excel import as jombang with an unknown brand: preview and commit give action create (not draft) with the Tanpa merek message, product brand '', brand not added; the update row also works (action update, brand cleared). MAIN GAP: branch admins have no UI to override Produk Serupa for shared-catalog products. All TEST data cleaned up; similar_products is empty; real data intact (115 brands, lainnya.count 0).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "PUT /api/product-editor/similar/{id} (regular seller)", "issue": "Code review, not verified at runtime because the seller has no active product. For a non-official seller, scope_of returns the seller's store_id, but buyer resolution only checks scope in (buyer branch, 'all'), and the branch is always an OFFICIAL_ID. So a seller's saved list is never used, while the editor says 'Produk serupa disimpan' and the subtitle says 'Khusus cabang Anda'. Reference: similar.py:23-28, 71-77; similar-section.tsx:41,47"},
+      {"endpoint": "GET /api/products/{id}/similar", "issue": "Stock uses the ALL_BRANCHES total ('PGS · semua cabang'), not the buyer's branch stock; only the price is per branch. This matches Produk Populer, but the spec says 'buyer's branch price & stock'. Reference: similar.py:56,66"},
+      {"endpoint": "PUT /api/product-editor/similar/{id} (branch admin)", "issue": "A branch admin can save a list for any product_id, including products their buyers cannot see. Harmless, but there is no visibility check. Reference: similar.py:97"}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Branch admin override of Produk Serupa on shared catalog products", "issue": "Jombang owns 0 products. In product-editor/list.tsx:229, shared products open /seller/branch-prices, and /product-editor/pgs-10062 as jombang shows 'Produk tidak ditemukan' (product_editor.py:361 editable() filters by store_id). So the 'jombang list overrides for Jombang buyers' feature works only through the API, or on a branch's own (only_branch) products, which only that branch's buyers see anyway. Add the SimilarSection (or a link to it) to the branch-prices screen, or let branch admins open the editor read-only with SimilarSection for shared products.", "affected_testIDs": ["pe-similar"]}
+    ],
+    "design_issues": [
+      {"screen": "product-editor SimilarSection", "issues": [
+        "Search hits stay listed after adding items; the long list pushes the Save button down. Consider clearing the query after an add or limiting the hits.",
+        "Errors loading editorSimilar are swallowed (.catch(() => {})) and there is no loading state. Reference: similar-section.tsx:23",
+        "'Simpan Produk Serupa' saves on its own, separate from 'Simpan Perubahan'. Unsaved section changes are lost silently if the user only taps the main save. Consider a dirty warning."
+      ]},
+      {"screen": "product-editor footer (branch admin, existing product)", "issues": ["Not part of this feature: the 'Simpan Draft' label wraps to 2 lines in its pill when the delete icon is shown at 390px."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_pgs_iter72_similar.py", "/app/backend/tests/ui_iter72_helper.py", "/app/backend/tests/test_pgs_iter71_catalog_master.py", "/app/test_reports/pytest/pytest_iter72.xml"],
+  "action_items": [
+    "HIGH: Give branch admins a UI path to set the Produk Serupa override for shared PGS catalog products (e.g. SimilarSection on /seller/branch-prices, or editor access for shared products limited to SimilarSection). Today the branch override can only be set via the API.",
+    "Regular sellers: either apply the seller-scope list for their own products in resolution (e.g. check doc.store_id scope), or hide the section or change its text for non-official sellers.",
+    "Optional: clear the search after adding, show a load error state, and warn about unsaved Produk Serupa changes."
+  ],
+  "critical_code_review_comments": [
+    "similar.py resolution (branch -> 'all' -> auto), dedupe, self-exclusion, invalid-id drop and empty-means-delete are correct and verified.",
+    "Manual items are filtered by the buyer's visibility (base query), so hidden or inactive products are dropped. If all are dropped, it correctly falls back to auto.",
+    "product_bulk.py: the update and create paths both clear the unknown brand to '' with a note, for branch admins only; Super Admin commit still creates the brand (iter71 test still passes)."
+  ],
+  "updated_files": ["/app/backend/tests/test_pgs_iter72_similar.py", "/app/backend/tests/ui_iter72_helper.py", "/app/backend/tests/test_pgs_iter71_catalog_master.py (updated 2 assertions for intended new behaviour: products_moved counts only products that land in Lainnya; branch-admin import of an unknown brand now creates as Tanpa merek)"],
+  "success_rate": {"backend": "100% (30/30 incl. regression)", "frontend": "100% of tested flows; 1 integration gap (branch override UI for shared products)"},
+  "seed_data_creation": "TEST_ products (Jombang import creates/updates), 1 Jombang-owned TEST_UI72 product, TEST_UIRen71/TEST_UIDel71 brands, categories and a product. Temporary similar lists on pgs-10062 and on the TEST product. All deleted by id. similar_products is empty. A lainnya.count +1 leak from one failed run of the old iter71 test was put back to 0.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Run pytest with -n0 and export EXPO_PUBLIC_BACKEND_URL (tests read that var). TARGET product pgs-10062 (peralatan-masak, has a Jombang price). UI: set localStorage pgs_auth_token, pgs_store_id and pgs_store_manual=1; hide [data-testid=location-lock] with a JS interval. Branch admins have 0 own products; use ui_iter72_helper.py create/clean for a Jombang-owned TEST product. Baseline: 115 brands, lainnya.count 0, similar_products empty."
+}

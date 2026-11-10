@@ -521,11 +521,12 @@ def register(api, db, *, actor: Callable, target_store: Callable, editable: Call
                 f, errs = apply_patch(base, d, cats, by_id)
                 if f.get("tier_prices") and (f["discount_price"] or f["price"]) != (base["discount_price"] or base["price"]):
                     f["tier_prices"] = scale_tiers(f["tier_prices"], base["discount_price"] or base["price"], f["discount_price"] or f["price"])
+                bnote = ""
                 try:
                     form = ProductForm(**f)
                     form.brand = await canonical_brand(db, form.brand, create=commit and ctx["admin"])  # only Super Admin adds brands
-                    if form.brand and not ctx["admin"] and not await catalog_master.find_brand(db, form.brand):
-                        errs.append(f"Merek “{form.brand}” belum ada di daftar merek (dibuat oleh Super Admin)")
+                    if form.brand and not ctx["admin"] and not await catalog_master.find_brand(db, form.brand):  # branch admin: no new brands
+                        bnote, form.brand = f"Merek “{form.brand}” belum ada di daftar, disimpan sebagai Tanpa merek", ""
                 except ValidationError as e:
                     errs.append(e.errors()[0]["msg"])
                 if not errs:
@@ -551,16 +552,17 @@ def register(api, db, *, actor: Callable, target_store: Callable, editable: Call
                     await db.products.update_one({"product_id": pid}, {"$set": doc})
                     await history.record(db, ctx["user"], store["store_id"], p, history.snap(p), history.snap({**p, **doc}), "import")
                     await product_notify.on_info(db, p, doc)
-                add(n, form.name, "update")
+                add(n, form.name, "update", bnote)
             elif not name:
                 add(n, "(tanpa nama)", "skip", "Nama produk kosong, baris dilewati")
             else:
                 f, errs = apply_patch(ProductForm().model_dump(), d, cats)
+                bnote = ""
                 try:
                     form = ProductForm(**f)
                     form.brand = await canonical_brand(db, form.brand, create=commit and ctx["admin"])  # only Super Admin adds brands
-                    if form.brand and not ctx["admin"] and not await catalog_master.find_brand(db, form.brand):
-                        errs.append(f"Merek “{form.brand}” belum ada di daftar merek (dibuat oleh Super Admin)")
+                    if form.brand and not ctx["admin"] and not await catalog_master.find_brand(db, form.brand):  # branch admin: no new brands
+                        bnote, form.brand = f"Merek “{form.brand}” belum ada di daftar, disimpan sebagai Tanpa merek", ""
                 except ValidationError as e:
                     add(n, name, "skip", e.errors()[0]["msg"])
                     continue
@@ -574,13 +576,13 @@ def register(api, db, *, actor: Callable, target_store: Callable, editable: Call
                             new_doc["only_branch"] = store["store_id"]
                         await db.products.insert_one(new_doc)
                         await product_notify.on_new(db, new_doc)
-                    add(n, form.name, "create")
+                    add(n, form.name, "create", bnote)
                 else:
                     if commit:
                         await db.product_drafts.insert_one({"draft_id": f"dr_{uuid.uuid4().hex[:10]}", "owner": owner_key(ctx), "product_id": None,
                                                             "store_id": store["store_id"], "data": form.model_dump(), "updated_at": _now()})
                     note = "Produk bervariasi dari website — lengkapi variasi & harga di aplikasi. " if _norm(d.get("type")) in ("variable", "bervariasi") else ""
-                    add(n, form.name or "(tanpa nama)", "draft", note + "Disimpan sebagai draft: " + "; ".join(problems[:3]))
+                    add(n, form.name or "(tanpa nama)", "draft", note + (bnote + ". " if bnote else "") + "Disimpan sebagai draft: " + "; ".join(problems[:3]))
 
         # variant sheet: price / stock / sku / active per existing variant
         by_product: dict = {}
