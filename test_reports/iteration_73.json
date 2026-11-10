@@ -1,0 +1,39 @@
+{
+  "summary": "Tested the new Brand page /brand/{name} on the UI at 390x844 with real clicks, plus a 7-test API pytest (7/7 pass). Working: /brand/Advance shows brand-screen, brand-name 'Advance', '126 produk · harga & stok <cabang>', and the initial (or brand-logo when a logo is set). All products are brand Advance. Prices follow the branch: pgs-10389 is Rp245.000 in Sidoarjo and Rp247.000 in Jombang, and the request sends X-Store-Id. Infinite scroll calls skip=40/80/120. All 5 brand-sort-* chips send the right sort, and price_asc/desc come back in order. brand-search ('speaker' gives 34 results, all Advance) and brand-search-clear work. brand-filter-btn opens filter-sheet with no Merek section; its counts match (126, then category 95), Filter (2) is applied, min price 999999999 shows the empty state, and brand-filter-reset clears it. Entry points: the search filter sheet with exactly one brand shows filter-brand-page (hidden with 2 brands) and navigates to /brand/Q2%20&%20GSF (227 products); pd-brand-link goes to the brand page and back works; card-brand-<id> (with a temporary TEST logo on Advance) goes to the brand page. Deep links /brand/Q2%20%26%20GSF and /brand/Q2%20&%20GSF both work. The global search bar is hidden on /brand/*. Regression: the filter sheets on search, category and shop pages still have the Merek section. ISSUES: (1) HIGH: the stock on the brand page is the total across ALL branches, not the chosen branch, although the header says 'harga & stok <cabang>'. (2) A '%' in the brand name crashes the page ('URI malformed'). (3) A lowercase or differently-cased URL shows the header but 0 products. Plus minor UX items. The Advance logo was restored to '' (115 brands, no logos).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "BrandPage stock", "issue": "The brand page shows the stock for ALL branches combined, not the buyer's branch. The header promises 'harga & stok PGS Sidoarjo / Mitra PGS Jombang'. Example pgs-10389: the card shows '22 stok tersedia' in both Sidoarjo and Jombang, but the real branch stock is 10 (Sidoarjo) and 7 (Jombang), which product detail shows correctly. In Jombang, 28 of the 126 Advance products are out of stock in that branch but show as in stock, and the 'popular' sort ranks them as in stock. RCA: /app/frontend/app/brand/[name].tsx:44 query() does not send `branch`, so GET /api/products uses the ALL_BRANCHES ctx (server.py:780, 793). The API with &branch=<storeId> returns stock 10/7 correctly. Fix: add `branch: storeId` to query(), as shop/[id].tsx:126 does for official branches. Optionally also pass branch to FilterSheet so the facets match.", "testID": "brand-screen / stock-<id>", "priority": "HIGH"},
+      {"component": "BrandPage decode", "issue": "Opening /brand/100%25%20Asli crashes the page with 'URI malformed' (error boundary). useLocalSearchParams already decodes the name, and decodeURIComponent at brand/[name].tsx:28 decodes it a second time. Any brand name with '%' crashes; none exist today, but an admin can create one. Fix: drop the extra decodeURIComponent, or wrap it in try/catch.", "testID": "brand-screen", "priority": "MEDIUM"},
+      {"component": "BrandPage case mismatch", "issue": "/brand/q2%20%26%20gsf shows the header 'Q2 & GSF · 227 produk' (the brand is matched case-insensitively at line 46), but the product query sends the raw 'q2 & gsf'. The backend $in match is exact, so it shows 0 products and 'Belum ada produk merek ini'. Fix: use brand?.name ?? name in query() and in fixedBrand, and wait for the brand lookup before fetching.", "testID": "brand-screen", "priority": "MEDIUM"},
+      {"component": "ProductCard brand row on brand page", "issue": "On /brand/Advance, tapping card-brand-<id> pushes a second copy of the same brand page onto the stack (2 brand-screens; Back returns to /brand/Advance). Skip the navigation when already on that brand, or use router.navigate.", "testID": "card-brand-<id>", "priority": "LOW"},
+      {"component": "BrandPage unknown brand header", "issue": "For an unknown brand (/brand/TEST_NoSuchBrand) the subtitle starts with a stray separator: ' · harga & stok PGS Sidoarjo'.", "testID": "brand-hero", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "ProductCard", "issues": ["The card-brand row is only 16px tall (24px with hitSlop 4), below the 44pt minimum. It sits directly above the product-card tap area, so mis-taps between brand and product are likely."]},
+      {"screen": "Brand page", "issues": ["brand-back icon touch box is 24x26 (hitSlop 8 gives 40x42), slightly under 44.", "The empty state for a search with no match ('zzqqxx') has no clear-search action; 'Hapus filter' only appears when filters are active."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_pgs_iter73_brand_page.py", "/app/test_reports/pytest/iter73_brand.xml"],
+  "action_items": [
+    "HIGH: brand/[name].tsx query(): add branch: storeId so the stock and in-stock ordering follow the chosen branch, matching the 'harga & stok <cabang>' header (API verified: &branch=pgs-official gives stock 10, pgs-jombang gives 7, for pgs-10389).",
+    "Remove the double decodeURIComponent in brand/[name].tsx:28 (a '%' in a brand name crashes the page).",
+    "Use the canonical brand name (brand?.name) for the products query and fixedBrand, so URLs with different casing still list products.",
+    "Minor: avoid pushing a duplicate brand page from card-brand on the same brand; fix the leading ' · ' when the brand is unknown; enlarge the card-brand touch target."
+  ],
+  "critical_code_review_comments": [
+    "brand/[name].tsx:46 fetches the full /api/brands list just to find one brand. Acceptable at 115 brands, but a single-brand endpoint or a facet would scale better.",
+    "brand/[name].tsx:61 loadMore has no catch; an error is swallowed silently because finally only resets moreLoading."
+  ],
+  "updated_files": ["/app/backend/tests/test_pgs_iter73_brand_page.py"],
+  "success_rate": {"backend": "100% (7/7 API checks)", "frontend": "~85% (all flows and entry points work; branch stock wrong, '%' crash, case mismatch)"},
+  "seed_data_creation": "A TEST logo (product image URL) was set on brand Advance (a0f8d74c8aba) through PUT /api/admin/brands to test card-brand and brand-logo, then restored to logo ''. Verified: 115 brands, none with a logo, Advance count 126.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Hiding only [data-testid=location-lock] is NOT enough: its Modal portal still covers the screen and swallows clicks (force clicks also miss). Grant the geolocation permission in the browser context and hide the lock's ancestor that is a direct child of body (see the iter73 init script). Set localStorage pgs_store_id and pgs_store_manual=1. Run pytest with -n0 and export EXPO_PUBLIC_BACKEND_URL. FlatList virtualizes on web, so the DOM card count stays at ~40-80; check the skip= requests for infinite scroll. Only brand with special chars: 'Q2 & GSF' (227). No brand has a logo; set a temporary one to test card-brand-*."
+}

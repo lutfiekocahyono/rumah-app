@@ -222,9 +222,15 @@ export default function ProductDetail() {
             </Text>
           </View>
           {product.brand || product.condition === "used" ? (
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
               {product.brand_logo ? <Image testID="pd-brand-logo" source={{ uri: imgUrl(product.brand_logo) }} style={{ width: 22, height: 22, borderRadius: 4 }} contentFit="contain" /> : null}
               <Text style={styles.metaText} testID="pd-brand">{[product.brand && `Merek ${product.brand}`, product.condition === "used" ? "Bekas" : "Baru"].filter(Boolean).join(" · ")}</Text>
+              {product.brand ? (
+                <Pressable testID="pd-brand-link" hitSlop={8} style={{ minHeight: 32, justifyContent: "center" }}
+                  onPress={() => router.push(`/brand/${encodeURIComponent(product.brand!)}` as any)}>
+                  <Text style={[styles.metaText, { color: colors.brandPrimary, fontWeight: "600" }]}>Lihat semua produk {product.brand} →</Text>
+                </Pressable>
+              ) : null}
             </View>
           ) : null}
           {product.preorder ? (

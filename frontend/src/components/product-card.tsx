@@ -44,10 +44,11 @@ export function ProductCard({ product, style }: { product: Product; style?: any 
       <View style={styles.info}>
         <Text style={styles.name} numberOfLines={2}>{product.name}</Text>
         {product.brand_logo ? (
-          <View style={styles.meta} testID={`card-brand-${product.product_id}`}>
+          <Pressable style={styles.meta} testID={`card-brand-${product.product_id}`} hitSlop={{ top: 12, bottom: 12, left: 4, right: 4 }}
+            onPress={() => router.navigate(`/brand/${encodeURIComponent(product.brand ?? "")}` as any)}>
             <Image source={{ uri: imgUrl(product.brand_logo) }} style={styles.brandLogo} contentFit="contain" />
             <Text style={styles.store} numberOfLines={1}>{product.brand}</Text>
-          </View>
+          </Pressable>
         ) : null}
         {product.store_name ? (
           <View style={styles.meta}>

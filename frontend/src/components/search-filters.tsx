@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { View, Text, StyleSheet, Pressable, ScrollView, Modal, TextInput, Switch, ActivityIndicator } from "react-native";
 import { Image } from "expo-image";
+import { useRouter } from "expo-router";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Icon from "@react-native-vector-icons/ionicons";
@@ -25,11 +26,13 @@ const fmt = (n: number | null) => (n == null ? "" : n.toLocaleString("id-ID"));
 const BRANDS_SHOWN = 40;
 
 /** Lembar filter pencarian: kategori, merek, rentang harga, ketersediaan stok cabang & harga grosir. */
-export function FilterSheet({ visible, q, value, storeName, onApply, onClose, branch, fixedCategory }: {
+export function FilterSheet({ visible, q, value, storeName, onApply, onClose, branch, fixedCategory, fixedBrand }: {
   visible: boolean; q: string; value: SearchFilters; storeName: string; onApply: (f: SearchFilters) => void; onClose: () => void; branch?: string;
   fixedCategory?: string; // category page: the category is already chosen, the sheet only filters brand / price / stock
+  fixedBrand?: string; // brand page: the brand is already chosen, the Merek section is hidden
 }) {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const [f, setF] = useState(value);
   const [facets, setFacets] = useState<ProductFacets | null>(null);
   const [brandQ, setBrandQ] = useState("");
@@ -40,10 +43,10 @@ export function FilterSheet({ visible, q, value, storeName, onApply, onClose, br
   useEffect(() => {
     if (!visible) return;
     setLoading(true);
-    const t = setTimeout(() => api.productFacets({ ...toQuery(q, f), ...(fixedCategory ? { category: fixedCategory } : {}), branch }, !!branch)
+    const t = setTimeout(() => api.productFacets({ ...toQuery(q, f), ...(fixedCategory ? { category: fixedCategory } : {}), ...(fixedBrand ? { brands: [fixedBrand] } : {}), branch }, !!branch)
       .then(setFacets).catch(() => {}).finally(() => setLoading(false)), 300);
     return () => clearTimeout(t);
-  }, [visible, q, f, storeId, branch, fixedCategory]);
+  }, [visible, q, f, storeId, branch, fixedCategory, fixedBrand]);
 
   const set = (p: Partial<SearchFilters>) => setF((x) => ({ ...x, ...p }));
   const brands = useMemo(() => {
@@ -87,6 +90,7 @@ export function FilterSheet({ visible, q, value, storeName, onApply, onClose, br
             {badRange ? <Text style={[styles.small, { color: colors.error }]} testID="filter-range-error">Harga minimum lebih besar dari maksimum</Text>
               : facets && facets.total ? <Text style={styles.small}>Harga di hasil ini: {formatIDR(facets.price_min)} – {formatIDR(facets.price_max)}</Text> : null}
 
+            {fixedBrand ? null : (<>
             <Text style={styles.label}>Merek{f.brands.length ? ` (${f.brands.length} dipilih)` : ""}</Text>
             <View style={styles.search}>
               <Icon name="search" size={16} color={colors.muted} />
@@ -99,6 +103,12 @@ export function FilterSheet({ visible, q, value, storeName, onApply, onClose, br
               ))}
               {facets && !brands.length ? <Text style={styles.small}>Tidak ada merek</Text> : null}
             </View>
+            {f.brands.length === 1 ? (
+              <Pressable testID="filter-brand-page" hitSlop={6} onPress={() => { const b = f.brands[0]; onClose(); router.push(`/brand/${encodeURIComponent(b)}` as any); }}>
+                <Text style={[styles.small, { color: colors.brandPrimary, fontWeight: "600" }]}>Buka halaman merek {f.brands[0]} →</Text>
+              </Pressable>
+            ) : null}
+            </>)}
 
             <Text style={styles.label}>Lainnya</Text>
             <ToggleRow testID="filter-instock" label={`Tersedia di ${storeName}`} value={f.in_stock} onChange={(v) => set({ in_stock: v })} />

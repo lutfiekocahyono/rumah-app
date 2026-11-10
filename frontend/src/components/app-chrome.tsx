@@ -10,7 +10,7 @@ import { useCart } from "@/src/cart-context";
 // login / daftar / pembayaran stay plain so buyers can focus on finishing
 const PLAIN = [/^\/login/, /^\/register/, /^\/forgot-password/, /^\/checkout/];
 // these already have their own search box at the top (branch store page: only "Cari di <toko>")
-const OWN_SEARCH = [/^\/$/, /^\/search/, /^\/katalog/, /^\/scan/, /^\/shop\//, /^\/akun\/?$/, /^\/keranjang\/?$/, /^\/category\//];
+const OWN_SEARCH = [/^\/$/, /^\/search/, /^\/katalog/, /^\/scan/, /^\/shop\//, /^\/akun\/?$/, /^\/keranjang\/?$/, /^\/category\//, /^\/brand\//];
 
 const ITEMS = [
   { key: "home", label: "Beranda", icon: "home", to: "/", match: (p: string) => p === "/" },
