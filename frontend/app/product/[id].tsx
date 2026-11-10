@@ -8,7 +8,7 @@ import Icon from "@react-native-vector-icons/ionicons";
 import * as Haptics from "expo-haptics";
 
 import { colors, fontSize, radius, spacing, formatIDR } from "@/src/theme";
-import { api, CUSTOMER_TYPE_LABEL, type Product } from "@/src/api";
+import { api, CUSTOMER_TYPE_LABEL, imgUrl, type Product } from "@/src/api";
 import { useCart } from "@/src/cart-context";
 import { useAuth } from "@/src/auth-context";
 import { Countdown } from "@/src/components/countdown";
@@ -221,7 +221,10 @@ export default function ProductDetail() {
             </Text>
           </View>
           {product.brand || product.condition === "used" ? (
-            <Text style={styles.metaText} testID="pd-brand">{[product.brand && `Merek ${product.brand}`, product.condition === "used" ? "Bekas" : "Baru"].filter(Boolean).join(" · ")}</Text>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+              {product.brand_logo ? <Image testID="pd-brand-logo" source={{ uri: imgUrl(product.brand_logo) }} style={{ width: 22, height: 22, borderRadius: 4 }} contentFit="contain" /> : null}
+              <Text style={styles.metaText} testID="pd-brand">{[product.brand && `Merek ${product.brand}`, product.condition === "used" ? "Bekas" : "Baru"].filter(Boolean).join(" · ")}</Text>
+            </View>
           ) : null}
           {product.preorder ? (
             <Text style={[styles.metaText, { color: colors.brandPrimary, fontWeight: "600" }]} testID="pd-preorder">Pre-order · dikirim dalam {product.preorder_days} hari</Text>

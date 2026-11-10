@@ -27,6 +27,7 @@ import product_notify
 import push
 import fonnte
 import branch_copy
+import catalog_master
 import shop_scope
 import branch_price
 import customer_location
@@ -292,6 +293,7 @@ class Product(BaseModel):
     flash_price: Optional[int] = None
     flash_ends_at: Optional[datetime] = None
     brand: str = ""
+    brand_logo: str = ""
     condition: str = "new"
     video: str = ""
     min_order: int = 1
@@ -608,7 +610,9 @@ async def store_info():
 @api.get("/categories", response_model=List[Category])
 async def list_categories(parent: Optional[str] = None, all: bool = False):
     query: dict = {} if all else {"parent": parent}
-    docs = await db.categories.find(query, {"_id": 0}).sort("count", -1).to_list(200)
+    docs = await db.categories.find(query, {"_id": 0}).sort("count", -1).to_list(5000)
+    if not all and not await db.products.find_one({"$or": [{"categories": "lainnya"}, {"category": "lainnya"}]}, {"_id": 1}):  # empty "Lainnya"
+        docs = [d for d in docs if d["category_id"] != "lainnya"]
     return [Category(**d) for d in docs]
 
 
@@ -679,6 +683,7 @@ def _product_out(d: dict, ctype: str, flash: Optional[dict] = None, branch: Opti
                            for v in d.get("variants") or [] if v.get("active", True)]}
     return Product(**{k: v for k, v in d.items() if k in Product.model_fields},
                    my_price=fp or tiers[0]["price"],  # flash price of the buyer's branch replaces the normal price
+                   brand_logo=catalog_master.brand_logo(d.get("brand")),
                    price_tiers=[PriceTier(**t) for t in tiers],
                    price_min=min(all_prices), price_max=max(all_prices), price_matrix=matrix,
                    flash_price=fp, flash_ends_at=promo.flash_ends(flash, branch) if fp else None)
@@ -850,7 +855,7 @@ async def product_facets(category: Optional[str] = None, q: Optional[str] = None
                                        {"$group": {"_id": None, "min": {"$min": "$_bp"}, "max": {"$max": "$_bp"}, "n": {"$sum": 1}}}]).to_list(1)
     r = rng[0] if rng else {"min": 0, "max": 0, "n": 0}
     return {"total": r["n"], "price_min": r["min"] or 0, "price_max": r["max"] or 0,
-            "brands": [{"name": b["_id"], "count": b["n"]} for b in brands],
+            "brands": [{"name": b["_id"], "count": b["n"], "logo": catalog_master.brand_logo(b["_id"])} for b in brands],
             "categories": sorted([{"category_id": k, "name": names.get(k, {}).get("name") or k.replace("-", " ").title(), "count": n}
                                   for k, n in top.items()], key=lambda x: -x["count"])}
 
@@ -1490,6 +1495,7 @@ branch_price.register(api, db, get_current_user, seller)
 customer_location.register(api, db, get_owner=get_owner, require_admin=require_admin)
 store_page.register(api, db, require_admin=require_admin, get_current_user=get_current_user, get_optional_user=get_optional_user,
                     visible=_visible, apply_stock=_apply_stock, product_out=_product_out, active_flash=promo.active_flash)
+catalog_master.register(api, db, require_admin=require_admin)
 app.include_router(api)
 app.add_middleware(shop_scope.Middleware)
 
@@ -1509,6 +1515,7 @@ logger = logging.getLogger(__name__)
 async def _startup():
     app.state.index_task = asyncio.create_task(ensure_indexes())
     await seed_data()
+    await catalog_master.seed(db)
     await payments.load_config(db)
     app.state.expire_task = asyncio.create_task(_expire_loop())
     app.state.digest_task = asyncio.create_task(_product_digest_loop())

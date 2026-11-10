@@ -1,0 +1,40 @@
+{
+  "summary": "Retest of Merek & Kategori. Backend: 19 of 19 pytest pass (5 new in iter71 plus 14 iter70 regression). Frontend (390x844, REAL Playwright clicks; only location-lock was hidden via JS): the CRITICAL confirm-dialog bug from iter70 is FIXED. The edit sheet closes, then confirm-dialog opens on top, and confirm-cancel/confirm-ok can be clicked. Checked: rename of a brand with 1 product (cancel, then OK, DB brand updated, 'Merek disimpan · 1 produk ikut diganti'); brand delete (cancel keeps the row, OK deletes it); sub-category delete and main category delete with confirm-ok (DB: product category=lainnya, categories=['lainnya'], subcategory=''). Category delete fix verified with 6 TEST products in several categories: products keep unrelated categories (and their sub), the deleted category's ancestors are dropped, products with nothing left go to lainnya, and untouched products are not changed. Excel import as jombang with an unknown brand: preview and commit both show 'Merek “X” belum ada di daftar merek', no create, brand not added. Super Admin preview does not add the brand; Super Admin commit adds the brand and creates the product. GET /api/categories now lists 'lainnya'. Regression: brand picker in the product editor (jombang) works: search, new brand listed, choose Advance, Tanpa merek. All TEST data cleaned up; real data intact (115 brands, 4607 branded products, 81 categories, 215 lainnya products, lainnya.count 0).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "DELETE /api/admin/categories/{cid}", "issue": "products_moved counts every product that was touched, including products that kept other categories and never went to Lainnya. The same number is added to the 'lainnya' category count ($inc), so that count gets too high. Reference: catalog_master.py:196-205"},
+      {"endpoint": "POST /api/product-editor/import (branch admin, commit=true)", "issue": "A new row with an unknown brand is saved as a DRAFT that still has the unknown brand, so publishing that draft later returns 422 errors.brand. This is acceptable, but the brand could be cleared to 'Tanpa merek' in the draft. Reference: product_bulk.py:561-563, 583-585"},
+      {"endpoint": "catalog_master LOGOS cache", "issue": "Still a process-level dict (carried over from iter70). With more than one worker, other workers show stale logos. Reference: catalog_master.py:13"}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "catalog-master", "issues": [
+        "The category delete confirm and the success text always say 'N produk dipindah ke kategori “Lainnya”'. Since the fix, products in other categories keep those categories and do not go to Lainnya, so the text is misleading (catalog-master.tsx:82,84).",
+        "Cancelling the 'Ganti nama merek?' confirm closes everything, because the sheet was already closed, so the typed name is lost. Consider reopening the edit sheet on cancel (catalog-master.tsx:64,168).",
+        "cm-msg stays after switching tabs and across later actions (e.g. 'Merek dihapus…' still shows on the Kategori tab)."
+      ]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_pgs_iter71_catalog_master.py", "/app/backend/tests/test_pgs_iter70_catalog_master.py", "/app/backend/tests/ui_iter71_helper.py", "/app/test_reports/pytest/pytest_iter71.xml"],
+  "action_items": [
+    "Return separate counts from DELETE /admin/categories (products that went to Lainnya vs products that kept other categories). Only add the Lainnya count to the 'lainnya' count, and update the confirm and success text in catalog-master.tsx to match.",
+    "Optional: when the rename confirm is cancelled, reopen the edit sheet with the typed name.",
+    "Optional: clear cm-msg on tab switch or when opening a sheet."
+  ],
+  "critical_code_review_comments": [
+    "delete_category drop-set logic (subtree + ancestors) is correct and was verified with mixed-category products.",
+    "Import brand rule: canonical_brand(create=commit and ctx['admin']) together with the find_brand check for non-admins correctly stops branch admins from creating brands."
+  ],
+  "updated_files": ["/app/backend/tests/test_pgs_iter71_catalog_master.py", "/app/backend/tests/ui_iter71_helper.py"],
+  "success_rate": {"backend": "100% (19/19)", "frontend": "100% of retested flows (rename confirm, brand delete cancel/ok, sub delete, category delete, brand picker)"},
+  "seed_data_creation": "TEST_ brands/categories/products were created by the tests and the UI helper, then deleted by id. lainnya.count was restored to 0. No TEST drafts are left.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run pytest with -n0 (pytest.ini adds xdist). Login for UI: set localStorage 'pgs_auth_token' and hide [data-testid=location-lock] with a JS interval. The UI helper ui_iter71_helper.py has create/check/clean. Baseline: 115 brands, 4607 branded products, 81 categories, 215 lainnya products.",
+  "rca_of_issue": "iter70 CRITICAL (stacked Modals) fixed by confirmOver(): setEdit(null), then setAsk after 350ms. Verified with real clicks."
+}

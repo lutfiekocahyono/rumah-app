@@ -1,0 +1,46 @@
+{
+  "summary": "Tested Master Merek & Kategori (Super Admin), the brand picker in the product editor and brand logos. Backend: 14/14 new pytest pass. Covered: public brands list with counts (115 brands / 4607 products); brand create/rename/delete and impact; case-insensitive duplicate -> 409; jombang -> 403; category + sub create/rename (id kept)/delete; impact endpoint; 'lainnya' -> 400; editor 422 errors.brand for unknown brand and canonical spelling for any case; brand_logo on product detail/list and in facets. Frontend (390x844): catalog-master screen, tabs, search, add brand with LOGO upload (file chooser), validation errors, duplicate error, rename confirm with count, delete confirm with count, category add with icon, expand, add sub, delete with sub count, Lainnya has no delete button. Product editor (jombang) pe-brand picker: search, none, choose. Search filter brand chip with logo, product card logo, pd-brand-logo all work. CRITICAL UI BUG: the confirm dialog opens BEHIND the edit sheet, so a real user cannot tap 'Ya, ganti' / 'Ya, hapus' / 'Batal'. Renaming a brand that has products and deleting any brand or category is impossible from the UI (it only worked in tests with JS click). All TEST data was cleaned up and real data is intact (115 brands, 4607 branded products, 81 categories, lainnya count 0).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "DELETE /api/admin/categories/{sub_id}", "issue": "Deleting only a SUB-category moves its products out of their parent main category to 'lainnya' (category='lainnya', categories=['lainnya']). Expected: they stay in the parent main category with subcategory ''. Verified with iter70_sub_delete_probe.py: impact {'products':1,'subcategories':0} -> product after delete {'category':'lainnya','categories':['lainnya'],'subcategory':''}. The same blanket $set also strips other memberships from the 144 real products that have several categories (e.g. ['bahan-masakan','minuman']: deleting 'minuman' would also drop 'bahan-masakan'). Reference: catalog_master.py:189"},
+      {"endpoint": "POST /api/product-editor/import (Excel)", "issue": "canonical_brand(create=commit) -> ensure_brand adds unknown brands to the master list. Store admins (jombang) can therefore create new brands through Excel import, which goes against the owner decision that only Super Admin manages brands. Reference: product_bulk.py:525,558, catalog_master.py:45"},
+      {"endpoint": "GET /api/categories", "issue": "Lainnya is hidden unless some product has categories:'lainnya'. 215 real products have category='lainnya' with categories=[], so the top-level list hides Lainnya even though /products?category=lainnya returns those 215. The catalog-master screen shows 'Lainnya 215 produk'. Reference: server.py:614"},
+      {"endpoint": "GET /api/categories?all=true", "issue": "to_list(200) cap: once admins add more than 200 categories, the list in the catalog-master screen and the editor is silently cut off. Reference: server.py:613"},
+      {"endpoint": "catalog_master LOGOS", "issue": "Logos are cached in a process-level dict that is only refreshed in the process that made the change. With more than one worker, other workers show stale logos. Reference: catalog_master.py:13"}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "CatalogMaster ConfirmDialog vs EditSheet", "issue": "The ConfirmDialog Modal renders UNDER the cm-edit-sheet Modal. confirm-cancel/confirm-ok at y=435-483 are covered by the sheet at y>=444, and elementFromPoint at the button centre returns cm-edit-sheet. A real Playwright click on confirm-cancel timed out (intercepted). Users cannot confirm renaming a brand that has products, deleting a brand, or deleting a category/sub. On native iOS, a second sibling Modal presented while the first is open usually does not show at all. Fix: render the confirm inside EditSheet's Modal (or as an absolute overlay inside the sheet), or close the sheet before setAsk. Reference: app/admin/catalog-master.tsx:160-166, 203-206", "testID": "confirm-dialog / confirm-ok / cm-edit-sheet", "priority": "CRITICAL"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "catalog-master", "issues": ["If the confirm run fails (e.g. 409 on rename after confirm), the error goes to cm-msg on the main screen, which is hidden behind the still-open edit sheet, instead of cm-err inside the sheet (catalog-master.tsx:66)"]}
+    ],
+    "react_native_issues": [
+      {"component": "Stacked Modals", "issue": "ConfirmDialog (Modal) shown while the EditSheet Modal is visible: wrong z-order on web, and likely not presented on iOS native. Reference: /app/frontend/app/admin/catalog-master.tsx:165"}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_pgs_iter70_catalog_master.py", "/app/backend/tests/iter70_sub_delete_probe.py", "/app/backend/tests/ui_iter70_helper.py", "/app/test_reports/pytest/pytest_iter70.xml"],
+  "action_items": [
+    "CRITICAL: Fix ConfirmDialog z-order in catalog-master.tsx. Render it inside the EditSheet Modal, or close the sheet (setEdit(null)) before showing the confirm, so confirm-ok/confirm-cancel can be tapped. Then retest rename and delete with real (non-JS) taps.",
+    "Deleting a SUB-category should keep its products in the parent category (subcategory=''; remove the sub id from categories) instead of moving them to 'lainnya'. Deleting a main category should only remove that id from categories and fall back to 'lainnya' only when no category is left (144 products have several categories).",
+    "Decide whether Excel import by store admins may create new brands (it currently does via ensure_brand). The owner decision says only Super Admin manages brands, so a store admin import with an unknown brand should probably be rejected or saved as 'Tanpa merek'.",
+    "Update old regression tests that publish with free-text brand 'TEST' (they now get 422 errors.brand): test_pgs_iter23/24/25/27/29/30/31/38. In iter30, 5 tests fail for this reason only.",
+    "Minor: the Lainnya visibility check in GET /categories should also count products with empty categories; remove the 200-row cap for all=true."
+  ],
+  "critical_code_review_comments": [
+    "catalog_master.delete_category uses a single update_many with $set category/categories/subcategory for every product that matches any id in the subtree. This overwrites unrelated memberships (lossy for multi-category products and for sub-only deletes).",
+    "The brand rename/delete update_many writes no product history or notify events (unlike editor saves). This may be acceptable, but it means no audit trail.",
+    "brand-input.tsx: logo lookup and checkmark compare exact names, and the server returns the canonical name, so this is fine.",
+    "Deep-linking to /admin/catalog-master during a backend reload showed the login screen (backend restarted because uvicorn --reload picked up new test files). It recovered after the reload. This may mean a transient /auth/me failure is treated as logged-out."
+  ],
+  "updated_files": ["/app/backend/tests/test_pgs_iter70_catalog_master.py (new)", "/app/backend/tests/iter70_sub_delete_probe.py (new)", "/app/backend/tests/ui_iter70_helper.py (new)"],
+  "success_rate": {"backend": "100% (14/14). Design issue: deleting a sub-category moves products to lainnya", "frontend": "~90%: all flows render and work with JS taps, but confirm dialogs cannot be tapped by real users"},
+  "seed_data_creation": "None kept. TEST brand/categories/products were created and removed by id (TEST_Brand*, TEST_UIBrand70, TEST_UIKat70/TEST_UISub70, TEST_CM*/TEST_UILogo products). The lainnya count increment was reverted. After cleanup: 115 brands, 4607 branded products, 81 categories, lainnya count 0.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Run with EXPO_PUBLIC_BACKEND_URL from frontend/.env: pytest test_pgs_iter70_catalog_master.py -p no:xdist -o addopts=''. Creating files in /app/backend/tests restarts uvicorn (--reload), so wait about 6s before UI runs or the app shows the login screen. UI login: localStorage 'pgs_auth_token'. The Modal sheets slide in, so wait about 1.2s before clicking cm-save. Logo upload works with page.expect_file_chooser on cm-pic. To verify the confirm-dialog fix, use a REAL page.click on confirm-cancel (not JS click) after cm-brand-Advance -> cm-delete (read-only, then cancel).",
+  "rca_of_issue": "Confirm dialog hidden: ConfirmDialog is a sibling Modal that is always mounted (visible=false) at screen mount. EditSheet's Modal mounts later, so on web its portal comes later in the DOM and stacks above. On iOS, presenting a second Modal while another is presented is not supported for sibling modals. Sub-category delete: uses(ids) matches subcategory and catalog_master.py:189 unconditionally sets category='lainnya'."
+}

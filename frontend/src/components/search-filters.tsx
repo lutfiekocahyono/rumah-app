@@ -1,12 +1,13 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { View, Text, StyleSheet, Pressable, ScrollView, Modal, TextInput, Switch, ActivityIndicator } from "react-native";
+import { Image } from "expo-image";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Icon from "@react-native-vector-icons/ionicons";
 
 import { colors, fontSize, radius, spacing, formatIDR } from "@/src/theme";
 import { useStore } from "@/src/store-context";
-import { api, type ProductFacets } from "@/src/api";
+import { api, imgUrl, type ProductFacets } from "@/src/api";
 
 export type SearchFilters = { category: string; brands: string[]; min: number | null; max: number | null; in_stock: boolean; wholesale: boolean };
 export const NO_FILTERS: SearchFilters = { category: "", brands: [], min: null, max: null, in_stock: false, wholesale: false };
@@ -94,7 +95,7 @@ export function FilterSheet({ visible, q, value, storeName, onApply, onClose, br
             </View>
             <View style={styles.wrap}>
               {brands.map((b) => (
-                <Chip key={b.name} label={b.count ? `${b.name} (${b.count})` : b.name} on={f.brands.includes(b.name)} onPress={() => toggleBrand(b.name)} testID={`filter-brand-${b.name}`} />
+                <Chip key={b.name} label={b.count ? `${b.name} (${b.count})` : b.name} logo={"logo" in b ? b.logo : undefined} on={f.brands.includes(b.name)} onPress={() => toggleBrand(b.name)} testID={`filter-brand-${b.name}`} />
               ))}
               {facets && !brands.length ? <Text style={styles.small}>Tidak ada merek</Text> : null}
             </View>
@@ -113,9 +114,10 @@ export function FilterSheet({ visible, q, value, storeName, onApply, onClose, br
   );
 }
 
-export function Chip({ label, on, onPress, testID }: { label: string; on: boolean; onPress: () => void; testID: string }) {
+export function Chip({ label, on, onPress, testID, logo }: { label: string; on: boolean; onPress: () => void; testID: string; logo?: string }) {
   return (
-    <Pressable testID={testID} onPress={onPress} style={[styles.chip, on && styles.chipOn]}>
+    <Pressable testID={testID} onPress={onPress} style={[styles.chip, on && styles.chipOn, logo ? styles.chipLogoRow : null]}>
+      {logo ? <Image source={{ uri: imgUrl(logo) }} style={styles.chipLogo} contentFit="contain" /> : null}
       <Text style={[styles.chipText, on && styles.chipTextOn]} numberOfLines={1}>{label}</Text>
     </Pressable>
   );
@@ -153,6 +155,8 @@ const styles = StyleSheet.create({
   search: { flexDirection: "row", alignItems: "center", gap: spacing.xs, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: spacing.md, minHeight: 44 },
   chip: { minHeight: 44, paddingHorizontal: spacing.md, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border, justifyContent: "center", maxWidth: 240 },
   chipOn: { borderColor: colors.brandPrimary, backgroundColor: colors.brandPrimary },
+  chipLogoRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  chipLogo: { width: 20, height: 20, borderRadius: 4 },
   chipText: { fontSize: 13, color: colors.onSurface },
   chipTextOn: { color: colors.onBrandPrimary, fontWeight: "600" },
   toggle: { flexDirection: "row", alignItems: "center", minHeight: 48 },

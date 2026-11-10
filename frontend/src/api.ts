@@ -181,6 +181,17 @@ export const api = {
   adminSaveHomeSettings: (s: Omit<HomeSettings, "key">) => req<HomeSettings>("/admin/home-settings", { method: "PUT", body: JSON.stringify(s) }),
   adminUpload: (file: LocalFile) => uploadTo("/admin/upload", file),
 
+  // master merek & kategori (Super Admin)
+  brands: () => req<Brand[]>("/brands"),
+  adminSaveBrand: (b: { name: string; logo: string }, id?: string) =>
+    req<Brand & { products_updated?: number }>(id ? `/admin/brands/${id}` : "/admin/brands", { method: id ? "PUT" : "POST", body: JSON.stringify(b) }),
+  adminBrandImpact: (id: string) => req<{ products: number }>(`/admin/brands/${id}/impact`),
+  adminDeleteBrand: (id: string) => req<{ products_updated: number }>(`/admin/brands/${id}`, { method: "DELETE" }),
+  adminSaveCategory: (c: CategoryInput, id?: string) =>
+    req<Category>(id ? `/admin/categories/${id}` : "/admin/categories", { method: id ? "PUT" : "POST", body: JSON.stringify(c) }),
+  adminCategoryImpact: (id: string) => req<{ products: number; subcategories: number }>(`/admin/categories/${id}/impact`),
+  adminDeleteCategory: (id: string) => req<{ deleted: number; products_moved: number }>(`/admin/categories/${id}`, { method: "DELETE" }),
+
   // account
   verifyEmailRequest: () => req<{ message: string }>("/auth/verify-email/request", { method: "POST" }),
   verifyEmailConfirm: (code: string) => req<User>("/auth/verify-email/confirm", { method: "POST", body: JSON.stringify({ code }) }),
@@ -473,13 +484,15 @@ export type Report = {
   top_products: { product_id: string; name: string; qty: number; revenue: number }[];
 };
 export type Category = { category_id: string; name: string; icon: string; image: string; parent?: string | null; count: number };
+export type Brand = { brand_id: string; name: string; logo: string; count: number };
+export type CategoryInput = { name: string; parent?: string | null; icon?: string; image?: string };
 export type ProductQuery = {
   category?: string; q?: string; sort?: string; skip?: number; limit?: number; store?: string; branch?: string;
   brands?: string[]; min_price?: number | null; max_price?: number | null; in_stock?: boolean; wholesale?: boolean;
 };
 export type ProductFacets = {
   total: number; price_min: number; price_max: number;
-  brands: { name: string; count: number }[]; categories: { category_id: string; name: string; count: number }[];
+  brands: { name: string; count: number; logo?: string }[]; categories: { category_id: string; name: string; count: number }[];
 };
 function productQs(p: ProductQuery) {
   const qs = new URLSearchParams();
@@ -501,7 +514,7 @@ export type Product = {
   price_matrix: ({ min_qty: number } & Record<CustomerType, number>)[];
   flash_price?: number | null; flash_ends_at?: string | null;
   store_id: string; store_name: string;
-  brand?: string; condition?: "new" | "used"; video?: string; min_order?: number; max_order?: number;
+  brand?: string; brand_logo?: string; condition?: "new" | "used"; video?: string; min_order?: number; max_order?: number;
   variant_options?: VariantOption[]; variants?: (Omit<VariantRow, "active"> & { name: string })[];
   specs?: Partial<Record<SpecKey, string>>; weight_grams?: number; length_cm?: number; width_cm?: number; height_cm?: number;
   preorder?: boolean; preorder_days?: number; processing_days?: number;

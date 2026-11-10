@@ -4,6 +4,7 @@ import html
 import io
 import re
 
+import catalog_master
 import seller
 import uuid
 from datetime import datetime, timezone
@@ -522,7 +523,9 @@ def register(api, db, *, actor: Callable, target_store: Callable, editable: Call
                     f["tier_prices"] = scale_tiers(f["tier_prices"], base["discount_price"] or base["price"], f["discount_price"] or f["price"])
                 try:
                     form = ProductForm(**f)
-                    form.brand = await canonical_brand(db, form.brand)
+                    form.brand = await canonical_brand(db, form.brand, create=commit and ctx["admin"])  # only Super Admin adds brands
+                    if form.brand and not ctx["admin"] and not await catalog_master.find_brand(db, form.brand):
+                        errs.append(f"Merek “{form.brand}” belum ada di daftar merek (dibuat oleh Super Admin)")
                 except ValidationError as e:
                     errs.append(e.errors()[0]["msg"])
                 if not errs:
@@ -555,7 +558,9 @@ def register(api, db, *, actor: Callable, target_store: Callable, editable: Call
                 f, errs = apply_patch(ProductForm().model_dump(), d, cats)
                 try:
                     form = ProductForm(**f)
-                    form.brand = await canonical_brand(db, form.brand)
+                    form.brand = await canonical_brand(db, form.brand, create=commit and ctx["admin"])  # only Super Admin adds brands
+                    if form.brand and not ctx["admin"] and not await catalog_master.find_brand(db, form.brand):
+                        errs.append(f"Merek “{form.brand}” belum ada di daftar merek (dibuat oleh Super Admin)")
                 except ValidationError as e:
                     add(n, name, "skip", e.errors()[0]["msg"])
                     continue

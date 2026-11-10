@@ -5,7 +5,7 @@ import { useRouter } from "expo-router";
 import Icon from "@react-native-vector-icons/ionicons";
 
 import { colors, fontSize, radius, spacing, formatIDR } from "@/src/theme";
-import type { Product } from "@/src/api";
+import { imgUrl, type Product } from "@/src/api";
 import { useCart } from "@/src/cart-context";
 
 export function ProductCard({ product, style }: { product: Product; style?: any }) {
@@ -43,6 +43,12 @@ export function ProductCard({ product, style }: { product: Product; style?: any 
       </View>
       <View style={styles.info}>
         <Text style={styles.name} numberOfLines={2}>{product.name}</Text>
+        {product.brand_logo ? (
+          <View style={styles.meta} testID={`card-brand-${product.product_id}`}>
+            <Image source={{ uri: imgUrl(product.brand_logo) }} style={styles.brandLogo} contentFit="contain" />
+            <Text style={styles.store} numberOfLines={1}>{product.brand}</Text>
+          </View>
+        ) : null}
         {product.store_name ? (
           <View style={styles.meta}>
             <Icon name={product.store_id === "pgs-official" ? "shield-checkmark" : "storefront-outline"} size={12} color={colors.brandPrimary} />
@@ -98,4 +104,5 @@ const styles = StyleSheet.create({
   meta: { flexDirection: "row", alignItems: "center", gap: 3, marginTop: 2 },
   metaText: { fontSize: 12, color: colors.onSurfaceSecondary },
   store: { fontSize: 11, color: colors.muted, flex: 1 },
+  brandLogo: { width: 16, height: 16, borderRadius: 3 },
 });

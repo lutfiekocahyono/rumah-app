@@ -15,6 +15,7 @@ const MENU = [
   { icon: "people-outline", label: "Kategori Pelanggan", sub: "Pengecer, Reseller, Pembeli Langsung", to: "/admin/customers" },
   { icon: "add-circle-outline", label: "Tambah Produk", sub: "Seller Center: foto, video, variasi, harga & stok", to: "/product-editor/new" },
   { icon: "list-outline", label: "Daftar Produk", sub: "Edit massal, duplikat, impor & ekspor Excel", to: "/product-editor/list" },
+  { icon: "pricetags-outline", label: "Merek & Kategori", sub: "Buat, ubah, hapus merek (logo), kategori & sub-kategori", to: "/admin/catalog-master" },
   { icon: "cube-outline", label: "Harga Grosir per Produk", sub: "Cari produk lalu atur harga grosir di Ubah Produk", to: "/admin/products" },
   { icon: "images-outline", label: "Banner Promosi", sub: "Gambar, judul & tautan di beranda", to: "/admin/banners" },
   { icon: "flash-outline", label: "Flash Sale", sub: "Produk, harga flash & jadwal per cabang", to: "/admin/flash-sale" },

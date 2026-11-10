@@ -12,6 +12,7 @@ from fastapi import Depends, File, HTTPException, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field, field_validator
 
+import catalog_master
 import history
 import product_notify
 import seller
@@ -127,13 +128,13 @@ def combos(options: List[VariantOption]) -> List[List[str]]:
     return [list(c) for c in itertools.product(*groups)] if groups else []
 
 
-async def canonical_brand(db, brand: str) -> str:
-    """Reuse the spelling of an existing brand ("advance" -> "Advance") so the brand filter has no duplicates."""
-    b = (brand or "").strip()
-    if not b:
-        return ""
-    hit = await db.products.find_one({"brand": {"$regex": f"^{re.escape(b)}$", "$options": "i"}}, {"brand": 1})
-    return hit["brand"] if hit else b
+async def canonical_brand(db, brand: str, create: bool = True) -> str:
+    """Excel import: reuse the spelling of a listed brand ("advance" -> "Advance"); a new one is added to the brand list
+    (only when the import is saved, not in its preview)."""
+    if not create:
+        hit = await catalog_master.find_brand(db, brand or "")
+        return hit["name"] if hit else (brand or "").strip()
+    return await catalog_master.ensure_brand(db, brand)
 
 
 async def validate(db, f: ProductForm) -> dict:
@@ -423,7 +424,12 @@ def register(api, db, *, get_current_user, log_activity, origin_label):
             if not f.ship_regular:
                 raise HTTPException(status_code=422, detail={"message": "Toko belum punya kurir kargo", "errors": {
                     "shipping": "Toko belum punya kurir kargo. Aktifkan pengiriman reguler atau tambahkan kurir kargo di menu Pengiriman"}})
-        f.brand = await canonical_brand(db, f.brand)
+        if f.brand.strip():  # the editor picks from the brand list (Master Merek), no free text
+            hit = await catalog_master.find_brand(db, f.brand)
+            if not hit:
+                raise HTTPException(status_code=422, detail={"message": "Merek tidak ada di daftar", "errors": {
+                    "brand": "Pilih merek dari daftar. Merek baru dibuat Super Admin di menu Merek & Kategori"}})
+            f.brand = hit["name"]
         if body.product_id:  # the estimate mark only survives while the value itself is unchanged (server decides, not the client)
             same_w = f.weight_grams == (old.get("weight_grams") or 0)
             same_d = [f.length_cm, f.width_cm, f.height_cm] == [old.get(k) or 0 for k in ("length_cm", "width_cm", "height_cm")]

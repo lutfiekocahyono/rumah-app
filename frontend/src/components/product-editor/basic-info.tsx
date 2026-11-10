@@ -107,7 +107,7 @@ export function BasicInfo({ form, set, errors, cats, ctx, storeId, onStore }: {
         </View>
       ) : null}
       <View style={ui.row}>
-        <BrandInput value={form.brand} onChange={(t) => set({ brand: t })} />
+        <BrandInput value={form.brand} onChange={(t) => set({ brand: t })} error={errors.brand} />
         <Input testID="pe-sku" label="SKU produk" value={form.sku} maxLength={40} onChangeText={(t) => set({ sku: t.toUpperCase() })} placeholder="Contoh: KAOS-001" autoCapitalize="characters" />
       </View>
       <View style={ui.row}>
