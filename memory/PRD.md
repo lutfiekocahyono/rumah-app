@@ -277,3 +277,6 @@ Iteration 2: import all data from pusatgrosirsidoarjo.com; tiered pricing (pembe
 - Store appearance: branch lat/lng; shop page 'Petunjuk arah ke toko' (Apple Maps iOS, Google Maps elsewhere).
 - Nearest branch (branches.point): branch pin else city coords; buyer address pin overrides area.
 - Tests: backend/tests/test_iter76_map_pins.py (21 pass), iteration_76.json. NOT redeployed (owner decides).
+
+## Admin pages: no global catalog search bar (Jun 2026)
+- app-chrome.tsx ADMIN list hides TopSearch on /admin/*, /seller/*, /product-editor/*; in-page admin search boxes kept.
