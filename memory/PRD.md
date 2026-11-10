@@ -281,3 +281,8 @@ Iteration 2: import all data from pusatgrosirsidoarjo.com; tiered pricing (pembe
 ## Admin pages: no global catalog search bar (Jun 2026)
 - app-chrome.tsx ADMIN list hides TopSearch on /admin/*, /seller/*, /product-editor/*; in-page admin search boxes kept.
 - UPDATE: app-chrome.tsx now uses allowlist TOP_SEARCH (only /product/*, /product-updates/*, /kategori). All 61 routes checked in preview.
+
+## Location optional (Jun 2026, for Google Play)
+- location-gate.tsx: no lock. Popup (location-popup) with Izinkan lokasi / Pilih cabang manual / Nanti saja; 'later' persisted (AsyncStorage pgs_location_later); small reminder pill (location-reminder) on /, /katalog, /keranjang reopens popup. Permission requested only on tap. Admin/store_admin/login exempt.
+## Web project prompt
+- /app/memory/web_project_prompt.md (for separate Full Stack web project using live API).
