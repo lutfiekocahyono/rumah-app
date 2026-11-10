@@ -105,5 +105,5 @@ const styles = StyleSheet.create({
   meta: { flexDirection: "row", alignItems: "center", gap: 3, marginTop: 2 },
   metaText: { fontSize: 12, color: colors.onSurfaceSecondary },
   store: { fontSize: 11, color: colors.muted, flex: 1 },
-  brandLogo: { width: 16, height: 16, borderRadius: 3 },
+  brandLogo: { width: 20, height: 20, borderRadius: 3 },
 });

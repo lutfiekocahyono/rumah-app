@@ -166,7 +166,7 @@ const styles = StyleSheet.create({
   chip: { minHeight: 44, paddingHorizontal: spacing.md, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border, justifyContent: "center", maxWidth: 240 },
   chipOn: { borderColor: colors.brandPrimary, backgroundColor: colors.brandPrimary },
   chipLogoRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-  chipLogo: { width: 20, height: 20, borderRadius: 4 },
+  chipLogo: { width: 24, height: 24, borderRadius: 4 },
   chipText: { fontSize: 13, color: colors.onSurface },
   chipTextOn: { color: colors.onBrandPrimary, fontWeight: "600" },
   toggle: { flexDirection: "row", alignItems: "center", minHeight: 48 },

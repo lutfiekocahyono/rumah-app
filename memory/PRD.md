@@ -261,3 +261,5 @@ Iteration 2: import all data from pusatgrosirsidoarjo.com; tiered pricing (pembe
 - [Done] Halaman Merek /brand/[name]: logo/inisial, jumlah produk, semua produk merek (harga & stok cabang pilihan via branch=storeId), cari, Filter (fixedBrand, tanpa bagian Merek), urutan Terlaris/Terbaru/Termurah/Termahal/Rating. Dibuka dari filter merek (filter-brand-page), kartu produk (card-brand-<id>, bila ada logo), detail produk (pd-brand-link). Iter 73 + perbaikan stok cabang, nama dengan %, huruf besar/kecil.
 
 - [Done] Merek Unggulan di Beranda (featured-brands, setelah Flash Sale; tidak di halaman toko): GET /api/brands/featured (atur Super Admin, belum diatur = 10 merek produk aktif terbanyak tanpa 'No Brand'); admin tab 'Unggulan' di Merek & Kategori (GET/PUT /api/admin/featured-brands, items null = otomatis). Iter 74.
+
+- [Done] Logo resmi dipasang: Kimplast, Advance, Apollystar (dirapikan jadi kanvas persegi 512px transparan, logo 84% lebar; diunggah lewat /api/admin/upload lalu PUT /api/admin/brands). Merek lain tetap huruf depan.
