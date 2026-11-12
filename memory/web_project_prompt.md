@@ -40,7 +40,7 @@ Semua halaman Admin Panel dan Seller Center yang ada di aplikasi HP:
 - Peta memakai OpenStreetMap (Leaflet), gratis tanpa kunci.
 - Alamat pengiriman BARU wajib punya pin peta (lat/lng). Pembeli bisa ketuk peta, geser pin, cari tempat (tombol "Cari", lewat `/api/geo/search` dan `/api/geo/reverse` yang butuh login), atau "Gunakan lokasi saat ini" lewat izin lokasi browser.
 - Admin cabang memasang pin toko di Tampilan Toko. Pin ini dipakai untuk "Petunjuk arah" dan cabang terdekat.
-- Lokasi TIDAK wajib. Tampilkan ajakan izin lokasi yang bisa ditutup ("Nanti saja"). Tanpa izin, pembeli memilih cabang manual. Tampilkan pengingat kecil yang bisa membuka ajakan lagi. Admin dan halaman login dikecualikan.
+- Lokasi WAJIB bagi pelanggan dan tamu: popup menutupi layar sampai izin lokasi diberikan (tanpa tombol "Nanti saja"), berisi kegunaan lokasi (cabang terdekat, stok & harga cabang, ongkir, petunjuk arah) dan petunjuk membuka pengaturan browser bila izin sudah ditolak. Super Admin, admin cabang, dan halaman login dikecualikan.
 
 ## 5. Pembayaran
 - Pakai alur yang sama dengan aplikasi HP: server membuat transaksi Midtrans dan mengembalikan `payment_url`. Web membuka halaman bayar itu, lalu kembali ke halaman detail pesanan dan memperbarui status dari server.
