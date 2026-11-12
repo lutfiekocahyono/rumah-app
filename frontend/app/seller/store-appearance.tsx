@@ -10,6 +10,7 @@ import { api, imgUrl, type Product, type StoreAppearance } from "@/src/api";
 import { SellerShell } from "@/src/components/seller-shell";
 import { FeaturedBrandsAdmin } from "@/src/components/featured-brands-admin";
 import { LocationPicker } from "@/src/components/location-picker";
+import { useAuth } from "@/src/auth-context";
 import { adminStyles, Card, Chips, Field, PrimaryButton } from "@/src/components/admin-form";
 import { uploadWithProgress } from "@/src/utils/upload-progress";
 
@@ -87,6 +88,7 @@ function FeaturedPicker({ storeId, list, onChange }: { storeId: string; list: Fe
 
 function Editor({ a, onSaved }: { a: StoreAppearance; onSaved: (a: StoreAppearance) => void }) {
   const router = useRouter();
+  const isAdmin = useAuth().user?.role === "admin";
   const [f, setF] = useState(a);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -127,7 +129,33 @@ function Editor({ a, onSaved }: { a: StoreAppearance; onSaved: (a: StoreAppearan
           <View style={{ flex: 1 }}><PrimaryButton testID="sa-qr-png" label="Unduh PNG" variant="outline" onPress={() => openQr(f.store_id, "png")} /></View>
           <View style={{ flex: 1 }}><PrimaryButton testID="sa-qr-pdf" label="Cetak PDF" onPress={() => openQr(f.store_id, "pdf")} /></View>
         </View>
+        {isAdmin ? <WebsiteUrl /> : null}
       </Card>
+    </View>
+  );
+}
+
+/** Super Admin: website address the QR codes point to (empty = this app's own address). */
+function WebsiteUrl() {
+  const [url, setUrl] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  useEffect(() => { api.websiteUrl().then((r) => setUrl(r.url)).catch(() => {}); }, []);
+  const save = async () => {
+    setBusy(true); setMsg(null);
+    try {
+      const r = await api.saveWebsiteUrl(url);
+      setUrl(r.url);
+      setMsg({ ok: true, text: r.url ? `Kode QR semua cabang kini mengarah ke ${r.url}/shop/…` : "Kode QR kembali memakai alamat aplikasi" });
+    } catch (e: any) { setMsg({ ok: false, text: e.message }); } finally { setBusy(false); }
+  };
+  return (
+    <View style={{ gap: spacing.sm, marginTop: spacing.sm }}>
+      <Field testID="sa-website" label="Alamat website untuk kode QR (semua cabang)" placeholder="https://pusatgrosirsidoarjo.com"
+        value={url} onChangeText={(t) => { setUrl(t); setMsg(null); }} autoCapitalize="none" keyboardType="url" maxLength={200} />
+      <Text style={adminStyles.muted}>Isi setelah website baru aktif di domain ini. Kosongkan agar QR memakai alamat aplikasi seperti sekarang. Setelah diubah, unduh dan cetak ulang QR tiap cabang.</Text>
+      {msg ? <Text style={msg.ok ? adminStyles.ok : adminStyles.err} testID="sa-website-msg">{msg.text}</Text> : null}
+      <PrimaryButton testID="sa-website-save" label="Simpan alamat website" variant="outline" loading={busy} onPress={save} />
     </View>
   );
 }

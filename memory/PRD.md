@@ -289,3 +289,6 @@ Iteration 2: import all data from pusatgrosirsidoarjo.com; tiered pricing (pembe
 
 ## Location MANDATORY again (owner decision, overrides optional)
 - location-gate.tsx: lock popup (location-lock) cannot be dismissed; no Nanti saja / Pilih cabang manual; permission requested on start; admin/store_admin/login exempt. Owner aware of Google Play risk.
+
+## Website URL for QR (Jun 2026)
+- app_settings {_id:'website', url}; GET/PUT /api/admin/website-url (Super Admin, https://domain only). /api/stores/{id}/qr uses it as origin when set, else app address. UI: Tampilan Toko > Kode QR (Super Admin only, testID sa-website). Currently EMPTY.

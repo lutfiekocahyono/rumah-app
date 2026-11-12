@@ -1,5 +1,6 @@
 """Halaman toko tiap cabang: banner, logo, info toko, produk andalan, dan produk khusus cabang.
 Admin cabang mengatur tampilan tokonya sendiri; Super Admin semua cabang."""
+import re
 import uuid
 from datetime import datetime, timezone
 from typing import List, Optional
@@ -27,6 +28,10 @@ class AppearanceIn(BaseModel):
     lat: Optional[float] = Field(default=None, ge=-90, le=90)  # pin of the branch on the map
     lng: Optional[float] = Field(default=None, ge=-180, le=180)
     featured_ids: List[str] = Field(default=[], max_length=MAX_FEATURED)
+
+
+class WebsiteIn(BaseModel):
+    url: str = Field(default="", max_length=200)  # e.g. https://pusatgrosirsidoarjo.com; empty = the app's own address
 
 
 def own_query(sid: str) -> dict:
@@ -115,6 +120,23 @@ def register(api, db, *, require_admin, get_current_user, get_optional_user, vis
         """Beranda / katalog: same products as the catalog list of the buyer's branch (shared catalog)."""
         return await category_counts(await visible("all", x_store_id or ""), parent)
 
+    # ---------------- website address for QR codes (Super Admin) ----------------
+    async def website_url() -> str:
+        d = await db.app_settings.find_one({"_id": "website"}) or {}
+        return d.get("url", "")
+
+    @api.get("/admin/website-url")
+    async def get_website_url(_=Depends(require_admin)):
+        return {"url": await website_url()}
+
+    @api.put("/admin/website-url")
+    async def save_website_url(body: WebsiteIn, _=Depends(require_admin)):
+        url = body.url.strip().rstrip("/")
+        if url and not re.fullmatch(r"https://[A-Za-z0-9.-]+\.[A-Za-z]{2,}(:\d+)?", url):
+            raise HTTPException(status_code=400, detail="Alamat website harus diawali https:// tanpa garis miring di akhir, mis. https://pusatgrosirsidoarjo.com")
+        await db.app_settings.update_one({"_id": "website"}, {"$set": {"url": url}}, upsert=True)
+        return {"url": url}
+
     # ---------------- appearance editor ----------------
     @api.get("/stores/{store_id}/qr")
     async def store_qr_code(store_id: str, request: Request, format: str = "png", base: str = ""):
@@ -124,8 +146,8 @@ def register(api, db, *, require_admin, get_current_user, get_optional_user, vis
             raise HTTPException(status_code=400, detail="Format harus png atau pdf")
         host = request.headers.get("x-forwarded-host") or request.headers.get("host", "")
         proto = request.headers.get("x-forwarded-proto", "https")
-        # the app is served on the same domain as the API; a given base is only used when it is that same host
-        origin = base.rstrip("/") if base and host and host in base else f"{proto}://{host}"
+        # the website address set by Super Admin wins; else the app's own domain (a given base only when it is that host)
+        origin = await website_url() or (base.rstrip("/") if base and host and host in base else f"{proto}://{host}")
         url = f"{origin}/shop/{store_id}" + (f"?toko={store_id}" if store_id in seller.OFFICIAL_IDS else "")
         logo = await store_qr.fetch_logo(s.get("logo", ""))
         data = await run_in_threadpool(store_qr.render, url, s["name"], s.get("city", ""), s.get("address", ""), logo, format)

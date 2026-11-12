@@ -360,6 +360,8 @@ export const api = {
     req<BranchSuggest>(`/products/${id}/availability?${qs({ area, ...(pin ? { lat: pin.lat, lng: pin.lng } : {}) })}`),
   suggestStores: (area: string, product_ids: string[] = [], quantities: number[] = [], pin?: { lat: number; lng: number } | null) =>
     req<BranchSuggest>("/stores/suggest", { method: "POST", body: JSON.stringify({ area, product_ids, quantities, ...(pin ? { lat: pin.lat, lng: pin.lng } : {}) }) }),
+  websiteUrl: () => req<{ url: string }>("/admin/website-url"),
+  saveWebsiteUrl: (url: string) => req<{ url: string }>("/admin/website-url", { method: "PUT", body: JSON.stringify({ url }) }),
   geoSearch: (q: string) => req<{ label: string; lat: number; lng: number }[]>(`/geo/search?${qs({ q })}`),
   geoReverse: (lat: number, lng: number) => req<{ label: string }>(`/geo/reverse?${qs({ lat, lng })}`),
   moveCart: (from_store_id: string, to_store_id: string) =>
